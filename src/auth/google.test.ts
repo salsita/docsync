@@ -58,7 +58,7 @@ describe('exchangeGoogleCode', () => {
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     const credential = await exchangeGoogleCode(config, {
-      code: 'THE-CODE',
+      callbackUrl: `${REDIRECT}?code=THE-CODE&state=st`,
       state: 'st',
       redirectUri: REDIRECT,
       codeVerifier: VERIFIER,
@@ -95,7 +95,7 @@ describe('exchangeGoogleCode', () => {
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     const credential = await exchangeGoogleCode(config, {
-      code: 'c',
+      callbackUrl: `${REDIRECT}?code=c&state=st`,
       state: 'st',
       redirectUri: REDIRECT,
       codeVerifier: VERIFIER,
@@ -119,7 +119,7 @@ describe('exchangeGoogleCode', () => {
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     const credential = await exchangeGoogleCode(config, {
-      code: 'c',
+      callbackUrl: `${REDIRECT}?code=c&state=st`,
       state: 'st',
       redirectUri: REDIRECT,
       codeVerifier: VERIFIER,
@@ -146,7 +146,7 @@ describe('exchangeGoogleCode', () => {
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     const error = await exchangeGoogleCode(config, {
-      code: 'c',
+      callbackUrl: `${REDIRECT}?code=c&state=st`,
       state: 'st',
       redirectUri: REDIRECT,
       codeVerifier: VERIFIER,
@@ -164,7 +164,7 @@ describe('exchangeGoogleCode', () => {
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     const error = await exchangeGoogleCode(config, {
-      code: 'c',
+      callbackUrl: `${REDIRECT}?code=c&state=st`,
       state: 'st',
       redirectUri: REDIRECT,
       codeVerifier: VERIFIER,
@@ -184,7 +184,7 @@ describe('exchangeGoogleCode', () => {
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     const error = await exchangeGoogleCode(config, {
-      code: 'c',
+      callbackUrl: `${REDIRECT}?code=c&state=st`,
       state: 'st',
       redirectUri: REDIRECT,
       codeVerifier: VERIFIER,

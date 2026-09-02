@@ -110,23 +110,15 @@ async function credentialFrom(
 export async function exchangeGoogleCode(
   config: client.Configuration,
   options: {
-    code: string;
+    /** The callback exactly as the browser delivered it, every parameter kept. */
+    callbackUrl: string;
     state: string;
     redirectUri: string;
     codeVerifier: string;
-    /** The callback as received, all parameters intact. Preferred over rebuilding. */
-    callbackUrl?: string;
     now?: () => number;
   },
 ): Promise<Credential> {
-  let callback: URL;
-  if (options.callbackUrl) {
-    callback = new URL(options.callbackUrl);
-  } else {
-    callback = new URL(options.redirectUri);
-    callback.searchParams.set('code', options.code);
-    callback.searchParams.set('state', options.state);
-  }
+  const callback = new URL(options.callbackUrl);
 
   const tokens = await client
     .authorizationCodeGrant(config, callback, {
