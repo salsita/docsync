@@ -1,7 +1,7 @@
 # docsync — user manual
 
 `docsync` gives you a git workflow over documents that live in Notion and
-Google Docs. You check documents out as Markdown files, edit them locally (by
+Google Drive. You check documents out as Markdown files, edit them locally (by
 hand or with an agent), review the diff, and push. If the source changed while
 you were working, git's ordinary three-way merge resolves it.
 
@@ -22,7 +22,7 @@ Nothing touches a source document until you push.
 | **Root** | One source ref checked out under one local path. A checkout is a set of roots. |
 | **Manifest** | A YAML file listing the roots. It *is* the remote: the repo's git remote URL points at it. |
 | **Helper** | `git-remote-docsync`, the program git runs on fetch and push. You rarely call it directly. |
-| **Document** | One Notion page or one Google Doc. This is the unit of sync. There is no partial sync of a document. |
+| **Document** | One Notion page, one Google Doc, or one other Drive file. This is the unit of sync. There is no partial sync of a document. |
 
 The remote-tracking branch `origin/main` is a synthesized git history. Every
 fetch that finds changes at the source adds a commit to it, authored by the
@@ -48,11 +48,16 @@ The ai-starter setup installs docsync for you.
 | Source | Env var | How to get it |
 |---|---|---|
 | Notion | `DOCSYNC_NOTION_TOKEN` | An internal integration token. Share each page you want to sync with the integration. |
-| Google Docs | `DOCSYNC_GOOGLE_CREDENTIALS` | Path to an OAuth client JSON. First use opens a browser for consent and caches the refresh token under `~/.config/docsync/`. |
+| Google | `DOCSYNC_GOOGLE_CREDENTIALS` | Path to an OAuth client JSON. First use opens a browser for consent and caches the refresh token under `~/.docsync/`. |
 
 `docsync auth <source>` verifies a credential and, for Google, runs the consent
 flow. Every command that needs a credential fails immediately and clearly when
 one is missing.
+
+### Home directory
+
+`~/.docsync/` holds cached tokens and the current skill file (§10). On Windows
+this is `%USERPROFILE%\.docsync\`.
 
 ---
 
@@ -66,8 +71,9 @@ ls
 ```
 
 ```
-Product Specs/          # the Notion page and its sub-pages
-Product Specs.md
+.agents/                # skill file for agents (§10)
+Product Specs/          # the Notion page's sub-pages
+Product Specs.md        # the Notion page
 Contracts/              # the Drive folder, recursively
 ```
 
@@ -93,7 +99,7 @@ That is the whole workflow. Everything below is detail.
 ## 4. The manifest
 
 The manifest defines what is checked out. Default location: `.docsync.yaml`
-in the repo, untracked. It can live anywhere the remote URL can reach (see §9).
+in the repo, untracked. It can live anywhere the remote URL can reach (§9).
 
 ```yaml
 version: 1
@@ -127,14 +133,15 @@ Fields per root:
 - Paths must not overlap. Two roots cannot claim the same file, and one root's
   path cannot be inside another's.
 - Paths are case-sensitive, and the helper refuses two names that differ only in
-  case, because macOS does not.
+  case, because macOS and Windows do not.
+- Always use `/` as the separator, on every platform.
 
 ### Ignore patterns
 
 Two forms, mixable in one list:
 
 - **gitignore syntax** matched against the title-derived path relative to the
-  root, e.g. `Archive/**`, `*.draft`, `Meeting notes/2023-*`.
+  root, e.g. `Archive/**`, `*.pdf`, `Meeting notes/2023-*`.
 - **A source ref**, e.g. `notion:8c1d…`. Ignores that document (and its
   children) regardless of title. Use this when titles move.
 
@@ -151,12 +158,14 @@ Creates a checkout.
 
 1. Creates `<dir>` (default: current directory, which must be empty).
 2. Writes an empty manifest to `.docsync.yaml`.
-3. `git init -b main`.
-4. Adds `.docsync.yaml` to `.git/info/exclude`.
-5. For each `<src>` given, resolves it at the source and appends a root
+3. `git init -b main`, with `core.autocrlf=false` so line endings are LF
+   everywhere.
+4. Adds `.docsync.yaml` and `.agents/skills/docsync` to `.git/info/exclude`.
+5. Links the skill file (§10).
+6. For each `<src>` given, resolves it at the source and appends a root
    (same code path as `docsync add`).
-6. `git remote add origin docsync::.docsync.yaml`.
-7. `git fetch origin` and `git checkout --track origin/main`.
+7. `git remote add origin docsync::.docsync.yaml`.
+8. `git fetch origin` and `git checkout --track origin/main`.
 
 Resolving a source ref is where a missing or invalid credential, or a page not
 shared with the integration, fails. That happens before the repo is built.
@@ -211,6 +220,11 @@ See Credentials.
 Prints what a source ref is: type, title, child count, last editor, last edit
 time. Useful before `add`.
 
+### `docsync skill [--for <agent>]`
+
+Re-links the skill file (§10). `--for claude` or `--for cursor` adds a link in
+that agent's own directory as well.
+
 ---
 
 ## 6. Files on disk
@@ -220,21 +234,22 @@ time. Useful before `add`.
 | Source object | On disk |
 |---|---|
 | Google Doc | `<title>.md` |
-| Drive folder | `<title>/` containing its documents and sub-folders, recursively |
+| Other Drive file (PDF, image, `.docx`, …) | `<title>` with its own extension, byte-for-byte |
+| Google Sheet / Slides / Drawing | `<title>.xlsx` / `.pptx` / `.svg`, exported, read-only |
+| Drive folder | `<title>/` containing its files and sub-folders, recursively |
 | Notion page, no children | `<title>.md` |
 | Notion page with child pages | `<title>.md` **and** `<title>/` beside it, containing the children |
 
-Filenames are derived from titles: the title as-is, with `/` and characters
-illegal on macOS or Windows replaced by `-`. Collisions within one directory get
-a numeric suffix (`Notes.md`, `Notes (2).md`), stable across fetches because the
-mapping is by id.
+Filenames are derived from titles: the title as-is, with `/`, `\`, `:`, `*`,
+`?`, `"`, `<`, `>`, `|` and control characters replaced by `-`, trailing dots
+and spaces trimmed, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`,
+`COM1`–`COM9`, `LPT1`–`LPT9`) suffixed with `-`. Collisions within one directory
+get a numeric suffix (`Notes.md`, `Notes (2).md`), stable across fetches
+because the mapping is by id.
 
-Non-document files in a Drive folder (PDFs, images, spreadsheets) are not
-checked out in this version. They are listed in `docsync status` as skipped.
+### Identity
 
-### Frontmatter
-
-Every document file starts with YAML frontmatter that docsync owns:
+**Markdown documents** carry YAML frontmatter that docsync owns:
 
 ```yaml
 ---
@@ -246,25 +261,77 @@ title: Auth
 - `id` is the identity. Renaming the file does not change which document it is.
 - `title` is what the source shows. Changing it and pushing renames the document
   at the source. The filename follows on the next fetch.
-- A new file inside a root **without** frontmatter is a new document. On push it
-  is created at the source, under the folder or parent page its path implies,
-  titled from its first `#` heading or its filename. The id arrives with the
-  post-push fetch (§7).
+- A new `.md` file inside a root **without** frontmatter is a new document. On
+  push it is created at the source, under the folder or parent page its path
+  implies, titled from its filename without the extension. The id arrives with
+  the post-push fetch (§7).
+- Do not add your own keys to the frontmatter. They will be dropped.
 
-Do not add your own keys to the frontmatter. They will be dropped.
+**Binary files** have no frontmatter. Their ids live in `.docsync/index.yaml`,
+a tracked file the helper writes on every fetch. It maps every checked-out path
+to its source ref and type. Do not edit it. A new binary file inside a Drive
+root is uploaded on push and appears in the index after the post-push fetch.
+
+Renames of either kind are detected by git's rename detection and resolved to
+the same id.
 
 ### Markdown dialect
 
-Body content is GitHub-flavoured Markdown plus a small set of extensions for
-blocks that GFM cannot express (Notion callouts, toggles; Google Docs page
-breaks). The dialect is documented in `MARKDOWN.md`.
-
+Body content is GitHub-flavoured Markdown with a small set of extensions.
 Conversion is **canonical**: fetching a document and pushing it unchanged
-produces no change at the source and no diff on the next fetch. This is the
-property that makes the whole tool work, and it is tested for every supported
-block type.
+produces no change at the source and no diff on the next fetch. This property
+is what makes the tool work, and it is tested for every row in the tables
+below.
 
-Anything the dialect cannot represent is preserved as an opaque placeholder:
+#### Notion blocks
+
+| Notion | Markdown |
+|---|---|
+| paragraph | paragraph |
+| heading 1 / 2 / 3 | `#` / `##` / `###` |
+| bulleted list | `- item`, nested by two spaces |
+| numbered list | `1. item` |
+| to-do | `- [ ] item` / `- [x] item` |
+| quote | `> text` |
+| callout | `> [!CALLOUT] 💡` on the first line, body quoted below |
+| toggle | `<details><summary>title</summary>` … `</details>` |
+| code | fenced block with the language |
+| divider | `---` |
+| table | GFM table. Cells hold inline formatting only. |
+| equation | `$$ … $$` block; `$ … $` inline |
+| image, file, PDF, video with an **external** URL | `![caption](url)` or `[name](url)` |
+| image, file, PDF hosted by Notion | downloaded next to the page into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
+| child page | its own file, not in the body |
+| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise a placeholder |
+| bookmark, embed, synced block, database, columns, table of contents, breadcrumb, button, everything else | placeholder |
+
+Inline: bold, italic, strikethrough, code, links as in GFM. Underline is
+`<u>…</u>`. Text and background colours are `<span data-color="red">…</span>`.
+These are preserved so that a round trip does not strip them.
+
+#### Google Docs elements
+
+| Google Docs | Markdown |
+|---|---|
+| Title / Subtitle | `# Title` / `## Subtitle` on the first lines, tagged in frontmatter as `title-style: true` |
+| Heading 1–6 | `#` … `######` |
+| paragraph | paragraph |
+| bulleted / numbered list, nested | `-` / `1.`, nested by indentation |
+| checklist | `- [ ]` / `- [x]` |
+| table | GFM table. Merged cells are not supported and make the table a placeholder. |
+| horizontal rule | `---` |
+| page break | `<!-- docsync:pagebreak -->` |
+| footnote | `[^n]` with the definition at the end |
+| image | downloaded into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
+| link | `[text](url)` |
+| bold, italic, strikethrough, code font | as in GFM |
+| underline | `<u>…</u>` |
+| text colour, highlight, font, size, alignment | not represented. See write-back limitations (§7). |
+| comments, suggestions | not in the body. They stay at the source. |
+
+#### Placeholders
+
+Anything the dialect cannot represent becomes:
 
 ```
 <!-- docsync:block notion:8f2e… type=embed -->
@@ -289,8 +356,8 @@ If anything changed, it writes one commit to `origin/main`:
 
 Fetch never modifies your working tree. That is what `pull` and merge are for.
 
-**Google Docs, later:** replay the Drive revision list as individual commits, so
-`git log` shows real per-edit history.
+**Later:** replay the Drive revision list as individual commits, so `git log`
+shows real per-edit history for Google Docs.
 
 ### Push
 
@@ -298,35 +365,44 @@ Git sends the commits between `origin/main` and your branch. The helper:
 
 1. Rejects the push if `origin/main` is not an ancestor of what you push. This
    is git's normal non-fast-forward rule. Fetch, merge or rebase, push again.
-2. Refuses paths that are not under any root in the manifest.
-3. Diffs the tree per root and applies:
+2. Refuses paths that are not under any root in the manifest, and refuses
+   changes to `.docsync/index.yaml`.
+3. Refuses changes to read-only exports (Sheets, Slides, Drawings).
+4. Diffs the tree per root and applies:
    - **modified** → update the document (see Write-back below)
-   - **added** → create the document
+   - **added** → create the document, or upload the binary
    - **deleted** → trash the document (Notion archive, Drive trash). Never
      permanent. Printed prominently.
-   - **renamed** → same document (frontmatter id), possibly a title change
-     and, for Drive, a move between folders
+   - **renamed** → same document (by id), possibly a title change and, for
+     Drive, a move between folders
    - **manifest root removed** in the same push → deletions under it are
      unsubscribes, nothing is trashed
-4. **Post-push fetch.** Re-reads every document it touched. If the canonical
+5. **Post-push fetch.** Re-reads every document it touched. If the canonical
    form differs from what was pushed (new ids, source-side normalization), it
    writes one more commit on top of `origin/main`. Your branch is then one
    fast-forward behind. `docsync push` fast-forwards for you when the working
    tree is clean; after plain `git push`, run `git pull`.
 
-Commit messages are posted as a page comment at the source (Notion comment,
-Google Docs comment on the document) so the source has an audit trail. Off by
-default in this version; enable with `comments: true` in the manifest root.
-
 ### Write-back
 
-The first version replaces the document body. This is correct but coarse: on
-Notion it regenerates blocks and loses block-level comments; on Google Docs it
-can detach comment anchors.
+The first version replaces the document body.
 
-**Later:** diff-based write-back. Block ids are carried in the Markdown and only
-changed blocks or text ranges are patched, preserving comments and per-block
-history.
+- **Notion:** blocks are regenerated. Block-level comments and per-block history
+  on the edited page are lost. Page-level comments, properties, sharing and the
+  page id survive.
+- **Google Docs:** the body text is replaced. Text colour, highlight, fonts,
+  sizes and alignment **inside the body are lost on every push**, because the
+  dialect cannot carry them. Document-level defaults, named styles, sharing,
+  comments and the file id survive, but comment anchors may detach. In practice
+  this makes the first version suitable for Docs that are plain prose, and
+  unsuitable for heavily formatted ones.
+- **Drive binaries:** a new revision of the same file is uploaded. Everything
+  else about the file is untouched.
+
+**Later, and the top item on the roadmap:** diff-based write-back. Block ids
+and paragraph ranges are tracked, and only what changed is patched. That keeps
+formatting outside the dialect on untouched paragraphs, and keeps comments
+anchored.
 
 ### Conflicts
 
@@ -337,7 +413,7 @@ Conflicts appear as ordinary conflict markers in the Markdown file. Resolve,
 commit, push.
 
 Because conversion is canonical and Markdown is line-oriented, most concurrent
-edits to different paragraphs merge cleanly.
+edits to different paragraphs merge cleanly. Binary files conflict as a whole.
 
 ---
 
@@ -348,7 +424,7 @@ edits to different paragraphs merge cleanly.
 | Removed a root from the manifest | Nothing. |
 | Added an ignore pattern | Nothing. |
 | Deleted a tracked file and pushed | The document is moved to trash. Recoverable from the source UI for about 30 days. |
-| Deleted a file with no frontmatter | Nothing. It was never at the source. |
+| Deleted a file with no id | Nothing. It was never at the source. |
 
 There is no flag to confirm deletions. The review before you push is the gate.
 `docsync push` lists every trashed document in its output.
@@ -366,7 +442,8 @@ The remote URL is `docsync::<manifest>`, where `<manifest>` is one of:
 | `docsync::../ai-starter/checkouts/sales.yaml` | Relative paths always resolve against the working tree, never the shell's directory. |
 | `docsync::gdocs:<id>`, `docsync::notion:<id>` | **later**: the manifest is itself a document at the source. |
 
-`git clone docsync::/abs/path/manifest.yaml my-docs` is a normal clone.
+`git clone docsync::/abs/path/manifest.yaml my-docs` is a normal clone. It
+links the skill file too.
 
 Several checkouts can share one manifest. Manifest history, if you want it, is
 the history of whatever git repo the manifest file lives in.
@@ -375,7 +452,30 @@ the history of whatever git repo the manifest file lives in.
 
 ## 10. Working with agents
 
-The intended loop:
+### The skill file
+
+Every checkout contains `.agents/skills/docsync/SKILL.md`, which tells an agent
+how to work in a docsync checkout: pull first, edit on a branch, never touch
+frontmatter or the index, never edit inside placeholders, and never push unless
+asked. `.agents/skills/` is the location shared by Claude Code, Codex, Cursor
+and others. `docsync skill --for <agent>` adds a link in an agent-specific
+directory when one is needed.
+
+The path in the checkout is a link, so it always shows the skill file of the
+installed version:
+
+- The tool keeps the current skill file at `~/.docsync/skill/SKILL.md` and
+  refreshes it from its own bundled copy every time any `docsync` command runs.
+  This location is stable across Node version managers and reinstalls.
+- On macOS and Linux, `.agents/skills/docsync` is a symlink to
+  `~/.docsync/skill`.
+- On Windows it is a directory junction, which needs no admin rights or
+  developer mode.
+- The link is excluded from git via `.git/info/exclude`, like the manifest.
+
+If the link is broken, `docsync skill` repairs it.
+
+### The loop
 
 1. `docsync pull` so the agent starts from the current source state.
 2. The agent edits files on a branch and commits.
@@ -388,20 +488,35 @@ API, and `git push` is the only side-effecting step.
 
 ---
 
-## 11. Limitations of the first version
+## 11. Windows
+
+docsync is expected to work on Windows. Specifically:
+
+- Paths in manifests and frontmatter always use `/`.
+- Line endings are LF. `init` sets `core.autocrlf=false`.
+- Filenames avoid reserved characters and names (§6).
+- The skill link is a junction (§10).
+- `~/.docsync/` is `%USERPROFILE%\.docsync\`.
+- **To verify early:** Git for Windows must be able to execute the
+  `git-remote-docsync` shim that npm installs. If it cannot run a `.cmd` shim,
+  the package ships a small `.exe` launcher instead.
+
+---
+
+## 12. Limitations of the first version
 
 - Notion databases are not synced. Pages inside a database are not synced either.
-- Non-document Drive files are skipped.
-- Write-back replaces the body (see §7). Block-level comments on Notion and
-  comment anchors on Google Docs may not survive an edit to that block.
+- Sheets, Slides and Drawings are exported read-only.
+- Write-back replaces the body (§7). Google Docs lose range-level formatting on
+  push. Notion loses block-level comments on edited pages.
+- Images and files hosted by the source are placeholders, not downloaded.
 - Google Docs revisions are collapsed into one commit per fetch.
-- Formatting outside the Markdown dialect is preserved only as placeholders.
 - One branch (`main`) per remote. Other local branches are fine; the helper only
   serves `main`.
 
 ---
 
-## 12. Command reference
+## 13. Command reference
 
 ```
 docsync init    [<dir>] [<src>[=<path>]...]
@@ -413,6 +528,7 @@ docsync pull
 docsync push
 docsync resolve <src>
 docsync auth    <source>
+docsync skill   [--for <agent>]
 docsync --version
 ```
 
