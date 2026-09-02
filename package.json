@@ -31,15 +31,27 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.11",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^26.4.0",
+    "@types/unist": "^3.0.3",
     "@vitest/coverage-v8": "^4.1.11",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   },
   "dependencies": {
     "@napi-rs/keyring": "^2.0.0",
+    "@notionhq/client": "^5.26.0",
     "ignore": "^7.0.8",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-to-markdown": "^2.1.2",
     "openid-client": "^6.8.7",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0",
     "yaml": "^2.9.0"
   }
 }
