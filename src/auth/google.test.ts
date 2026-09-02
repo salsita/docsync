@@ -1,5 +1,4 @@
-import { generateKeyPairSync, sign } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AuthError } from './errors.js';
 import {
@@ -9,118 +8,25 @@ import {
   googleConfiguration,
   refreshGoogleToken,
 } from './google.js';
+import { closeAll, type GoogleMockOptions, idToken, mockGoogle } from './oauth-servers.mock.js';
 
 const APP = { clientId: '1234.apps.googleusercontent.com', clientSecret: 'GOCSPX-abc' };
 const REDIRECT = 'http://localhost:27183/callback';
-
-const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const KID = 'test-key';
-const JWK = {
-  ...publicKey.export({ format: 'jwk' }),
-  kid: KID,
-  use: 'sig',
-  alg: 'RS256',
-};
-
-function base64url(value: string | Buffer): string {
-  return Buffer.from(value).toString('base64url');
-}
-
-function idToken(issuer: string, claims: Record<string, unknown>): string {
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: KID }));
-  const payload = base64url(
-    JSON.stringify({
-      iss: issuer,
-      aud: APP.clientId,
-      sub: '1029384756',
-      iat: now,
-      exp: now + 3600,
-      ...claims,
-    }),
-  );
-  const signature = sign('sha256', Buffer.from(`${header}.${payload}`), privateKey);
-  return `${header}.${payload}.${base64url(signature)}`;
-}
-
-interface Options {
-  /** What the token endpoint answers, given the form body it received. */
-  token?: (form: URLSearchParams, issuer: string) => { status?: number; body: unknown };
-  userinfo?: { status?: number; body: unknown };
-}
+const VERIFIER = 'verifier-verifier-verifier-verifier-abc';
 
 const servers: Server[] = [];
 
-afterEach(async () => {
-  await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r))));
-});
+afterEach(() => closeAll(servers));
 
-async function readBody(req: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString();
-}
-
-/** A Google-shaped OpenID provider on loopback. */
-async function mockGoogle(options: Options = {}) {
-  const forms: URLSearchParams[] = [];
-  let issuer = '';
-  const server = createServer((req, res) => {
-    void (async () => {
-      const json = (status: number, body: unknown) => {
-        res.writeHead(status, { 'content-type': 'application/json' });
-        res.end(JSON.stringify(body));
-      };
-      const path = new URL(req.url ?? '/', issuer).pathname;
-
-      if (path === '/.well-known/openid-configuration') {
-        return json(200, {
-          issuer,
-          authorization_endpoint: `${issuer}/o/oauth2/v2/auth`,
-          token_endpoint: `${issuer}/token`,
-          userinfo_endpoint: `${issuer}/v1/userinfo`,
-          jwks_uri: `${issuer}/certs`,
-          response_types_supported: ['code'],
-          subject_types_supported: ['public'],
-          id_token_signing_alg_values_supported: ['RS256'],
-          token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
-          code_challenge_methods_supported: ['S256'],
-          grant_types_supported: ['authorization_code', 'refresh_token'],
-        });
-      }
-      if (path === '/certs') return json(200, { keys: [JWK] });
-      if (path === '/v1/userinfo') {
-        const { status = 200, body = { sub: '1029384756' } } = options.userinfo ?? {};
-        return json(status, body);
-      }
-      if (path === '/token') {
-        const form = new URLSearchParams(await readBody(req));
-        forms.push(form);
-        const reply = options.token?.(form, issuer) ?? {
-          body: {
-            access_token: 'ya29.access',
-            refresh_token: '1//refresh',
-            expires_in: 3599,
-            token_type: 'Bearer',
-            scope: GOOGLE_SCOPES,
-            id_token: idToken(issuer, { email: 'jiri@example.test', name: 'Jiri' }),
-          },
-        };
-        return json(reply.status ?? 200, reply.body);
-      }
-      return json(404, { error: 'not_found' });
-    })();
-  });
-  servers.push(server);
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  const address = server.address();
-  issuer = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
-  return { issuer, forms };
+async function provider(options: Omit<GoogleMockOptions, 'clientId'> = {}) {
+  const mock = await mockGoogle({ clientId: APP.clientId, ...options });
+  servers.push(mock.server);
+  return mock;
 }
 
 describe('googleAuthorizationUrl', () => {
   it('asks for offline access, a fresh consent, PKCE and exactly our scopes', async () => {
-    const { issuer } = await mockGoogle();
+    const { issuer } = await provider();
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     const url = new URL(
@@ -147,20 +53,20 @@ describe('googleAuthorizationUrl', () => {
 
 describe('exchangeGoogleCode', () => {
   it('sends the code and verifier, and keeps tokens, expiry and identity', async () => {
-    const { issuer, forms } = await mockGoogle();
+    const { issuer, forms } = await provider();
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     const credential = await exchangeGoogleCode(config, {
       code: 'THE-CODE',
       state: 'st',
       redirectUri: REDIRECT,
-      codeVerifier: 'verifier-verifier-verifier-verifier-abc',
+      codeVerifier: VERIFIER,
       now: () => 1_000_000,
     });
 
     expect(forms[0]?.get('grant_type')).toBe('authorization_code');
     expect(forms[0]?.get('code')).toBe('THE-CODE');
-    expect(forms[0]?.get('code_verifier')).toBe('verifier-verifier-verifier-verifier-abc');
+    expect(forms[0]?.get('code_verifier')).toBe(VERIFIER);
     expect(forms[0]?.get('redirect_uri')).toBe(REDIRECT);
     expect(forms[0]?.get('client_secret')).toBe(APP.clientSecret);
 
@@ -173,14 +79,14 @@ describe('exchangeGoogleCode', () => {
   });
 
   it('falls back to userinfo when the ID token names nobody', async () => {
-    const { issuer } = await mockGoogle({
+    const { issuer } = await provider({
       token: (_form, iss) => ({
         body: {
           access_token: 'ya29.access',
           refresh_token: '1//refresh',
           expires_in: 3599,
           token_type: 'Bearer',
-          id_token: idToken(iss, {}),
+          id_token: idToken(iss, APP.clientId),
         },
       }),
       userinfo: { body: { sub: '1029384756', email: 'from-userinfo@example.test' } },
@@ -191,20 +97,20 @@ describe('exchangeGoogleCode', () => {
       code: 'c',
       state: 'st',
       redirectUri: REDIRECT,
-      codeVerifier: 'verifier-verifier-verifier-verifier-abc',
+      codeVerifier: VERIFIER,
     });
 
     expect(credential.identity).toEqual({ email: 'from-userinfo@example.test' });
   });
 
   it('signs in with no identity at all rather than failing', async () => {
-    const { issuer } = await mockGoogle({
+    const { issuer } = await provider({
       token: (_form, iss) => ({
         body: {
           access_token: 'ya29.access',
           refresh_token: '1//refresh',
           token_type: 'Bearer',
-          id_token: idToken(iss, {}),
+          id_token: idToken(iss, APP.clientId),
         },
       }),
       userinfo: { status: 500, body: { error: 'boom' } },
@@ -215,7 +121,7 @@ describe('exchangeGoogleCode', () => {
       code: 'c',
       state: 'st',
       redirectUri: REDIRECT,
-      codeVerifier: 'verifier-verifier-verifier-verifier-abc',
+      codeVerifier: VERIFIER,
     });
 
     expect(credential).toEqual({
@@ -226,13 +132,13 @@ describe('exchangeGoogleCode', () => {
   });
 
   it('refuses a sign-in that came back without a refresh token', async () => {
-    const { issuer } = await mockGoogle({
+    const { issuer } = await provider({
       token: (_form, iss) => ({
         body: {
           access_token: 'ya29.access',
           expires_in: 3599,
           token_type: 'Bearer',
-          id_token: idToken(iss, { email: 'jiri@example.test' }),
+          id_token: idToken(iss, APP.clientId, { email: 'jiri@example.test' }),
         },
       }),
     });
@@ -242,7 +148,7 @@ describe('exchangeGoogleCode', () => {
       code: 'c',
       state: 'st',
       redirectUri: REDIRECT,
-      codeVerifier: 'verifier-verifier-verifier-verifier-abc',
+      codeVerifier: VERIFIER,
     }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(AuthError);
@@ -251,7 +157,7 @@ describe('exchangeGoogleCode', () => {
   });
 
   it('reports a token response that is not a token response', async () => {
-    const { issuer } = await mockGoogle({
+    const { issuer } = await provider({
       token: () => ({ body: { token_type: 'Bearer' } }),
     });
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
@@ -260,7 +166,7 @@ describe('exchangeGoogleCode', () => {
       code: 'c',
       state: 'st',
       redirectUri: REDIRECT,
-      codeVerifier: 'verifier-verifier-verifier-verifier-abc',
+      codeVerifier: VERIFIER,
     }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(AuthError);
@@ -268,7 +174,7 @@ describe('exchangeGoogleCode', () => {
   });
 
   it('reports what Google said when the code is bad', async () => {
-    const { issuer } = await mockGoogle({
+    const { issuer } = await provider({
       token: () => ({
         status: 400,
         body: { error: 'invalid_grant', error_description: 'Bad Request' },
@@ -280,7 +186,7 @@ describe('exchangeGoogleCode', () => {
       code: 'c',
       state: 'st',
       redirectUri: REDIRECT,
-      codeVerifier: 'verifier-verifier-verifier-verifier-abc',
+      codeVerifier: VERIFIER,
     }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(AuthError);
@@ -292,7 +198,7 @@ describe('exchangeGoogleCode', () => {
 
 describe('refreshGoogleToken', () => {
   it('renews the access token, keeping the refresh token and the identity', async () => {
-    const { issuer, forms } = await mockGoogle({
+    const { issuer, forms } = await provider({
       token: () => ({
         body: {
           access_token: 'ya29.renewed',
@@ -326,7 +232,7 @@ describe('refreshGoogleToken', () => {
   });
 
   it('takes a rotated refresh token when Google sends one', async () => {
-    const { issuer } = await mockGoogle({
+    const { issuer } = await provider({
       token: () => ({
         body: { access_token: 'a', refresh_token: '1//rotated', token_type: 'Bearer' },
       }),
@@ -344,7 +250,7 @@ describe('refreshGoogleToken', () => {
   });
 
   it('reports a revoked grant', async () => {
-    const { issuer } = await mockGoogle({
+    const { issuer } = await provider({
       token: () => ({ status: 400, body: { error: 'invalid_grant' } }),
     });
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
@@ -360,7 +266,7 @@ describe('refreshGoogleToken', () => {
   });
 
   it('refuses to refresh a credential that has no refresh token', async () => {
-    const { issuer } = await mockGoogle();
+    const { issuer } = await provider();
     const config = await googleConfiguration(APP, { googleIssuer: issuer });
 
     await expect(refreshGoogleToken(config, { accessToken: 'old', identity: {} })).rejects.toThrow(
@@ -371,7 +277,7 @@ describe('refreshGoogleToken', () => {
 
 describe('googleConfiguration', () => {
   it('uses the fetch it is given', async () => {
-    const { issuer } = await mockGoogle();
+    const { issuer } = await provider();
     let calls = 0;
     const counting: typeof fetch = (...args) => {
       calls += 1;

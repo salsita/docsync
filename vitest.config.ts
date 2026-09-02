@@ -5,7 +5,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts'],
+      // `*.mock.ts` are the loopback OAuth servers the auth tests share; they
+      // are test scaffolding that happens to be importable from more than one
+      // test file.
+      exclude: ['src/**/*.test.ts', 'src/**/*.mock.ts'],
       reporter: ['text', 'html'],
     },
   },
