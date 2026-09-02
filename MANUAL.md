@@ -119,23 +119,21 @@ Edit, review, push:
 $EDITOR "Product Specs/Auth.md"
 git diff
 git commit -am "Clarify session expiry"
-docsync push
+git push
+git pull
 ```
 
 Get upstream changes:
 
 ```bash
-docsync pull
+git pull
 ```
 
 That is the whole workflow. Everything below is detail.
 
-It is plain git underneath: `git push` and `git pull` do the same thing, and
-any git client works. Prefer the `docsync` commands anyway. `docsync push`
-shows what happened to each document, including anything it trashed, and
-fast-forwards you over the follow-up commit that a push produces (§7), which
-with plain `git push` means a `git pull` right after. `docsync pull` tells you
-which documents changed and who changed them.
+The `git pull` after the push is there because a push produces one follow-up
+commit at the remote (§7). `docsync push` does the push and that pull in one
+step, and prints what happened to each document.
 
 ---
 
