@@ -18,7 +18,7 @@ Nothing touches a source document until you push.
 | Term           | Meaning                                                                                                                     |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | **Source**     | A document store: `notion` or `gdocs`.                                                                                      |
-| **Source ref** | An address of one object in a source: `notion:<page-id>` or `gdocs:<file-or-folder-id>`.                                    |
+| **Source ref** | An address of one object in a source: `notion:<page-id>` or `gdocs:<file-or-folder-id>`. Canonical forms in §13. |
 | **Root**       | One source ref checked out under one local path. A checkout is a set of roots.                                              |
 | **Manifest**   | A YAML file listing the roots. It _is_ the remote: the repo's git remote URL points at it.                                  |
 | **Helper**     | `git-remote-docsync`, the program git runs on fetch and push. You rarely call it directly.                                  |
@@ -661,5 +661,9 @@ docsync auth    <source>
 docsync --version
 ```
 
-Source refs: `notion:<id>`, `gdocs:<id>`. Notion and Drive URLs are accepted
-everywhere a source ref is, and normalised to a ref.
+Source refs: `notion:<id>`, `gdocs:<id>`. A Notion id is 32 lowercase hex
+characters without dashes; dashed and uppercase forms are accepted on input
+and normalised. A Google id is stored verbatim. Wherever a command takes a
+source ref, it also takes a Notion, Google Docs or Drive URL, `http` or
+`https`, and normalises it. Manifests and ignore lists hold canonical refs
+only, never URLs.

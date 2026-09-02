@@ -90,3 +90,21 @@ Table-driven in `src/source-ref.test.ts`:
 `pnpm check` green, 100% line coverage on the module, and ticket 02's ignore
 matching and the future CLI (ticket 10) can rely on `parseSourceRef` for every
 place the manual says "URLs are accepted everywhere a source ref is".
+
+## Outcome
+
+Landed in `4ddd2d3..668ddfa`. 100% coverage on `src/source-ref.ts`, 363 tests
+overall, no new dependencies.
+
+- Two parsers: `parseSourceRef` for literal refs (manifests, ignore lists) and
+  `parseSourceRefOrUrl` for anything a person types, returning a
+  `SourceRefError` with a specific message. Both validate id shape identically.
+- Decision on the manual's "URLs are accepted everywhere a source ref is":
+  narrowed to command arguments. Manifests and ignore lists hold canonical refs
+  only, since a serialized manifest must not diverge from its in-memory value.
+  Manual §1 and §13 updated.
+- Ticket 02's test fixtures used placeholder ids that no longer parse under
+  strict validation; replaced with real-shaped ids, which also revealed two
+  ignore tests that had been silently exercising the wrong branch.
+- `/<kind>/d/<id>` is accepted for any kind, and the `/u/<n>/` account segment
+  is dropped wherever it appears in the path.
