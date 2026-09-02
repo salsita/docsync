@@ -19,25 +19,33 @@ describe('parseManifest', () => {
   it('parses the manual example', () => {
     const manifest = manifestOf(`version: 1
 roots:
-  - src: notion:2f3a9c
+  - src: notion:2f3a9c4b1e11eebe560242ac120002ab
     path: Product Specs/
-  - src: gdocs:1AbCdE
+  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012
     path: Contracts/
     ignore:
       - "Archive/**"
-      - "gdocs:9XyZ"
-  - src: gdocs:7QrS
+      - "gdocs:9XyZabcdefghijklmnopqrstuvwxyz01"
+  - src: gdocs:7QrSabcdefghijklmnopqrstuvwxyz01
     path: notes/roadmap.md
 `);
     expect(manifest.version).toBe(1);
     expect(manifest.roots).toEqual([
-      { src: { source: 'notion', id: '2f3a9c' }, path: 'Product Specs/', ignore: [] },
       {
-        src: { source: 'gdocs', id: '1AbCdE' },
-        path: 'Contracts/',
-        ignore: ['Archive/**', 'gdocs:9XyZ'],
+        src: { source: 'notion', id: '2f3a9c4b1e11eebe560242ac120002ab' },
+        path: 'Product Specs/',
+        ignore: [],
       },
-      { src: { source: 'gdocs', id: '7QrS' }, path: 'notes/roadmap.md', ignore: [] },
+      {
+        src: { source: 'gdocs', id: '1AbCdEfGhIjKlMnOpQrStUvWxYz-_012' },
+        path: 'Contracts/',
+        ignore: ['Archive/**', 'gdocs:9XyZabcdefghijklmnopqrstuvwxyz01'],
+      },
+      {
+        src: { source: 'gdocs', id: '7QrSabcdefghijklmnopqrstuvwxyz01' },
+        path: 'notes/roadmap.md',
+        ignore: [],
+      },
     ]);
   });
 
@@ -53,7 +61,9 @@ roots:
 
   it('normalises paths to NFC', () => {
     // "Cafe" + combining acute (NFD) comes back precomposed.
-    const manifest = manifestOf('version: 1\nroots:\n  - src: notion:a\n    path: Cafe\u0301/\n');
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Cafe\u0301/\n',
+    );
     expect(manifest.roots[0]?.path).toBe('Caf\u00e9/');
   });
 
@@ -71,7 +81,12 @@ roots:
     ['an unknown top-level key', 'version: 1\nroots: []\nextra: 1\n', 'unknown key "extra"', 3],
     ['a root that is not a mapping', 'version: 1\nroots:\n  - hello\n', 'must be a mapping', 3],
     ['a root without src', 'version: 1\nroots:\n  - path: Specs/\n', 'root is missing "src"', 3],
-    ['a root without path', 'version: 1\nroots:\n  - src: notion:a\n', 'root is missing "path"', 3],
+    [
+      'a root without path',
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n',
+      'root is missing "path"',
+      3,
+    ],
     [
       'a src that is not a source ref',
       'version: 1\nroots:\n  - src: notion\n    path: Specs/\n',
@@ -86,25 +101,25 @@ roots:
     ],
     [
       'a non-string path',
-      'version: 1\nroots:\n  - src: notion:a\n    path: 12\n',
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: 12\n',
       '"path" must be a string',
       4,
     ],
     [
       'an unknown root key',
-      'version: 1\nroots:\n  - src: notion:a\n    path: Specs/\n    depth: 2\n',
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    depth: 2\n',
       'unknown key "depth"',
       5,
     ],
     [
       'an ignore that is not a list',
-      'version: 1\nroots:\n  - src: notion:a\n    path: Specs/\n    ignore: "Archive/**"\n',
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    ignore: "Archive/**"\n',
       '"ignore" must be a list of strings',
       5,
     ],
     [
       'an ignore entry that is not a string',
-      'version: 1\nroots:\n  - src: notion:a\n    path: Specs/\n    ignore:\n      - 12\n',
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    ignore:\n      - 12\n',
       '"ignore" must be a list of strings',
       6,
     ],
@@ -123,7 +138,7 @@ roots:
     const errors = errorsOf(`version: 3
 roots:
   - path: Specs/
-  - src: notion:b
+  - src: notion:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 `);
     expect(errors.map((error) => error.line)).toEqual([1, 3, 4]);
   });

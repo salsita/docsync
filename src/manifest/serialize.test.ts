@@ -7,13 +7,13 @@ const WITH_COMMENTS = `# The roots this checkout tracks.
 version: 1
 roots:
   # The product spec tree.
-  - src: notion:2f3a9c
+  - src: notion:2f3a9c4b1e11eebe560242ac120002ab
     path: Product Specs/
-  - src: gdocs:1AbCdE
+  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012
     path: Contracts/
     ignore:
       - "Archive/**" # superseded
-      - gdocs:9XyZ
+      - gdocs:9XyZabcdefghijklmnopqrstuvwxyz01
 `;
 
 function parsed(text: string): Manifest {
@@ -32,20 +32,24 @@ describe('serializeManifest', () => {
       version: 1,
       roots: [
         {
-          src: { source: 'gdocs', id: '1AbCdE' },
+          src: { source: 'gdocs', id: '1AbCdEfGhIjKlMnOpQrStUvWxYz-_012' },
           path: 'Contracts/',
           ignore: ['Archive/**'],
         },
-        { src: { source: 'notion', id: '2f3a9c' }, path: 'Product Specs/', ignore: [] },
+        {
+          src: { source: 'notion', id: '2f3a9c4b1e11eebe560242ac120002ab' },
+          path: 'Product Specs/',
+          ignore: [],
+        },
       ],
     };
     expect(serializeManifest(manifest)).toBe(`version: 1
 roots:
-  - src: gdocs:1AbCdE
+  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012
     path: Contracts/
     ignore:
       - Archive/**
-  - src: notion:2f3a9c
+  - src: notion:2f3a9c4b1e11eebe560242ac120002ab
     path: Product Specs/
 `);
   });
@@ -61,7 +65,7 @@ roots:
 version: 1
 roots:
   # The product spec tree.
-  - src: notion:2f3a9c
+  - src: notion:2f3a9c4b1e11eebe560242ac120002ab
     path: Product Specs/
 `);
   });
@@ -69,11 +73,13 @@ roots:
   it('appends a new root to a commented file', () => {
     const manifest = parsed(WITH_COMMENTS);
     manifest.roots.push({
-      src: { source: 'gdocs', id: '7QrS' },
+      src: { source: 'gdocs', id: '7QrSabcdefghijklmnopqrstuvwxyz01' },
       path: 'notes/roadmap.md',
       ignore: [],
     });
-    expect(serializeManifest(manifest)).toBe(`${WITH_COMMENTS}  - src: gdocs:7QrS
+    expect(
+      serializeManifest(manifest),
+    ).toBe(`${WITH_COMMENTS}  - src: gdocs:7QrSabcdefghijklmnopqrstuvwxyz01
     path: notes/roadmap.md
 `);
   });
@@ -88,9 +94,9 @@ roots:
 version: 1
 roots:
   # The product spec tree.
-  - src: notion:2f3a9c
+  - src: notion:2f3a9c4b1e11eebe560242ac120002ab
     path: Product Specs/
-  - src: gdocs:1AbCdE
+  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012
     path: Legal/Contracts/
     ignore:
       - Archive/**
@@ -100,10 +106,14 @@ roots:
 
   it('replaces a roots value that the user left empty', () => {
     const manifest = parsed('version: 1\nroots:\n');
-    manifest.roots.push({ src: { source: 'notion', id: 'a' }, path: 'Specs/', ignore: [] });
+    manifest.roots.push({
+      src: { source: 'notion', id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+      path: 'Specs/',
+      ignore: [],
+    });
     expect(serializeManifest(manifest)).toBe(`version: 1
 roots:
-  - src: notion:a
+  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     path: Specs/
 `);
   });
