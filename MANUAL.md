@@ -296,12 +296,25 @@ time. Useful before `add`.
 | Notion page, no children                  | `<title>.md`                                                       |
 | Notion page with child pages              | `<title>.md` **and** `<title>/` beside it, containing the children |
 
-Filenames are derived from titles: the title as-is, with `/`, `\`, `:`, `*`,
-`?`, `"`, `<`, `>`, `|` and control characters replaced by `-`, trailing dots
-and spaces trimmed, and Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`,
-`COM1`–`COM9`, `LPT1`–`LPT9`) suffixed with `-`. Collisions within one directory
-get a numeric suffix (`Notes.md`, `Notes (2).md`), stable across fetches
-because the mapping is by id.
+Filenames are derived from titles:
+
+1. The title, normalised to NFC and trimmed.
+2. `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|` and control characters
+   (U+0000–U+001F, U+007F) replaced by `-`.
+3. Leading dots removed, so nothing turns into a hidden file; trailing dots and
+   spaces trimmed.
+4. A Windows reserved name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`,
+   `LPT1`–`LPT9`) suffixed with `-`. The check is on the part before the first
+   dot, because `CON.md` is as unusable on Windows as `CON` is.
+5. An empty result becomes `untitled`.
+6. The name truncated on a character boundary so that it is at most 200 bytes
+   of UTF-8, extension included.
+
+Collisions within one directory get a numeric suffix before the extension
+(`Notes.md`, `Notes (2).md`), and the comparison is case-insensitive. The
+suffixes are stable across fetches because the mapping is by id: a document
+keeps the name it had for as long as its title still derives to it, so
+`Notes (2).md` stays put even after `Notes.md` is gone.
 
 ### Identity
 
@@ -350,20 +363,30 @@ below.
 | to-do                                                                                                    | `- [ ] item` / `- [x] item`                                                                                            |
 | quote                                                                                                    | `> text`                                                                                                               |
 | callout                                                                                                  | `> [!CALLOUT] 💡` on the first line, body quoted below                                                                 |
-| toggle                                                                                                   | `<details><summary>title</summary>` … `</details>`                                                                     |
-| code                                                                                                     | fenced block with the language                                                                                         |
+| toggle | `<details><summary>title</summary>` … `</details>` |
+| toggle heading | the same, with the heading inside the summary: `<summary>## Title</summary>` |
+| code | fenced block with the language. Notion's `plain text` is a fence with no language. |
 | divider                                                                                                  | `---`                                                                                                                  |
 | table                                                                                                    | GFM table. Cells hold inline formatting only.                                                                          |
 | equation                                                                                                 | `$$ … $$` block; `$ … $` inline                                                                                        |
 | image, file, PDF, video with an **external** URL                                                         | `![caption](url)` or `[name](url)`                                                                                     |
 | image, file, PDF hosted by Notion                                                                        | downloaded next to the page into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
 | child page                                                                                               | its own file, not in the body                                                                                          |
-| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://notion.so/<id>)`. Both convert back to a mention on push. |
+| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://www.notion.so/<id>)`. Both convert back to a mention on push. |
+| user mention | `[@Name](notion://user/<id>)` |
+| date mention | `[2026-09-02](notion://date/2026-09-02)`; ranges and times appended to the path |
+| other mentions | `[text](url)` |
 | bookmark, embed, synced block, database, columns, table of contents, breadcrumb, button, everything else | placeholder                                                                                                            |
 
 Inline: bold, italic, strikethrough, code, links as in GFM. Underline is
 `<u>…</u>`. Text and background colours are `<span data-color="red">…</span>`.
-These are preserved so that a round trip does not strip them.
+These are preserved so that a round trip does not strip them.A line break
+inside one block is two trailing spaces and a newline.
+
+**Block attributes.** What Notion stores on a block that GFM cannot express
+goes in an HTML comment at the end of the block's first line, only when it is
+not the default: `Final paragraph. <!-- docsync: color=green -->`. Used for
+block colour, callout icon and colour, and table header flags.
 
 #### Google Docs elements
 
