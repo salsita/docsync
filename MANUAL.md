@@ -384,9 +384,24 @@ These are preserved so that a round trip does not strip them. A line break
 inside one block is two trailing spaces and a newline.
 
 **Block attributes.** What Notion stores on a block that GFM cannot express
-goes in an HTML comment at the end of the block's first line, only when it is
-not the default: `Final paragraph. <!-- docsync: color=green -->`. Used for
-block colour, callout icon and colour, and table header flags.
+goes in an HTML comment on its own line directly above the block, only when
+the value is not the default. Two attributes exist: block colour on any block,
+and header flags on tables, whose Notion default is no header row while GFM
+always renders one.
+
+```markdown
+<!-- docsync: color=green -->
+A paragraph in green.
+
+<!-- docsync: color=gray_bg -->
+> [!CALLOUT] 💡
+> Callout body.
+
+<!-- docsync: header-row=false -->
+| Name | Value |
+|---|---|
+| a | b |
+```
 
 #### Google Docs elements
 

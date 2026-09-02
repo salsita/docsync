@@ -41,17 +41,19 @@ recorded files are committed.
 These are gaps the fixture exposed. They go into the manual's Notion table as
 part of this ticket.
 
-**Block attributes.** Anything Notion stores on a block that GFM cannot
-express, and that must survive a round trip, is an HTML comment at the end
-of the block's first line:
+**Block attributes.** An HTML comment on its own line directly above the
+block, only for non-default values:
 
 ```
-Final paragraph. <!-- docsync: color=green -->
+<!-- docsync: color=green -->
+Final paragraph.
+
+<!-- docsync: header-row=false header-column=true -->
+| a | b |
 ```
 
-Used for: block colour (any block), callout icon and colour, table
-`header-row`/`header-column` flags, column ratios inside placeholders. Only
-non-default values are written, so most blocks carry no comment.
+Exactly two attributes: `color` on any block, and `header-row` /
+`header-column` on tables. Captions ride in alt text; nothing else is kept.
 
 **Toggle heading.** A `<details>` whose summary is the heading:
 
