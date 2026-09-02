@@ -43,7 +43,6 @@ inline HTML node, which passes through verbatim (see \`to-markdown.test.ts\`).
 Both spellings read back as the same text, so push accepts either.
 -->
 
-
 <details>
 <summary>## Toggle heading</summary>
 
@@ -123,6 +122,21 @@ describe('the markdown pipeline', () => {
     expect(stringifyMarkdown(parseMarkdown(messy))).toBe(
       '# Setext\n\n- star bullet\n- another\n\n---\n\n**bold** and *italic*\n',
     );
+  });
+
+  it('turns a line break inside a table cell into a space, since GFM has no other way', () => {
+    const tree = parseMarkdown('| a |\n| - |\n| b |\n');
+    const row = (tree.children[0] as { children: { children: { children: unknown[] }[] }[] })
+      .children[1];
+    const cell = row?.children[0];
+    if (cell)
+      cell.children = [
+        { type: 'text', value: 'one' },
+        { type: 'break' },
+        { type: 'text', value: 'two' },
+      ];
+
+    expect(stringifyMarkdown(tree)).toBe('| a       |\n| ------- |\n| one two |\n');
   });
 
   it('keeps ordered list numbers incrementing', () => {
