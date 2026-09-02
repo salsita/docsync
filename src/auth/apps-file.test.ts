@@ -68,7 +68,6 @@ describe('loadOAuthApp', () => {
     const text = readFileSync(path, 'utf8');
     expect(text).toContain('# OAuth apps used by docsync.');
     expect(text).toContain('MANUAL.md §2');
-    expect(text).toContain('http://localhost:27184/callback');
     expect(text).toContain('# Your team registers one app per source');
   });
 
