@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { NotionBlock, RawObject } from './api.js';
+import type { NotionApi, NotionBlock, RawObject } from './api.js';
 
 const HERE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 
@@ -57,4 +57,28 @@ export function fixtureTitle(id: string): string {
     }
   }
   return '';
+}
+
+/**
+ * A `NotionApi` backed by the recorded files, for `walk.ts` and `index.ts`.
+ * Every id it is asked about must have been recorded, which is the point: a
+ * test that walks off the fixture tree fails loudly instead of hitting Notion.
+ */
+export function fixtureApi(): NotionApi {
+  const users = fixtureUsers();
+  return {
+    async page(id) {
+      return fixturePage(bare(id));
+    },
+    async blockTree(id) {
+      return fixtureBlocks(bare(id));
+    },
+    async user(id) {
+      return id === undefined ? undefined : users[id];
+    },
+  };
+}
+
+function bare(id: string): string {
+  return id.replaceAll('-', '').toLowerCase();
 }
