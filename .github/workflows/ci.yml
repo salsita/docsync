@@ -33,14 +33,16 @@ jobs:
       - run: pnpm build
 
       # Earliest possible check that both shims are installed and runnable,
-      # including the Windows shim for the git remote helper.
+      # including the Windows shim for the git remote helper. npm is used for
+      # the global install because pnpm 11 removed global linking and its
+      # global bin directory is not on PATH on the runners.
       - name: Smoke test the installed executables
         shell: bash
         run: |
           set -euo pipefail
-          pnpm add --global "$PWD"
           expected=$(node -p "require('./package.json').version")
-          cd "$RUNNER_TEMP"
+          npm install -g .
+          cd "$(mktemp -d)"
           for cmd in docsync git-remote-docsync; do
             actual=$("$cmd" --version)
             if [ "$actual" != "$expected" ]; then
