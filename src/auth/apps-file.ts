@@ -101,7 +101,16 @@ function entryOf(text: string, source: Source, path: string): OAuthApp | undefin
  * Fails with `AppsFileIncompleteError` if the entry is still blank afterwards,
  * rather than starting a browser flow that can only end in an error page.
  */
-export async function loadOAuthApp(source: Source, deps: AuthDeps = {}): Promise<OAuthApp> {
+export async function loadOAuthApp(
+  source: Source,
+  deps: AuthDeps = {},
+  /**
+   * Whether it is this command's business to ask. `docsync auth` says yes; a
+   * `CredentialProvider` renewing a token in the middle of `docsync pull` says
+   * no, because opening `vi` under a progress bar is not a thing to do.
+   */
+  prompt = true,
+): Promise<OAuthApp> {
   const path = appsFilePath(deps.home);
   const runEditor = deps.runEditor ?? defaultRunEditor;
 
@@ -115,6 +124,7 @@ export async function loadOAuthApp(source: Source, deps: AuthDeps = {}): Promise
 
   const first = entryOf(await readFile(path, 'utf8'), source, path);
   if (first) return first;
+  if (!prompt) throw new AppsFileIncompleteError(source, path);
 
   runEditor(path);
 

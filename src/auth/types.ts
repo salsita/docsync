@@ -33,6 +33,17 @@ export interface CredentialStore {
   delete(source: Source): Promise<boolean>;
 }
 
+/**
+ * The one interface the source adapters see. `accessToken` hands back a token
+ * that is good right now — renewing it first if it is about to expire — and
+ * `identity` says who it belongs to. Both fail with `NotSignedInError`, whose
+ * message is the command to run, when there is nothing stored.
+ */
+export interface CredentialProvider {
+  accessToken(source: Source): Promise<string>;
+  identity(source: Source): Promise<Identity>;
+}
+
 /** One OAuth app as the user pasted it into `~/.docsync/oauth-apps.yaml`. */
 export interface OAuthApp {
   clientId: string;

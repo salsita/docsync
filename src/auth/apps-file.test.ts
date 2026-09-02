@@ -190,3 +190,14 @@ describe('defaultRunEditor', () => {
     );
   });
 });
+
+describe('loadOAuthApp without a prompt', () => {
+  it('fails instead of opening an editor', async () => {
+    const runEditor = vi.fn();
+
+    await expect(loadOAuthApp('notion', { home, runEditor }, false)).rejects.toThrow(
+      AppsFileIncompleteError,
+    );
+    expect(runEditor).not.toHaveBeenCalled();
+  });
+});
