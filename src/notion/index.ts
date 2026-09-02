@@ -139,6 +139,12 @@ async function editorOf(page: WalkedPage, api: NotionApi): Promise<Editor | unde
 
 export type { NotionApi, NotionBlock } from './api.js';
 export { createNotionApi, createNotionClient, NOTION_VERSION } from './api.js';
+export type { BlockInput, FromMarkdownOptions, RichTextInput } from './from-markdown.js';
+export { markdownToBlocks, mdastToBlocks, PushError } from './from-markdown.js';
+export type { ChangeKind, FileChange, PushedDocument, PushReport } from './push.js';
+export { pushRoot } from './push.js';
 export { blocksToMarkdown, blocksToMdast } from './to-markdown.js';
 export type { SkippedObject, WalkedPage } from './walk.js';
 export { walkRoot } from './walk.js';
+export type { NotionWriter } from './write.js';
+export { createNotionWriter } from './write.js';

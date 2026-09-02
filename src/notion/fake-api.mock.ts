@@ -99,7 +99,13 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
       calls.push(`page:${id}`);
       const page = pages.get(id);
       if (!page) throw new Error(`no page ${id}`);
-      return { object: 'page', id, properties: { title: { type: 'title', title: [] } } };
+      return {
+        object: 'page',
+        id,
+        properties: {
+          title: { type: 'title', title: [{ plain_text: page.title }] },
+        },
+      };
     },
 
     async blockTree(id) {
