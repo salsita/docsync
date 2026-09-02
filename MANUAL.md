@@ -47,11 +47,11 @@ The ai-starter setup installs docsync for you.
 
 Both sources use OAuth. docsync never asks you to paste a token.
 
-| Source | How you sign in | Where the credential comes from |
-|---|---|---|
-| Google | `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents,openid` | Application Default Credentials, written by the Google Cloud CLI and read by every Google SDK. If you have gcloud, you have nothing else to set up. |
-| Google, without gcloud | `docsync auth google` | A loopback OAuth flow with a Salsita-registered client id. Token stored in the OS keychain. |
-| Notion | `docsync auth notion` | A loopback OAuth flow against a Salsita-registered public integration. You pick the pages to grant in Notion's own dialog. Token stored in the OS keychain. |
+| Source                 | How you sign in                                                                                                                         | Where the credential comes from                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google                 | `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents,openid` | Application Default Credentials, written by the Google Cloud CLI and read by every Google SDK. If you have gcloud, you have nothing else to set up.         |
+| Google, without gcloud | `docsync auth google`                                                                                                                   | A loopback OAuth flow with a Salsita-registered client id. Token stored in the OS keychain.                                                                 |
+| Notion                 | `docsync auth notion`                                                                                                                   | A loopback OAuth flow against a Salsita-registered public integration. You pick the pages to grant in Notion's own dialog. Token stored in the OS keychain. |
 
 `docsync auth <source>` also verifies an existing credential and prints who you
 are signed in as. `docsync auth <source> --logout` removes it.
@@ -311,7 +311,7 @@ below.
 | image, file, PDF, video with an **external** URL                                                         | `![caption](url)` or `[name](url)`                                                                                     |
 | image, file, PDF hosted by Notion                                                                        | downloaded next to the page into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
 | child page                                                                                               | its own file, not in the body                                                                                          |
-| link to page, page mention                                                                               | `[title](relative/path.md)` if the target is in the checkout, otherwise a placeholder                                  |
+| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://notion.so/<id>)`. Both convert back to a mention on push. |
 | bookmark, embed, synced block, database, columns, table of contents, breadcrumb, button, everything else | placeholder                                                                                                            |
 
 Inline: bold, italic, strikethrough, code, links as in GFM. Underline is
@@ -374,8 +374,10 @@ Git sends the commits between `origin/main` and your branch. The helper:
 
 1. Rejects the push if `origin/main` is not an ancestor of what you push. This
    is git's normal non-fast-forward rule. Fetch, merge or rebase, push again.
-2. Refuses paths that are not under any root in the manifest, and refuses
-   changes to `.docsync/index.yaml`.
+2. Reads the manifest. Added or modified files under no root are refused.
+   Deleted files under no root are ignored: that is what `docsync remove`
+   produces, and it means unsubscribe, not trash. Changes to
+   `.docsync/index.yaml` are refused.
 3. Refuses changes to read-only exports (Sheets, Slides, Drawings).
 4. Diffs the tree per root and applies:
    - **modified** → update the document (see Write-back below)
@@ -384,13 +386,20 @@ Git sends the commits between `origin/main` and your branch. The helper:
      permanent. Printed prominently.
    - **renamed** → same document (by id), possibly a title change and, for
      Drive, a move between folders
-   - **manifest root removed** in the same push → deletions under it are
-     unsubscribes, nothing is trashed
 5. **Post-push fetch.** Re-reads every document it touched. If the canonical
    form differs from what was pushed (new ids, source-side normalization), it
    writes one more commit on top of `origin/main`. Your branch is then one
    fast-forward behind. `docsync push` fast-forwards for you when the working
    tree is clean; after plain `git push`, run `git pull`.
+
+### Force push
+
+`git push --force` is supported and means "my tree wins". The helper fetches
+the current source state, computes the diff from that to your tree, and applies
+it. Edits made at the source since your last fetch are overwritten, but
+nothing else is affected: it is the same operation as a normal push after a
+merge with the `ours` strategy. It does not do anything more destructive than a
+normal push.
 
 ### Write-back
 
@@ -444,12 +453,12 @@ There is no flag to confirm deletions. The review before you push is the gate.
 
 The remote URL is `docsync::<manifest>`, where `<manifest>` is one of:
 
-| Form                                          | Meaning                                                                              |
+| `<manifest>` | Meaning |
 | --------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `docsync::.docsync.yaml`                      | Relative to the repo's working tree. The default from `init`.                        |
-| `docsync::/abs/path/manifest.yaml`            | Any file. Use this to share a manifest, for example one committed to ai-starter.     |
-| `docsync::../ai-starter/checkouts/sales.yaml` | Relative paths always resolve against the working tree, never the shell's directory. |
-| `docsync::gdocs:<id>`, `docsync::notion:<id>` | **later**: the manifest is itself a document at the source.                          |
+| `.docsync.yaml`                      | Relative to the repo's working tree. The default from `init`.                        |
+| `/abs/path/manifest.yaml`            | Any file. Use this to share a manifest, for example one committed to ai-starter.     |
+| `../ai-starter/checkouts/sales.yaml` | Relative paths always resolve against the working tree, never the shell's directory. |
+| `gdocs:<id>`, `notion:<id>` | **later**: the manifest is itself a document at the source.                          |
 
 `git clone docsync::/abs/path/manifest.yaml my-docs` is a normal clone. The
 helper writes the skill file during it.
@@ -485,9 +494,13 @@ your edits will be overwritten.
 
 1. `docsync pull` so the agent starts from the current source state.
 2. The agent edits files on a branch and commits.
-3. You review with `git diff main..agent/foo`, or as a pull request if the
-   checkout is mirrored to a git host.
+3. You review with `git diff main..agent/foo`.
 4. Merge, `docsync push`.
+
+The checkout is an ordinary git repo, so it can have a second remote. Add one
+pointing at GitHub, push the agent's branch there, and review it as a pull
+request. Then merge locally and `docsync push` `main`. Only the docsync remote
+talks to the sources; the GitHub remote is just a mirror for review.
 
 Give the agent the repo, not the credentials. It never needs to call a source
 API, and `git push` is the only side-effecting step.
