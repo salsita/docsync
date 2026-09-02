@@ -35,6 +35,7 @@ recorded files are committed.
 | Change detection | `last_edited_time` of each page, compared with the index (ticket 09) | Editing a child page does not touch the parent's time, which is what we want. |
 | Language-less code | Notion stores `plain text`; Markdown fence with no language ↔ `plain text` | Canonical both ways. The MCP connector defaulted to `javascript`; the REST API does not. |
 | Headings 4–6 | Never produced. `####` in a pushed file is a push error (ticket 06). | Notion has three levels. |
+| Markdown representation | mdast via `remark-parse`, `remark-gfm`, `remark-math`, `remark-frontmatter`, output with `remark-stringify` under one fixed options object exported from `src/markdown.ts` | Both directions share the AST: blocks → mdast → text here, text → mdast → blocks in ticket 06. Canonical form is then whatever the single stringifier configuration emits, and the round-trip test is a real test rather than string juggling. All pure JS. |
 
 ## Dialect additions
 
