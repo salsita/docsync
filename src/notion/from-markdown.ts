@@ -640,7 +640,6 @@ const USER_URL = /^notion:\/\/user\/(.+)$/;
 const DATE_URL = /^notion:\/\/date\/(.+)$/;
 const PAGE_URL = /^https:\/\/(?:www\.notion\.so|app\.notion\.com)\/(?:.*-)?([0-9a-f-]{32,36})$/i;
 
-/** The mention a link URL stands for, if it stands for one (MANUAL §6). */
 /** The visible text of a link, which is the label Notion shows for a mention. */
 function label(nodes: readonly PhrasingContent[]): string {
   return nodes
@@ -654,6 +653,7 @@ function label(nodes: readonly PhrasingContent[]): string {
     .join('');
 }
 
+/** The mention a link URL stands for, if it stands for one (MANUAL §6). */
 function mention(
   url: string,
   options: FromMarkdownOptions,

@@ -7,9 +7,10 @@
  * two thousand characters per rich-text run, a hundred runs per block. Above
  * this module nobody has to know any of that.
  *
- * Write-back is a full replace in phase 1: every block except a child page is
- * deleted and the body regenerated. Deleting a block archives it, which is why
- * child pages — documents of their own — are the one thing left standing.
+ * Write-back is a full replace in phase 1: every block except a child page or
+ * a child database is deleted and the body regenerated. Deleting a block
+ * archives it, which is why those two — documents of their own — are the only
+ * things left standing.
  */
 import type { NotionApi, RawObject } from './api.js';
 import type { BlockInput } from './from-markdown.js';
@@ -80,8 +81,9 @@ export function createNotionWriter(api: NotionApi): NotionWriter {
     async replaceBody(pageId, blocks) {
       for (const block of await api.children(pageId)) {
         // Deleting a `child_page` block archives the page it stands for, and a
-        // child page is a document of its own (MANUAL §6).
-        if (block.type === 'child_page') continue;
+        // child page is a document of its own; a `child_database` is the same
+        // for a database, which the dialect never carries (MANUAL §6, §7).
+        if (block.type === 'child_page' || block.type === 'child_database') continue;
         await api.deleteBlock(block.id);
       }
       await appendAll(pageId, blocks);

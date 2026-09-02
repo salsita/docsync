@@ -368,14 +368,14 @@ below.
 | numbered list                                                                                            | `1. item`                                                                                                              |
 | to-do                                                                                                    | `- [ ] item` / `- [x] item`                                                                                            |
 | quote                                                                                                    | `> text`                                                                                                               |
-| callout | `> [!CALLOUT] 💡` on the first line, body quoted below. Push also accepts the escaped spelling `> \[!CALLOUT]` that some editors produce. |
+| callout | `> [!CALLOUT] 💡` on the first line, body quoted below. Push also accepts the escaped spelling `> \[!CALLOUT]` that some editors produce. The marker line works with or without the two trailing spaces. |
 | toggle | `<details><summary>title</summary>`, a blank line, the children, a blank line, `</details>`. The blank line before the closing tag is required. |
 | toggle heading | the same, with the heading inside the summary: `<summary>## Title</summary>` |
 | code | fenced block with the language. Notion's `plain text` is a fence with no language. |
 | divider                                                                                                  | `---`                                                                                                                  |
 | table                                                                                                    | GFM table. Cells hold inline formatting only.                                                                          |
 | equation                                                                                                 | `$$ … $$` block; `$ … $` inline                                                                                        |
-| image, file, PDF, video with an **external** URL | `![caption](url)` for images, `[name](url)` for the rest. On push a bare link block becomes a `file` block. |
+| image, file, PDF, video with an **external** URL | `![caption](url)` for images, `[name](url)` for the rest. On push a bare link block becomes a `file` block. A PDF or video block therefore comes back as a `file` block after a push and fetch. |
 | image, file, PDF hosted by Notion                                                                        | downloaded next to the page into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
 | child page                                                                                               | its own file, not in the body                                                                                          |
 | link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://www.notion.so/<id>)`, with `Untitled` when the page is not accessible. Both convert back to a mention on push. |
@@ -449,6 +449,8 @@ Anything the dialect cannot represent becomes:
 Placeholders round-trip. Moving or deleting one moves or deletes the block.
 Editing inside one is not possible.
 
+An empty paragraph has no Markdown form, so a push removes it.
+
 ---
 
 ## 7. Fetch and push semantics
@@ -503,11 +505,13 @@ merge, push.
 
 The first version replaces the document body.
 
-- **Notion:** every block except child pages is deleted and the body is
-  regenerated. Block-level comments, per-block history, and any block the API
-  cannot create (link previews, synced-block references) are lost on the
-  edited page. Page-level comments, properties, sharing, child pages and the
-  page id survive.
+- **Notion:** every block except child pages and child databases is deleted
+  and the body is regenerated. Block-level comments, per-block history, and
+  any block the API cannot create (link previews, synced-block references) are
+  lost on the edited page. A block with more than a hundred rich-text runs
+  keeps its text but loses the formatting past the ninety-ninth run. Page-level
+  comments, properties, sharing, child pages, child databases and the page id
+  survive.
 - **Google Docs:** the body text is replaced. Text colour, highlight, fonts,
   sizes and alignment **inside the body are lost on every push**, because the
   dialect cannot carry them. Document-level defaults, named styles, sharing,

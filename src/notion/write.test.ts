@@ -36,17 +36,22 @@ function nest(depth: number): BlockInput {
 }
 
 describe('replaceBody', () => {
-  it('deletes every block but a child page, then appends', async () => {
+  it('deletes every block but a child page or database, then appends', async () => {
     const fake = api([
       stored('b1', 'paragraph'),
       stored('b2', 'child_page'),
       stored('b3', 'divider'),
+      stored('b4', 'child_database'),
     ]);
 
     await createNotionWriter(fake).replaceBody('p', paragraphs(1));
 
     expect(fake.calls).toEqual(['children:p', 'delete:b1', 'delete:b3', 'append:p:1']);
-    expect(fake.bodyOf('p').map((block) => block.type)).toEqual(['child_page', 'paragraph']);
+    expect(fake.bodyOf('p').map((block) => block.type)).toEqual([
+      'child_page',
+      'child_database',
+      'paragraph',
+    ]);
   });
 
   it('appends in chunks of a hundred', async () => {

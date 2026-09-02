@@ -67,3 +67,44 @@ placeholder blocks that are dropped.
 `pnpm check` green, the round-trip test passes for every fixture page, and
 the manual test shows create, update, rename and archive behaving as the
 manual says.
+
+## Outcome
+
+Landed 2026-09-02. Six agent commits plus the landing commit.
+
+- **Modules as planned:** `from-markdown.ts` (`markdownToBlocks`,
+  `mdastToBlocks`, `inline`, `resolvePath`, `PushError`), `write.ts`
+  (`createNotionWriter` with `replaceBody`, `createPage`, `renamePage`,
+  `archivePage`), `push.ts` (`pushRoot(root, changes, provider, index, {api})`
+  → `PushReport`; `FileChange {kind, path, previousPath?, text?}`), `api.ts`
+  gained `children`, `deleteBlock`, `append`, `createPage`, `updatePage`.
+  `fake-api.mock.ts` is an in-memory Notion for the write and push tests.
+- **Round trip** passes for all nine fixture pages: Markdown after a push
+  equals the Markdown of the pruned fixture, that Markdown is a fixed point,
+  and the parsed blocks equal the fixture blocks modulo ids, timestamps,
+  Notion-computed fields, `pdf`/`video` compared as `file`, blocks not
+  recreated (child pages, child databases, placeholders) and empty paragraphs.
+- **Deviation from the ticket:** `replaceBody` keeps `child_database` blocks
+  as well as `child_page`. Deleting one would archive a database, which the
+  dialect never carries and which `walk.ts` deliberately skips. Manual §7
+  updated at landing.
+- **Rule for link paragraphs:** a paragraph whose only child is a link with an
+  absolute URL that is not a mention becomes a `file` block; a lone image
+  becomes an `image` block with the alt text as caption. Relative `.md` links
+  to pages in the checkout become page mentions, to pages outside it stay
+  links.
+- **Limits:** runs over 2000 characters are split; past 100 runs the tail is
+  flattened into one plain run (and capped at 2000 characters, so a block
+  with more than 100 runs *and* a huge tail loses text; nobody writes that).
+- **Manual test** (`scripts/notion-write-smoke.ts`) ran twice against the
+  real API under `Docsync test`: create with 30 blocks, read back
+  byte-identical, replace, rename, archive. Both test pages are archived in
+  the parent's trash. The fixture tree was never written to. Four blocks of
+  the Blocks page were dropped as expected: table of contents, columns,
+  synced block, and the `Nested` child page (which is its own file).
+- **Manual changes at landing:** §6 callout marker accepted without the two
+  trailing spaces; §6 PDF and video come back as `file`; §6 empty paragraphs
+  are removed by a push; §7 child databases survive and the 100-run limit.
+- **Not done:** the Blocks page's code block is still `javascript` in the
+  fixture; switching it to Plain Text and re-recording stays with the owner
+  (the plain-text rule is unit-tested both ways).
