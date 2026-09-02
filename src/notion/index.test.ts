@@ -180,12 +180,3 @@ describe('notionApi', () => {
     expect(typeof api.blockTree).toBe('function');
   });
 });
-
-describe('the 05 + 06 round trip', () => {
-  // Enabled by ticket 06, which turns Markdown back into blocks: every fixture
-  // page, converted to Markdown here and back there, must be the block tree
-  // Notion holds — modulo the placeholders, which are ids, not content.
-  it.skip('converts every fixture page back to the blocks it came from', () => {
-    expect.fail('ticket 06 enables this');
-  });
-});
