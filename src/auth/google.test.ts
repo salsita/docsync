@@ -6,6 +6,7 @@ import {
   GOOGLE_SCOPES,
   googleAuthorizationUrl,
   googleConfiguration,
+  reason,
   refreshGoogleToken,
 } from './google.js';
 import { closeAll, type GoogleMockOptions, idToken, mockGoogle } from './oauth-servers.mock.js';
@@ -287,5 +288,17 @@ describe('googleConfiguration', () => {
     await googleConfiguration(APP, { googleIssuer: issuer, fetch: counting });
 
     expect(calls).toBe(1);
+  });
+});
+
+describe('reason', () => {
+  it('walks the cause chain so the specific complaint is visible', () => {
+    const inner = Object.assign(new Error('"response" body "id_token" property must be a string'), {
+      code: 'OAUTH_INVALID_RESPONSE',
+    });
+    const outer = new Error('invalid response encountered', { cause: inner });
+    expect(reason(outer)).toBe(
+      'invalid response encountered: "response" body "id_token" property must be a string [OAUTH_INVALID_RESPONSE]',
+    );
   });
 });

@@ -160,9 +160,18 @@ export async function refreshGoogleToken(
 }
 
 /** A message for the user that never repeats a secret back at them. */
-function reason(cause: unknown): string {
+export function reason(cause: unknown): string {
   if (cause instanceof client.ResponseBodyError) {
     return `${cause.error}${cause.error_description ? ` (${cause.error_description})` : ''}.`;
   }
-  return cause instanceof Error ? cause.message : String(cause);
+  // openid-client wraps the specific oauth4webapi complaint one level down, so
+  // walk the chain: "invalid response encountered" alone helps nobody.
+  const parts: string[] = [];
+  let current: unknown = cause;
+  while (current instanceof Error && parts.length < 4) {
+    const code = 'code' in current && typeof current.code === 'string' ? ` [${current.code}]` : '';
+    parts.push(`${current.message}${code}`);
+    current = current.cause;
+  }
+  return parts.length > 0 ? parts.join(': ') : String(cause);
 }
