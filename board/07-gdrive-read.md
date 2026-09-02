@@ -29,6 +29,25 @@ edit after recording.
 folder, the Docs API document JSON per Doc, the small binaries, and the Sheet
 export. Committed; re-run only deliberately.
 
+## Why not Drive's own Markdown export and import
+
+Tested on 2026-09-02 against the Elements fixture: `files.export` as
+`text/markdown`, import the result as a new Doc, export again.
+
+- Nested lists come out wrapped in `>` blockquote markers and lose their
+  nesting on the second trip.
+- A `|` inside a table cell is not escaped; the round trip **drops a cell**.
+- Consecutive paragraphs are joined into one paragraph with hard breaks.
+- Headings gain `**` markers, Heading 6 gained `***` on the round trip.
+- Underline, code font, page breaks, alignment and Title/Subtitle styles
+  are gone, with nothing to carry them.
+- The first round trip is not identical; it converges on the second, after
+  losing data.
+
+It is a convenience export, not a document model. The Docs API is the only
+path that is lossless for what the dialect carries and that can be made
+canonical. Phase 3 needs the Docs API anyway.
+
 ## Decisions
 
 | Concern | Choice | Why |
