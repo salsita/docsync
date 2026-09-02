@@ -45,7 +45,9 @@ reviewer and dispatcher. An implementation agent (Opus) does the coding.
   `main` after a reviewed ticket lands, and pushes ticket or manual
   refinements when the owner approves them.
 - **TDD.** Tests are written before the code they test, in every ticket.
-- **The manual is the spec.** If implementing a ticket shows the manual is
-  wrong or silent, the manual changes in the same landing, and the Outcome
-  section says so.
+- **The manual is the spec, and only Claude edits it.** If implementing a
+  ticket shows the manual is wrong or silent, the agent reports the needed
+  change in its result; Claude applies it in the landing and the Outcome
+  section says so. Two parties editing one file in a shared tree is how edits
+  get swept into the wrong commit.
 - **Commit messages** end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.

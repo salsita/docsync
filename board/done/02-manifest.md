@@ -137,3 +137,28 @@ Table-driven, one `describe` per function. At minimum:
 `pnpm check` is green with this module at 100% line coverage, and the manual's
 §4, §5 alias table and §6 filename rules match what the tests assert. Update
 the manual's alias table to the rule above as part of this ticket.
+
+## Outcome
+
+Landed in `3b46375..351f711`. 160 tests, 100% line coverage on
+`src/manifest/`, `yaml@2.9.0` and `ignore@7.0.8` added, no build scripts.
+
+- Overlap is strict containment: `specs/auth.md` with `specs/auth/` is legal,
+  anything strictly inside `specs/auth/` overlaps the file root.
+- File roots must carry an extension; segments starting with a dot are
+  rejected outright.
+- `isIgnored` takes the ancestor chain as a fourth argument so a ref entry can
+  ignore a subtree.
+- `resolveAlias` takes an optional `ext` so Drive binaries resolve to their own
+  extension.
+- Reserved-name check is on the part before the first dot, so `CON.md` is
+  handled. Manual §6 updated.
+- gitignore negation cannot re-include under an excluded directory; manual §4
+  documents the workaround.
+- `Manifest` carries the parsed YAML document so `serializeManifest` preserves
+  comments and quoting on unchanged roots.
+- Process: the agent's manual edits were swept into the reviewer's commits
+  because both edited `MANUAL.md` during the run. Rule added to the board
+  README: agents do not edit the manual, they report needed changes.
+- Follow-up, not blocking: `isIgnored` rebuilds the matcher on every call;
+  precompute per root when ticket 05 walks large trees.
