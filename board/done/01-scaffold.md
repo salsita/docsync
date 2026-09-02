@@ -128,3 +128,20 @@ helper exists at all. Whether git itself can invoke it is ticket 12.
 - License: MIT unless you say otherwise.
 - Repo settings on GitHub (branch protection, required CI) are outside this
   ticket; do them when CI exists.
+
+## Outcome
+
+Landed in `dd77ad2..3c24304`, CI green on all six jobs.
+
+- Versions: pnpm 11.25.0, TypeScript 7.0.2, vitest 4.1.11, biome 2.5.11.
+  `minimumReleaseAge` refused nothing; `allowBuilds` stayed empty.
+- `pnpm link --global` no longer exists in pnpm 11, and pnpm's global bin dir
+  is not on PATH on CI runners. The smoke step uses `npm install -g .`
+  instead, which is also how the manual tells users to install.
+- `build` runs `tsc` with a build config that excludes tests, then sets the
+  executable bit on the bins, which `tsc` does not emit.
+- `.gitattributes` forces LF: the first Windows CI run checked out CRLF and
+  biome rejected it.
+- biome 2.5 config syntax differs from the ticket's assumptions (`preset`
+  instead of `rules.recommended`).
+- Review fix: the remote helper's comment pointed at ticket 12 instead of 09.
