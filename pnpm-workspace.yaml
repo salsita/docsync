@@ -1,0 +1,8 @@
+# supply chain hardening — https://pnpm.io/supply-chain-security
+minimumReleaseAge: 1440
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+# grandfather deps older than 30d — initial-adoption retrofit, revisit per package over time
+trustPolicyIgnoreAfter: 43200
+strictDepBuilds: true
+allowBuilds:
