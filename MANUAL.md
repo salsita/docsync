@@ -15,14 +15,14 @@ Nothing touches a source document until you push.
 
 ## 1. Concepts
 
-| Term | Meaning |
-|---|---|
-| **Source** | A document store: `notion` or `gdocs`. |
-| **Source ref** | An address of one object in a source: `notion:<page-id>` or `gdocs:<file-or-folder-id>`. |
-| **Root** | One source ref checked out under one local path. A checkout is a set of roots. |
-| **Manifest** | A YAML file listing the roots. It *is* the remote: the repo's git remote URL points at it. |
-| **Helper** | `git-remote-docsync`, the program git runs on fetch and push. You rarely call it directly. |
-| **Document** | One Notion page, one Google Doc, or one other Drive file. This is the unit of sync. There is no partial sync of a document. |
+| Term           | Meaning                                                                                                                     |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Source**     | A document store: `notion` or `gdocs`.                                                                                      |
+| **Source ref** | An address of one object in a source: `notion:<page-id>` or `gdocs:<file-or-folder-id>`.                                    |
+| **Root**       | One source ref checked out under one local path. A checkout is a set of roots.                                              |
+| **Manifest**   | A YAML file listing the roots. It _is_ the remote: the repo's git remote URL points at it.                                  |
+| **Helper**     | `git-remote-docsync`, the program git runs on fetch and push. You rarely call it directly.                                  |
+| **Document**   | One Notion page, one Google Doc, or one other Drive file. This is the unit of sync. There is no partial sync of a document. |
 
 The remote-tracking branch `origin/main` is a synthesized git history. Every
 fetch that finds changes at the source adds a commit to it, authored by the
@@ -45,18 +45,32 @@ The ai-starter setup installs docsync for you.
 
 ### Credentials
 
-| Source | Env var | How to get it |
-|---|---|---|
-| Notion | `DOCSYNC_NOTION_TOKEN` | An internal integration token. Share each page you want to sync with the integration. |
-| Google | `DOCSYNC_GOOGLE_CREDENTIALS` | Path to an OAuth client JSON. First use opens a browser for consent and caches the refresh token under `~/.docsync/`. |
+Both sources use OAuth. docsync never asks you to paste a token.
 
-`docsync auth <source>` verifies a credential and, for Google, runs the consent
-flow. Every command that needs a credential fails immediately and clearly when
-one is missing.
+| Source | How you sign in | Where the credential comes from |
+|---|---|---|
+| Google | `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents,openid` | Application Default Credentials, written by the Google Cloud CLI and read by every Google SDK. If you have gcloud, you have nothing else to set up. |
+| Google, without gcloud | `docsync auth google` | A loopback OAuth flow with a Salsita-registered client id. Token stored in the OS keychain. |
+| Notion | `docsync auth notion` | A loopback OAuth flow against a Salsita-registered public integration. You pick the pages to grant in Notion's own dialog. Token stored in the OS keychain. |
+
+`docsync auth <source>` also verifies an existing credential and prints who you
+are signed in as. `docsync auth <source> --logout` removes it.
+
+Every command that needs a credential fails immediately and clearly when one is
+missing, with the command to run.
+
+**Dependency:** Notion's OAuth is the authorization-code flow with a client
+secret and no PKCE, so a CLI cannot complete it alone. docsync uses a small
+token-exchange endpoint owned by Salsita that holds the secret and does nothing
+else. Until it exists, `DOCSYNC_NOTION_TOKEN` with an internal integration
+token works, with the usual need to share each page with the integration.
+
+**Storage:** the OS keychain (macOS Keychain, Windows Credential Manager,
+Secret Service on Linux). `~/.docsync/` holds no secrets.
 
 ### Home directory
 
-`~/.docsync/` holds cached tokens. On Windows this is
+`~/.docsync/` holds non-secret state such as caches. On Windows this is
 `%USERPROFILE%\.docsync\`.
 
 ---
@@ -117,11 +131,11 @@ roots:
 
 Fields per root:
 
-| Field | Required | Meaning |
-|---|---|---|
-| `src` | yes | Source ref. |
-| `path` | yes | Local path, relative to the repo root. See path rules below. |
-| `ignore` | no | List of patterns. Matching documents are not checked out. |
+| Field    | Required | Meaning                                                      |
+| -------- | -------- | ------------------------------------------------------------ |
+| `src`    | yes      | Source ref.                                                  |
+| `path`   | yes      | Local path, relative to the repo root. See path rules below. |
+| `ignore` | no       | List of patterns. Matching documents are not checked out.    |
 
 ### Path rules
 
@@ -179,12 +193,12 @@ fast-forwards if the working tree is clean.
 
 The `=<path>` alias is optional:
 
-| Form | Resulting `path` |
-|---|---|
-| `notion:2f3a…` | `<title>/` for a page with children or a folder, `<title>.md` for a leaf document, at the repo root |
-| `notion:2f3a…=specs/` | Inside `specs/`, under the source title: `specs/<title>/` or `specs/<title>.md` |
-| `notion:2f3a…=specs/auth.md` | Exactly `specs/auth.md`. Leaf documents only. |
-| `notion:2f3a…=specs/auth/` | A directory named `auth`, containing the document and its children, ignoring the source title |
+| Form                         | Resulting `path`                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| `notion:2f3a…`               | `<title>/` for a page with children or a folder, `<title>.md` for a leaf document, at the repo root |
+| `notion:2f3a…=specs/`        | Inside `specs/`, under the source title: `specs/<title>/` or `specs/<title>.md`                     |
+| `notion:2f3a…=specs/auth.md` | Exactly `specs/auth.md`. Leaf documents only.                                                       |
+| `notion:2f3a…=specs/auth/`   | A directory named `auth`, containing the document and its children, ignoring the source title       |
 
 So the trailing slash means "use the source title, but put it here".
 
@@ -226,14 +240,14 @@ time. Useful before `add`.
 
 ### Layout
 
-| Source object | On disk |
-|---|---|
-| Google Doc | `<title>.md` |
-| Other Drive file (PDF, image, `.docx`, …) | `<title>` with its own extension, byte-for-byte |
-| Google Sheet / Slides / Drawing | `<title>.xlsx` / `.pptx` / `.svg`, exported, read-only |
-| Drive folder | `<title>/` containing its files and sub-folders, recursively |
-| Notion page, no children | `<title>.md` |
-| Notion page with child pages | `<title>.md` **and** `<title>/` beside it, containing the children |
+| Source object                             | On disk                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| Google Doc                                | `<title>.md`                                                       |
+| Other Drive file (PDF, image, `.docx`, …) | `<title>` with its own extension, byte-for-byte                    |
+| Google Sheet / Slides / Drawing           | `<title>.xlsx` / `.pptx` / `.svg`, exported, read-only             |
+| Drive folder                              | `<title>/` containing its files and sub-folders, recursively       |
+| Notion page, no children                  | `<title>.md`                                                       |
+| Notion page with child pages              | `<title>.md` **and** `<title>/` beside it, containing the children |
 
 Filenames are derived from titles: the title as-is, with `/`, `\`, `:`, `*`,
 `?`, `"`, `<`, `>`, `|` and control characters replaced by `-`, trailing dots
@@ -280,25 +294,25 @@ below.
 
 #### Notion blocks
 
-| Notion | Markdown |
-|---|---|
-| paragraph | paragraph |
-| heading 1 / 2 / 3 | `#` / `##` / `###` |
-| bulleted list | `- item`, nested by two spaces |
-| numbered list | `1. item` |
-| to-do | `- [ ] item` / `- [x] item` |
-| quote | `> text` |
-| callout | `> [!CALLOUT] 💡` on the first line, body quoted below |
-| toggle | `<details><summary>title</summary>` … `</details>` |
-| code | fenced block with the language |
-| divider | `---` |
-| table | GFM table. Cells hold inline formatting only. |
-| equation | `$$ … $$` block; `$ … $` inline |
-| image, file, PDF, video with an **external** URL | `![caption](url)` or `[name](url)` |
-| image, file, PDF hosted by Notion | downloaded next to the page into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
-| child page | its own file, not in the body |
-| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise a placeholder |
-| bookmark, embed, synced block, database, columns, table of contents, breadcrumb, button, everything else | placeholder |
+| Notion                                                                                                   | Markdown                                                                                                               |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| paragraph                                                                                                | paragraph                                                                                                              |
+| heading 1 / 2 / 3                                                                                        | `#` / `##` / `###`                                                                                                     |
+| bulleted list                                                                                            | `- item`, nested by two spaces                                                                                         |
+| numbered list                                                                                            | `1. item`                                                                                                              |
+| to-do                                                                                                    | `- [ ] item` / `- [x] item`                                                                                            |
+| quote                                                                                                    | `> text`                                                                                                               |
+| callout                                                                                                  | `> [!CALLOUT] 💡` on the first line, body quoted below                                                                 |
+| toggle                                                                                                   | `<details><summary>title</summary>` … `</details>`                                                                     |
+| code                                                                                                     | fenced block with the language                                                                                         |
+| divider                                                                                                  | `---`                                                                                                                  |
+| table                                                                                                    | GFM table. Cells hold inline formatting only.                                                                          |
+| equation                                                                                                 | `$$ … $$` block; `$ … $` inline                                                                                        |
+| image, file, PDF, video with an **external** URL                                                         | `![caption](url)` or `[name](url)`                                                                                     |
+| image, file, PDF hosted by Notion                                                                        | downloaded next to the page into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
+| child page                                                                                               | its own file, not in the body                                                                                          |
+| link to page, page mention                                                                               | `[title](relative/path.md)` if the target is in the checkout, otherwise a placeholder                                  |
+| bookmark, embed, synced block, database, columns, table of contents, breadcrumb, button, everything else | placeholder                                                                                                            |
 
 Inline: bold, italic, strikethrough, code, links as in GFM. Underline is
 `<u>…</u>`. Text and background colours are `<span data-color="red">…</span>`.
@@ -306,23 +320,23 @@ These are preserved so that a round trip does not strip them.
 
 #### Google Docs elements
 
-| Google Docs | Markdown |
-|---|---|
-| Title / Subtitle | `# Title` / `## Subtitle` on the first lines, tagged in frontmatter as `title-style: true` |
-| Heading 1–6 | `#` … `######` |
-| paragraph | paragraph |
-| bulleted / numbered list, nested | `-` / `1.`, nested by indentation |
-| checklist | `- [ ]` / `- [x]` |
-| table | GFM table. Merged cells are not supported and make the table a placeholder. |
-| horizontal rule | `---` |
-| page break | `<!-- docsync:pagebreak -->` |
-| footnote | `[^n]` with the definition at the end |
-| image | downloaded into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
-| link | `[text](url)` |
-| bold, italic, strikethrough, code font | as in GFM |
-| underline | `<u>…</u>` |
-| text colour, highlight, font, size, alignment | not represented. See write-back limitations (§7). |
-| comments, suggestions | not in the body. They stay at the source. |
+| Google Docs                                   | Markdown                                                                                              |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Title / Subtitle                              | `# Title` / `## Subtitle` on the first lines, tagged in frontmatter as `title-style: true`            |
+| Heading 1–6                                   | `#` … `######`                                                                                        |
+| paragraph                                     | paragraph                                                                                             |
+| bulleted / numbered list, nested              | `-` / `1.`, nested by indentation                                                                     |
+| checklist                                     | `- [ ]` / `- [x]`                                                                                     |
+| table                                         | GFM table. Merged cells are not supported and make the table a placeholder.                           |
+| horizontal rule                               | `---`                                                                                                 |
+| page break                                    | `<!-- docsync:pagebreak -->`                                                                          |
+| footnote                                      | `[^n]` with the definition at the end                                                                 |
+| image                                         | downloaded into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
+| link                                          | `[text](url)`                                                                                         |
+| bold, italic, strikethrough, code font        | as in GFM                                                                                             |
+| underline                                     | `<u>…</u>`                                                                                            |
+| text colour, highlight, font, size, alignment | not represented. See write-back limitations (§7).                                                     |
+| comments, suggestions                         | not in the body. They stay at the source.                                                             |
 
 #### Placeholders
 
@@ -414,12 +428,12 @@ edits to different paragraphs merge cleanly. Binary files conflict as a whole.
 
 ## 8. Deletion, precisely
 
-| What you did | What happens at the source |
-|---|---|
-| Removed a root from the manifest | Nothing. |
-| Added an ignore pattern | Nothing. |
+| What you did                      | What happens at the source                                                        |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| Removed a root from the manifest  | Nothing.                                                                          |
+| Added an ignore pattern           | Nothing.                                                                          |
 | Deleted a tracked file and pushed | The document is moved to trash. Recoverable from the source UI for about 30 days. |
-| Deleted a file with no id | Nothing. It was never at the source. |
+| Deleted a file with no id         | Nothing. It was never at the source.                                              |
 
 There is no flag to confirm deletions. The review before you push is the gate.
 `docsync push` lists every trashed document in its output.
@@ -430,12 +444,12 @@ There is no flag to confirm deletions. The review before you push is the gate.
 
 The remote URL is `docsync::<manifest>`, where `<manifest>` is one of:
 
-| Form | Meaning |
-|---|---|
-| `docsync::.docsync.yaml` | Relative to the repo's working tree. The default from `init`. |
-| `docsync::/abs/path/manifest.yaml` | Any file. Use this to share a manifest, for example one committed to ai-starter. |
+| Form                                          | Meaning                                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `docsync::.docsync.yaml`                      | Relative to the repo's working tree. The default from `init`.                        |
+| `docsync::/abs/path/manifest.yaml`            | Any file. Use this to share a manifest, for example one committed to ai-starter.     |
 | `docsync::../ai-starter/checkouts/sales.yaml` | Relative paths always resolve against the working tree, never the shell's directory. |
-| `docsync::gdocs:<id>`, `docsync::notion:<id>` | **later**: the manifest is itself a document at the source. |
+| `docsync::gdocs:<id>`, `docsync::notion:<id>` | **later**: the manifest is itself a document at the source.                          |
 
 `git clone docsync::/abs/path/manifest.yaml my-docs` is a normal clone. The
 helper writes the skill file during it.
@@ -455,11 +469,11 @@ index, never edit inside placeholders, and never push unless asked.
 
 The same file is written to the three locations the supported agents read:
 
-| Agent | Path |
-|---|---|
-| Codex | `.agents/skills/docsync/SKILL.md` |
+| Agent       | Path                              |
+| ----------- | --------------------------------- |
+| Codex       | `.agents/skills/docsync/SKILL.md` |
 | Claude Code | `.claude/skills/docsync/SKILL.md` |
-| Cursor | `.cursor/skills/docsync/SKILL.md` |
+| Cursor      | `.cursor/skills/docsync/SKILL.md` |
 
 They are plain copies, excluded from git via `.git/info/exclude`. Every
 `docsync` command and every helper run compares them with the bundled copy of
