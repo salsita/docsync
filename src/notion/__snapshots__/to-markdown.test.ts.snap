@@ -93,7 +93,7 @@ $$
 
 <!-- docsync:block notion:858f37cd44814dba9528c8e77418648a type=synced_block -->
 
-A paragraph with a date mention [2026-09-02](notion://date/2026-09-02) and a user mention [@Jiří Staniševský](notion://user/2e924337-300b-4281-b820-a7ff207370b1).
+A paragraph with a date mention [2026-09-02](notion://date/2026-09-02) and a user mention [@Jiří Staniševský](notion://user/2e924337300b4281b820a7ff207370b1).
 
 Paragraph with characters that need escaping in Markdown: \\* \\_ \\\` # \\[brackets] \\<angle> {braces} | ^ \\~  and a trailing backslash \\\\
 

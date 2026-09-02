@@ -381,12 +381,16 @@ describe('rich text', () => {
   it('a user mention', () => {
     const mention: RichText = {
       type: 'mention',
-      mention: { type: 'user', user: { object: 'user', id: '2e924337-300b-4281-b820-a7ff2073' } },
+      mention: {
+        type: 'user',
+        user: { object: 'user', id: '2e924337-300b-4281-b820-a7ff207370b1' },
+      },
       plain_text: '@Ada Lovelace',
       href: null,
     };
+    // Ids are canonical everywhere: undashed, like page ids and placeholders.
     expect(inlineMarkdown([mention])).toBe(
-      '[@Ada Lovelace](notion://user/2e924337-300b-4281-b820-a7ff2073)',
+      '[@Ada Lovelace](notion://user/2e924337300b4281b820a7ff207370b1)',
     );
   });
 

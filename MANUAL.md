@@ -196,7 +196,8 @@ Fields per root:
 Two forms, mixable in one list:
 
 - **gitignore syntax** matched against the title-derived path relative to the
-  root, e.g. `Archive/**`, `*.pdf`, `Meeting notes/2023-*`.
+  root's directory (so a child of the root page is `Blocks.md` and its child
+  `Blocks/Nested.md`, whatever the root's own filename), e.g. `Archive/**`, `*.pdf`, `Meeting notes/2023-*`.
 - **A source ref**, e.g. `notion:8c1d…`. Ignores that document (and its
   children) regardless of title. Use this when titles move.
 
@@ -367,17 +368,17 @@ below.
 | numbered list                                                                                            | `1. item`                                                                                                              |
 | to-do                                                                                                    | `- [ ] item` / `- [x] item`                                                                                            |
 | quote                                                                                                    | `> text`                                                                                                               |
-| callout                                                                                                  | `> [!CALLOUT] 💡` on the first line, body quoted below                                                                 |
-| toggle | `<details><summary>title</summary>` … `</details>` |
+| callout | `> [!CALLOUT] 💡` on the first line, body quoted below. Push also accepts the escaped spelling `> \[!CALLOUT]` that some editors produce. |
+| toggle | `<details><summary>title</summary>`, a blank line, the children, a blank line, `</details>`. The blank line before the closing tag is required. |
 | toggle heading | the same, with the heading inside the summary: `<summary>## Title</summary>` |
 | code | fenced block with the language. Notion's `plain text` is a fence with no language. |
 | divider                                                                                                  | `---`                                                                                                                  |
 | table                                                                                                    | GFM table. Cells hold inline formatting only.                                                                          |
 | equation                                                                                                 | `$$ … $$` block; `$ … $` inline                                                                                        |
-| image, file, PDF, video with an **external** URL                                                         | `![caption](url)` or `[name](url)`                                                                                     |
+| image, file, PDF, video with an **external** URL | `![caption](url)` for images, `[name](url)` for the rest. On push a bare link block becomes a `file` block. |
 | image, file, PDF hosted by Notion                                                                        | downloaded next to the page into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
 | child page                                                                                               | its own file, not in the body                                                                                          |
-| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://www.notion.so/<id>)`. Both convert back to a mention on push. |
+| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://www.notion.so/<id>)`, with `Untitled` when the page is not accessible. Both convert back to a mention on push. |
 | user mention | `[@Name](notion://user/<id>)` |
 | date mention | `[2026-09-02](notion://date/2026-09-02)`; ranges and times appended to the path |
 | other mentions | `[text](url)` |
@@ -396,17 +397,26 @@ always renders one.
 
 ```markdown
 <!-- docsync: color=green -->
+
 A paragraph in green.
 
-<!-- docsync: color=gray_bg -->
+<!-- docsync: color=gray_background -->
+
 > [!CALLOUT] 💡
 > Callout body.
 
 <!-- docsync: header-row=false -->
+
 | Name | Value |
 |---|---|
 | a | b |
 ```
+
+Colour values are Notion's own (`gray_background`, `red`). A blank line
+separates the comment from its block, as between any two blocks. List items
+carry no attribute comment, since one would break the list, so a colour on a
+list item does not survive a round trip. Numbered lists that use letters or
+roman numerals are not represented either.
 
 #### Google Docs elements
 

@@ -433,7 +433,7 @@ function mention(part: RichText, options: ToMarkdownOptions): PhrasingContent[] 
     const user = body.user;
     const id =
       typeof user === 'object' && user !== null ? String((user as RawObject).id ?? '') : '';
-    return link(`notion://user/${id}`);
+    return link(`notion://user/${bareId(id)}`);
   }
   if (kind === 'date') {
     const date = body.date;

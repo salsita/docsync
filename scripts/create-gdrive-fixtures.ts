@@ -12,7 +12,8 @@ const token = await createCredentialProvider().accessToken('gdocs');
 const API = 'https://www.googleapis.com/drive/v3/files';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
 
-async function drive(url: string, init: RequestInit): Promise<any> {
+// biome-ignore lint/suspicious/noExplicitAny: throwaway fixture script over untyped Drive JSON
+async function drive(url: string, init: RequestInit): Promise<Record<string, any>> {
   const response = await fetch(url, {
     ...init,
     headers: { authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
@@ -92,14 +93,46 @@ const elements = `<html><body>
 
 const made = [
   await upload({ name: 'Elements', mimeType: DOC, parents: [root.id] }, 'text/html', elements),
-  await upload({ name: 'Leaf', mimeType: DOC, parents: [root.id] }, 'text/html', '<p>A document with one paragraph, nothing else.</p>'),
-  await upload({ name: 'Nested', mimeType: DOC, parents: [sub.id] }, 'text/html', '<p>A document inside the Sub folder.</p>'),
-  await upload({ name: 'Title/With: Illegal*Chars? "Quoted" <Tag> |Pipe|', mimeType: DOC, parents: [root.id] }, 'text/html', '<p>Tests filename derivation from a hostile title.</p>'),
-  await upload({ name: '.Hidden leading dot...', mimeType: DOC, parents: [root.id] }, 'text/html', '<p>Tests leading-dot removal.</p>'),
-  await upload({ name: 'Notes', mimeType: DOC, parents: [root.id] }, 'text/html', '<p>First of two documents titled Notes.</p>'),
-  await upload({ name: 'Notes', mimeType: DOC, parents: [root.id] }, 'text/html', '<p>Second of two documents titled Notes.</p>'),
-  await upload({ name: 'Numbers', mimeType: SHEET, parents: [root.id] }, 'text/csv', 'name,value\na,1\nb,2\n'),
-  await upload({ name: 'plain.txt', parents: [root.id] }, 'text/plain', 'A plain text file, kept as bytes.\n'),
+  await upload(
+    { name: 'Leaf', mimeType: DOC, parents: [root.id] },
+    'text/html',
+    '<p>A document with one paragraph, nothing else.</p>',
+  ),
+  await upload(
+    { name: 'Nested', mimeType: DOC, parents: [sub.id] },
+    'text/html',
+    '<p>A document inside the Sub folder.</p>',
+  ),
+  await upload(
+    { name: 'Title/With: Illegal*Chars? "Quoted" <Tag> |Pipe|', mimeType: DOC, parents: [root.id] },
+    'text/html',
+    '<p>Tests filename derivation from a hostile title.</p>',
+  ),
+  await upload(
+    { name: '.Hidden leading dot...', mimeType: DOC, parents: [root.id] },
+    'text/html',
+    '<p>Tests leading-dot removal.</p>',
+  ),
+  await upload(
+    { name: 'Notes', mimeType: DOC, parents: [root.id] },
+    'text/html',
+    '<p>First of two documents titled Notes.</p>',
+  ),
+  await upload(
+    { name: 'Notes', mimeType: DOC, parents: [root.id] },
+    'text/html',
+    '<p>Second of two documents titled Notes.</p>',
+  ),
+  await upload(
+    { name: 'Numbers', mimeType: SHEET, parents: [root.id] },
+    'text/csv',
+    'name,value\na,1\nb,2\n',
+  ),
+  await upload(
+    { name: 'plain.txt', parents: [root.id] },
+    'text/plain',
+    'A plain text file, kept as bytes.\n',
+  ),
 ];
 const pdf = `%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj

@@ -122,3 +122,28 @@ is fine: they are files.
 
 `pnpm check` green, every fixture page converts, and the manual's Notion table
 matches the tests.
+
+## Outcome
+
+Landed in `d75fd9e..87daa80` plus the review commit. 567 tests, 100% line
+coverage on `src/markdown.ts`, `src/frontmatter.ts` and `src/notion/*`.
+Notion API version pinned at `2025-09-03`, SDK retries off, our own retry
+policy in `api.ts`.
+
+- Dependencies: `@notionhq/client` 5.26, the remark/mdast stack, all pure JS.
+- Colour values are Notion's own (`gray_background`); the manual said
+  `gray_bg`. Manual updated, along with: blank line before `</details>`, the
+  escaped `\[!CALLOUT]` spelling accepted on push, no colour on list items,
+  `list_format` not represented, bare link blocks become `file` on push,
+  `Untitled` for inaccessible mentioned pages, ignore paths relative to the
+  root's directory.
+- A user mention embeds the whole user object, so no `users.retrieve` is
+  needed for mentions, only for `last_edited_by`.
+- Review fix: user mention ids were emitted dashed; now undashed like every
+  other id.
+- Fixture gap: the "language-less" code block in Blocks is stored as
+  `javascript` because the MCP connector that created it defaulted so. The
+  plain-text rule is covered by a unit test only. Owner to change that block
+  to Plain Text in the Notion UI; re-record at ticket 06.
+- Not in the fixture tree, covered by unit tests: bookmark, embed,
+  breadcrumb, button, link_preview, child_database.
