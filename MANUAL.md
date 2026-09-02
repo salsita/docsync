@@ -45,33 +45,55 @@ The ai-starter setup installs docsync for you.
 
 ### Credentials
 
-Both sources use OAuth. docsync never asks you to paste a token.
+Both sources use OAuth with a temporary localhost callback server. docsync is
+published on the public npm registry, so it ships no OAuth app of its own. You
+bring one per source.
 
-| Source                 | How you sign in                                                                                                                         | Where the credential comes from                                                                                                                             |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Google                 | `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents,openid` | Application Default Credentials, written by the Google Cloud CLI and read by every Google SDK. If you have gcloud, you have nothing else to set up.         |
-| Google, without gcloud | `docsync auth google`                                                                                                                   | A loopback OAuth flow with a Salsita-registered client id. Token stored in the OS keychain.                                                                 |
-| Notion                 | `docsync auth notion`                                                                                                                   | A loopback OAuth flow against a Salsita-registered public integration. You pick the pages to grant in Notion's own dialog. Token stored in the OS keychain. |
+| Source | Sign in | What you need |
+|---|---|---|
+| Google, with gcloud | `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents,openid` | Nothing. docsync reads Application Default Credentials like every Google SDK. |
+| Google, without gcloud | `docsync auth google` | An OAuth client of type *Desktop app* in Google Cloud Console. |
+| Notion | `docsync auth notion` | A *public* integration in Notion's integration settings, with `http://localhost:27183/callback` as its redirect URI. |
 
-`docsync auth <source>` also verifies an existing credential and prints who you
-are signed in as. `docsync auth <source> --logout` removes it.
+`docsync auth <source>` looks for the client in `~/.docsync/oauth-apps.yaml`.
+When the entry is missing, it writes a template and opens it in `$EDITOR`
+(`%EDITOR%` or Notepad on Windows):
 
-Every command that needs a credential fails immediately and clearly when one is
-missing, with the command to run.
+```yaml
+# OAuth apps used by docsync. This file is yours; docsync only reads it.
+# Register each app once and paste the values here.
 
-**Dependency:** Notion's OAuth is the authorization-code flow with a client
-secret and no PKCE, so a CLI cannot complete it alone. docsync uses a small
-token-exchange endpoint owned by Salsita that holds the secret and does nothing
-else. Until it exists, `DOCSYNC_NOTION_TOKEN` with an internal integration
-token works, with the usual need to share each page with the integration.
+google:
+  # Google Cloud Console → APIs & Services → Credentials → Create → OAuth client
+  # ID → type "Desktop app". Enable the Drive API and the Docs API.
+  client_id: ""
+  client_secret: ""
 
-**Storage:** the OS keychain (macOS Keychain, Windows Credential Manager,
-Secret Service on Linux). `~/.docsync/` holds no secrets.
+notion:
+  # notion.so/profile/integrations → New integration → type "Public".
+  # Redirect URI: http://localhost:27183/callback
+  client_id: ""
+  client_secret: ""
+```
+
+Save, close, and the browser flow starts. You pick the pages to grant in
+Notion's own dialog; nothing needs to be shared with an integration by hand.
+The resulting tokens are stored in the OS keychain (macOS Keychain, Windows
+Credential Manager, Secret Service on Linux). The apps file is written with
+owner-only permissions and holds the client secrets and nothing else.
+
+A team can share one app per source. The ai-starter setup can drop a
+pre-filled `oauth-apps.yaml` in place from the team's secret store.
+
+`docsync auth <source>` also verifies an existing token and prints who you are
+signed in as. `docsync auth <source> --logout` removes the token. Every command
+that needs a credential fails immediately and clearly when one is missing,
+with the command to run.
 
 ### Home directory
 
-`~/.docsync/` holds non-secret state such as caches. On Windows this is
-`%USERPROFILE%\.docsync\`.
+`~/.docsync/` holds `oauth-apps.yaml` and caches. Tokens are in the keychain,
+not here. On Windows this is `%USERPROFILE%\.docsync\`.
 
 ---
 
@@ -394,12 +416,10 @@ Git sends the commits between `origin/main` and your branch. The helper:
 
 ### Force push
 
-`git push --force` is supported and means "my tree wins". The helper fetches
-the current source state, computes the diff from that to your tree, and applies
-it. Edits made at the source since your last fetch are overwritten, but
-nothing else is affected: it is the same operation as a normal push after a
-merge with the `ours` strategy. It does not do anything more destructive than a
-normal push.
+Not supported. The helper rejects a forced push. A force push would mean
+writing your tree over a source state the helper has never seen, and once
+write-back is diff-based (§12) there is no base to compute the diff from. Fetch,
+merge, push.
 
 ### Write-back
 
@@ -496,14 +516,6 @@ your edits will be overwritten.
 2. The agent edits files on a branch and commits.
 3. You review with `git diff main..agent/foo`.
 4. Merge, `docsync push`.
-
-The checkout is an ordinary git repo, so it can have a second remote. Add one
-pointing at GitHub, push the agent's branch there, and review it as a pull
-request. Then merge locally and `docsync push` `main`. Only the docsync remote
-talks to the sources; the GitHub remote is just a mirror for review.
-
-Give the agent the repo, not the credentials. It never needs to call a source
-API, and `git push` is the only side-effecting step.
 
 ---
 
