@@ -70,3 +70,30 @@ Notion.
 `pnpm check` green, both real flows verified on macOS and on Windows, and a
 sketch adapter (a ten-line script) can list the signed-in user's Drive root
 and Notion search results using only `CredentialProvider`.
+
+## Outcome
+
+Landed in `916f518..479c05a`. `src/auth/` at 100% line coverage, 441 tests,
+one skipped unless `DOCSYNC_TEST_KEYCHAIN=1`.
+
+- `@napi-rs/keyring` 2.0.0 installs with `allowBuilds` empty: prebuilt
+  binaries, no lifecycle script. Loads and round-trips on macOS arm64.
+- `openid-client` 6.8.7 drives Google (discovery, PKCE, refresh, ID-token
+  verification). It accepts Notion's token *response* but cannot send the
+  *request*: Notion wants a JSON body and a Basic header without RFC 6749
+  form-encoding of the UUID client id. The Notion exchange is therefore
+  thirty lines of `fetch`.
+- The source name is `gdocs`, matching source refs; `google` is an alias and
+  the apps-file key. Manual §2 updated.
+- Token renewal never opens the editor; only `docsync auth` does. Manual §2
+  updated.
+- `AuthDeps` is a larger injectable bag than the ticket listed (home, log,
+  ports, timeout, issuer and endpoint overrides) so every flow is testable
+  against local mock servers.
+- A Google sign-in that yields no refresh token is refused with a pointer to
+  the account's permissions page.
+- Smoke scripts: `scripts/auth-smoke.ts` and `scripts/api-smoke.ts`, run with
+  `node --experimental-strip-types` after `pnpm build`. Real flows not yet
+  run; the owner runs them.
+- Not done: Windows verification, deferred to ticket 12. Manual §11 gained
+  the firewall note in advance.

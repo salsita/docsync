@@ -22,7 +22,7 @@ Nothing touches a source document until you push.
 | **Root**       | One source ref checked out under one local path. A checkout is a set of roots.                                              |
 | **Manifest**   | A YAML file listing the roots. It _is_ the remote: the repo's git remote URL points at it.                                  |
 | **Helper**     | `git-remote-docsync`, the program git runs on fetch and push. You rarely call it directly.                                  |
-| **Document**   | One Notion page, one Google Doc, or one other Drive file. This is the unit of sync. There is no partial sync of a document. |
+| **Document** | One Notion page, one Google Doc, or one other Drive file. The smallest thing you can check out. Changes *within* a document are synced by diff. |
 
 The remote-tracking branch `origin/main` is a synthesized git history. Every
 fetch that finds changes at the source adds a commit to it, authored by the
@@ -51,7 +51,7 @@ bring one per source.
 
 | Source | Sign in | What you need |
 |---|---|---|
-| Google | `docsync auth google` | An OAuth client of type *Desktop app* in Google Cloud Console, with the Drive API and the Docs API enabled. |
+| Google | `docsync auth gdocs` (`google` is accepted too) | An OAuth client of type *Desktop app* in Google Cloud Console, with the Drive API and the Docs API enabled. |
 | Notion | `docsync auth notion` | A *public* integration in Notion's integration settings, with `http://localhost:27183/callback` and `http://localhost:27184/callback` as redirect URIs. |
 
 `docsync auth <source>` looks for the client in `~/.docsync/oauth-apps.yaml`.
@@ -87,7 +87,8 @@ pre-filled `oauth-apps.yaml` in place from the team's secret store.
 `docsync auth <source>` also verifies an existing token and prints who you are
 signed in as. `docsync auth <source> --logout` removes the token. Every command
 that needs a credential fails immediately and clearly when one is missing,
-with the command to run.
+with the command to run. Only `docsync auth` ever opens the editor; a token
+renewal during another command fails with a pointer to the apps file instead.
 
 ### Home directory
 
@@ -593,6 +594,8 @@ docsync is expected to work on Windows. Specifically:
 - Filenames avoid reserved characters and names (§6).
 - No symlinks anywhere. The skill file is a copy.
 - `~/.docsync/` is `%USERPROFILE%\.docsync\`.
+- First `docsync auth` may trigger the Windows firewall prompt for the
+  loopback listener. Allow it; the listener only binds `127.0.0.1`.
 - **To verify early:** Git for Windows must be able to execute the
   `git-remote-docsync` shim that npm installs. If it cannot run a `.cmd` shim,
   the package ships a small `.exe` launcher instead.
