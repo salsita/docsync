@@ -169,11 +169,21 @@ Fields per root:
   own document is placed inside it under its source title. For a folder or a
   page with children, the children go in there too.
 - A path **without** a trailing slash (`notes/roadmap.md`) names the file
-  itself. Only valid for a single document with no children.
+  itself. Only valid for a single document with no children, and it must carry
+  an extension: `.md` for a Notion page or a Google Doc, its own for any other
+  Drive file. Write `notes/roadmap/` if you meant a directory.
+- Paths are relative to the repo root. No leading `/`, no `.` or `..` segment,
+  no empty segment, no segment starting with a dot, no `\`. Unicode is
+  normalised to NFC.
 - Paths must not overlap. Two roots cannot claim the same file, and one root's
-  path cannot be inside another's.
+  path cannot be inside another's. A file root owns the sibling directory with
+  the same stem as well, since that is where its children would land, so no
+  other root may sit inside `specs/auth/` while `specs/auth.md` is a root. The
+  pair `specs/auth.md` and `specs/auth/` is itself fine: that is exactly what
+  one Notion page with children produces.
 - Paths are case-sensitive, and the helper refuses two names that differ only in
-  case, because macOS and Windows do not.
+  case, because macOS and Windows do not. It compares after NFC normalisation
+  for the same reason.
 - Always use `/` as the separator, on every platform.
 
 ### Ignore patterns
@@ -184,6 +194,12 @@ Two forms, mixable in one list:
   root, e.g. `Archive/**`, `*.pdf`, `Meeting notes/2023-*`.
 - **A source ref**, e.g. `notion:8c1d…`. Ignores that document (and its
   children) regardless of title. Use this when titles move.
+
+Negation patterns (`!Archive/2024/**`) work, with git's own restriction: a file
+cannot be re-included once a parent directory is excluded, so re-include the
+directory too (`!Archive/2024/`). A source ref is an identity rather than a
+path, so no negation undoes one. The root object itself is never ignored —
+`docsync remove` is what unsubscribes from a root.
 
 An ignore added after files were fetched removes them locally on the next fetch.
 That is an unsubscribe. The source is not touched.
