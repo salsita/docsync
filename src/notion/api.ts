@@ -46,11 +46,21 @@ export interface ChildrenPage {
  * plain object, and the real `Client` satisfies it structurally.
  */
 export interface NotionClient {
-  pages: { retrieve(args: { page_id: string }): Promise<unknown> };
+  pages: {
+    retrieve(args: { page_id: string }): Promise<unknown>;
+    create(args: {
+      parent: RawObject;
+      properties: RawObject;
+      children?: RawObject[];
+    }): Promise<unknown>;
+    update(args: { page_id: string; properties?: RawObject; archived?: boolean }): Promise<unknown>;
+  };
   users: { retrieve(args: { user_id: string }): Promise<unknown> };
   blocks: {
+    delete(args: { block_id: string }): Promise<unknown>;
     children: {
       list(args: { block_id: string; start_cursor?: string; page_size?: number }): Promise<unknown>;
+      append(args: { block_id: string; children: RawObject[] }): Promise<unknown>;
     };
   };
 }
@@ -63,6 +73,16 @@ export interface NotionApi {
   blockTree(id: string): Promise<NotionBlock[]>;
   /** A user, cached for the run. `undefined` when the token cannot read them. */
   user(id: string | undefined): Promise<RawObject | undefined>;
+  /** The direct children of a block, paginated, without recursing. */
+  children(id: string): Promise<NotionBlock[]>;
+  /** Archives one block. Deleting a `child_page` block archives the page. */
+  deleteBlock(id: string): Promise<void>;
+  /** Appends blocks under `id`; answers the blocks it created, with their ids. */
+  append(id: string, children: readonly RawObject[]): Promise<NotionBlock[]>;
+  /** Creates a page under `parentId`, optionally with a body. */
+  createPage(parentId: string, title: string, children?: readonly RawObject[]): Promise<RawObject>;
+  /** Renames a page, archives it, or both. */
+  updatePage(id: string, patch: { title?: string; archived?: boolean }): Promise<RawObject>;
 }
 
 export interface NotionApiOptions {
@@ -73,7 +93,11 @@ export interface NotionApiOptions {
 /** A client for the real API, with the version pinned and SDK retries off. */
 export function createNotionClient(accessToken: string): NotionClient {
   // `retry: false` because the retry policy is this module's, and tested here.
-  return new Client({ auth: accessToken, notionVersion: NOTION_VERSION, retry: false });
+  // The cast is deliberate: `NotionClient` above is the contract this adapter
+  // is written against, spelled in the raw JSON the fixtures record, and the
+  // SDK's own generated parameter unions are both narrower and noisier.
+  const client = new Client({ auth: accessToken, notionVersion: NOTION_VERSION, retry: false });
+  return client as unknown as NotionClient;
 }
 
 const realSleep = (ms: number): Promise<void> =>
@@ -125,11 +149,46 @@ export function createNotionApi(client: NotionClient, options: NotionApiOptions 
     return blocks;
   }
 
+  /** The `title` property of a page, in the one shape `pages.create` takes. */
+  function titleProperty(title: string): RawObject {
+    return { title: { title: [{ type: 'text', text: { content: title } }] } };
+  }
+
   return {
     async page(id) {
       return (await call(() => client.pages.retrieve({ page_id: id }))) as RawObject;
     },
     blockTree,
+    async children(id) {
+      return (await listChildren(id)) as NotionBlock[];
+    },
+    async deleteBlock(id) {
+      await call(() => client.blocks.delete({ block_id: id }));
+    },
+    async append(id, children) {
+      const response = (await call(() =>
+        client.blocks.children.append({ block_id: id, children: [...children] }),
+      )) as { results?: RawObject[] };
+      return (response.results ?? []) as NotionBlock[];
+    },
+    async createPage(parentId, title, children) {
+      return (await call(() =>
+        client.pages.create({
+          parent: { type: 'page_id', page_id: parentId },
+          properties: titleProperty(title),
+          ...(children === undefined ? {} : { children: [...children] }),
+        }),
+      )) as RawObject;
+    },
+    async updatePage(id, patch) {
+      return (await call(() =>
+        client.pages.update({
+          page_id: id,
+          ...(patch.title === undefined ? {} : { properties: titleProperty(patch.title) }),
+          ...(patch.archived === undefined ? {} : { archived: patch.archived }),
+        }),
+      )) as RawObject;
+    },
     async user(id) {
       if (id === undefined) return undefined;
       if (users.has(id)) return users.get(id);

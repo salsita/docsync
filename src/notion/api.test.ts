@@ -41,6 +41,16 @@ function fakeClient(options: FakeOptions = {}) {
         if (!page) throw new Error(`no page ${page_id}`);
         return page;
       },
+      async create(args) {
+        calls.push(`create:${JSON.stringify(args)}`);
+        maybeFail();
+        return { object: 'page', id: 'new', ...args };
+      },
+      async update(args) {
+        calls.push(`update:${JSON.stringify(args)}`);
+        maybeFail();
+        return { object: 'page', ...args };
+      },
     },
     users: {
       async retrieve({ user_id }) {
@@ -52,6 +62,11 @@ function fakeClient(options: FakeOptions = {}) {
       },
     },
     blocks: {
+      async delete({ block_id }) {
+        calls.push(`delete:${block_id}`);
+        maybeFail();
+        return { object: 'block', id: block_id };
+      },
       children: {
         async list({ block_id, start_cursor }) {
           calls.push(`children:${block_id}:${start_cursor ?? ''}`);
@@ -65,6 +80,11 @@ function fakeClient(options: FakeOptions = {}) {
             has_more: more,
             next_cursor: more ? String(index + 1) : null,
           };
+        },
+        async append({ block_id, children }) {
+          calls.push(`append:${block_id}:${children.length}`);
+          maybeFail();
+          return { results: children.map((_child, at) => block(`${block_id}-${at}`, 'paragraph')) };
         },
       },
     },
@@ -217,6 +237,78 @@ describe('createNotionApi', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('lists the direct children of a block without recursing', async () => {
+    const { client, calls } = fakeClient({
+      children: { root: [[block('a', 'paragraph', true)]], a: [[block('a1', 'paragraph')]] },
+    });
+
+    const blocks = await createNotionApi(client, noSleep).children('root');
+
+    expect(blocks.map((one) => one.id)).toEqual(['a']);
+    expect(calls).toEqual(['children:root:']);
+  });
+
+  it('deletes a block', async () => {
+    const { client, calls } = fakeClient({});
+    await createNotionApi(client, noSleep).deleteBlock('b1');
+    expect(calls).toEqual(['delete:b1']);
+  });
+
+  it('appends children and answers the blocks it created', async () => {
+    const { client } = fakeClient({});
+    const created = await createNotionApi(client, noSleep).append('p', [
+      { type: 'paragraph', paragraph: {} },
+    ]);
+    expect(created.map((one) => one.id)).toEqual(['p-0']);
+  });
+
+  it('answers no blocks when the append response carries none', async () => {
+    const client = fakeClient({}).client;
+    client.blocks.children.append = async () => ({});
+    expect(await createNotionApi(client, noSleep).append('p', [])).toEqual([]);
+  });
+
+  it('creates a page under a parent page, with a body', async () => {
+    const { client, calls } = fakeClient({});
+    await createNotionApi(client, noSleep).createPage('parent', 'Title', [
+      { type: 'divider', divider: {} },
+    ]);
+    expect(calls[0]).toContain('"parent":{"type":"page_id","page_id":"parent"}');
+    expect(calls[0]).toContain('"content":"Title"');
+    expect(calls[0]).toContain('"divider"');
+  });
+
+  it('creates a page with no body at all', async () => {
+    const { client, calls } = fakeClient({});
+    await createNotionApi(client, noSleep).createPage('parent', 'Title');
+    expect(calls[0]).not.toContain('children');
+  });
+
+  it('renames a page, archives one, and does both', async () => {
+    const { client, calls } = fakeClient({});
+    const api = createNotionApi(client, noSleep);
+
+    await api.updatePage('p', { title: 'New' });
+    await api.updatePage('p', { archived: true });
+    await api.updatePage('p', { title: 'New', archived: true });
+
+    expect(calls[0]).toContain('"content":"New"');
+    expect(calls[0]).not.toContain('archived');
+    expect(calls[1]).toContain('"archived":true');
+    expect(calls[1]).not.toContain('properties');
+    expect(calls[2]).toContain('"archived":true');
+  });
+
+  it('retries a 429 on a write as well', async () => {
+    const sleep = vi.fn(async () => {});
+    const { client, calls } = fakeClient({ failures: [tooManyRequests('1')] });
+
+    await createNotionApi(client, { sleep }).deleteBlock('b1');
+
+    expect(sleep).toHaveBeenCalledWith(1000);
+    expect(calls).toHaveLength(2);
+  });
+
   it('never asks about a missing user id', async () => {
     const { client, calls } = fakeClient({});
     expect(await createNotionApi(client, noSleep).user(undefined)).toBeUndefined();
@@ -230,6 +322,10 @@ describe('createNotionClient', () => {
     expect(typeof client.pages.retrieve).toBe('function');
     expect(typeof client.blocks.children.list).toBe('function');
     expect(typeof client.users.retrieve).toBe('function');
+    expect(typeof client.blocks.delete).toBe('function');
+    expect(typeof client.blocks.children.append).toBe('function');
+    expect(typeof client.pages.create).toBe('function');
+    expect(typeof client.pages.update).toBe('function');
     expect(NOTION_VERSION).toBe('2025-09-03');
   });
 });
