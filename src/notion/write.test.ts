@@ -4,6 +4,12 @@ import { createFakeApi, type FakeApi } from './fake-api.mock.js';
 import { type BlockInput, markdownToBlocks } from './from-markdown.js';
 import { createNotionWriter } from './write.js';
 
+/** The rich text of the first block one append sent. */
+function sentRuns(fake: FakeApi, at = 0): RawObject[] {
+  const sent = (fake.appends[at] ?? [])[0] ?? {};
+  return (sent.paragraph as { rich_text: RawObject[] }).rich_text;
+}
+
 /** A page with the blocks it already holds. */
 function api(blocks: NotionBlock[] = []): FakeApi {
   return createFakeApi({ pages: [{ id: 'p', title: 'Page', parentId: 'parent', blocks }] });
@@ -53,8 +59,7 @@ describe('replaceBody', () => {
     const fake = api();
     await createNotionWriter(fake).replaceBody('p', markdownToBlocks('Hello.\n'));
 
-    const [sent] = fake.appends[0] as RawObject[];
-    const [run] = (sent?.paragraph as { rich_text: RawObject[] }).rich_text;
+    const [run] = sentRuns(fake);
     expect(run).toEqual({
       type: 'text',
       text: { content: 'Hello.', link: null },
@@ -73,8 +78,7 @@ describe('replaceBody', () => {
     const fake = api();
     await createNotionWriter(fake).replaceBody('p', markdownToBlocks(`${'a'.repeat(2500)}\n`));
 
-    const [sent] = fake.appends[0] as RawObject[];
-    const runs = (sent?.paragraph as { rich_text: RawObject[] }).rich_text;
+    const runs = sentRuns(fake);
     expect(runs.map((run) => (run.text as { content: string }).content.length)).toEqual([
       2000, 500,
     ]);
@@ -87,8 +91,7 @@ describe('replaceBody', () => {
     const fake = api();
     await createNotionWriter(fake).replaceBody('p', markdownToBlocks(`${text}\n`));
 
-    const [sent] = fake.appends[0] as RawObject[];
-    const runs = (sent?.paragraph as { rich_text: RawObject[] }).rich_text;
+    const runs = sentRuns(fake);
     expect(runs).toHaveLength(100);
     // Nothing is lost: the tail is one plain run holding the rest of the text.
     const joined = runs.map((run) => (run.text as { content: string }).content).join('');
@@ -102,9 +105,9 @@ describe('replaceBody', () => {
     const fake = api();
     await createNotionWriter(fake).replaceBody('p', markdownToBlocks(`${text}\n`));
 
-    const [sent] = fake.appends[0] as RawObject[];
-    const runs = (sent?.paragraph as { rich_text: RawObject[] }).rich_text;
-    expect((runs.at(-1)?.text as { content: string }).content).toContain('E');
+    const runs = sentRuns(fake);
+    const last = runs.at(-1) ?? {};
+    expect((last.text as { content: string }).content).toContain('E');
   });
 
   it('nests two levels in the request and appends the third by parent id', async () => {
@@ -117,9 +120,9 @@ describe('replaceBody', () => {
       'append:p:1',
       'append:b3:1',
     ]);
-    const [first] = fake.appends[0] as RawObject[];
-    const level2 = (first?.toggle as { children: RawObject[] }).children[0];
-    expect((level2?.toggle as { children?: unknown }).children).toHaveLength(1);
+    const first = (fake.appends[0] ?? [])[0] ?? {};
+    const level2 = (first.toggle as { children: RawObject[] }).children[0] ?? {};
+    expect((level2.toggle as { children?: unknown }).children).toHaveLength(1);
   });
 
   it('defers the rest of a run of children once one of them does not fit', async () => {
@@ -143,8 +146,8 @@ describe('replaceBody', () => {
     await createNotionWriter(fake).replaceBody('p', markdownToBlocks('| a |\n| - |\n| b |\n'));
 
     expect(fake.appends).toHaveLength(1);
-    const [sent] = fake.appends[0] as RawObject[];
-    expect((sent?.table as { children: RawObject[] }).children).toHaveLength(2);
+    const sent = (fake.appends[0] ?? [])[0] ?? {};
+    expect((sent.table as { children: RawObject[] }).children).toHaveLength(2);
   });
 
   it('defers a table that would land too deep to carry its rows', async () => {

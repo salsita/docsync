@@ -62,7 +62,7 @@ function notionShape(blocks: readonly RawObject[] | undefined): unknown[] {
       const body = (block[type] ?? {}) as RawObject;
       return {
         type: kind,
-        body: shapeBody(kind, body),
+        body: shapeBody(body),
         children: notionShape((block.children ?? body.children) as RawObject[] | undefined),
       };
     });
@@ -79,7 +79,7 @@ function isEmptyParagraph(block: RawObject): boolean {
 }
 
 /** The body of one block, reduced to what a create request can say. */
-function shapeBody(type: string, body: RawObject): RawObject {
+function shapeBody(body: RawObject): RawObject {
   const shaped: RawObject = {};
   if ('rich_text' in body) shaped.rich_text = shapeRichText(body.rich_text);
   if ('caption' in body) shaped.caption = shapeRichText(body.caption);
