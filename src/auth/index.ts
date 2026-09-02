@@ -73,7 +73,7 @@ async function signInToGoogle(source: Source, deps: AuthDeps): Promise<Credentia
   const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
   const state = randomState();
 
-  const { code, redirectUri } = await receiveCallback({
+  const { code, callbackUrl, redirectUri } = await receiveCallback({
     source,
     state,
     ports: deps.ports,
@@ -87,6 +87,7 @@ async function signInToGoogle(source: Source, deps: AuthDeps): Promise<Credentia
   return exchangeGoogleCode(config, {
     code,
     state,
+    callbackUrl,
     redirectUri,
     codeVerifier,
     now: deps.now,

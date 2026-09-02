@@ -37,6 +37,13 @@ export interface CallbackRequest {
 
 export interface CallbackResult {
   code: string;
+  /**
+   * The callback exactly as the browser delivered it, every parameter kept.
+   * The token exchange must validate this and not a rebuilt URL: Google, for
+   * one, sends an `iss` parameter and advertises that it does, so a library
+   * following RFC 9207 rejects a callback without it.
+   */
+  callbackUrl: string;
   /** The exact redirect URI the authorization server saw; the token exchange repeats it. */
   redirectUri: string;
   port: number;
@@ -171,7 +178,7 @@ export async function receiveCallback(request: CallbackRequest): Promise<Callbac
         }
 
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(OK_PAGE);
-        done(() => resolve({ code, redirectUri, port }));
+        done(() => resolve({ code, callbackUrl: url.toString(), redirectUri, port }));
       });
 
       const url = authorizationUrl(redirectUri, state);

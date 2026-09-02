@@ -114,12 +114,19 @@ export async function exchangeGoogleCode(
     state: string;
     redirectUri: string;
     codeVerifier: string;
+    /** The callback as received, all parameters intact. Preferred over rebuilding. */
+    callbackUrl?: string;
     now?: () => number;
   },
 ): Promise<Credential> {
-  const callback = new URL(options.redirectUri);
-  callback.searchParams.set('code', options.code);
-  callback.searchParams.set('state', options.state);
+  let callback: URL;
+  if (options.callbackUrl) {
+    callback = new URL(options.callbackUrl);
+  } else {
+    callback = new URL(options.redirectUri);
+    callback.searchParams.set('code', options.code);
+    callback.searchParams.set('state', options.state);
+  }
 
   const tokens = await client
     .authorizationCodeGrant(config, callback, {

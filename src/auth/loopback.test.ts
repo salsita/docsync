@@ -51,13 +51,27 @@ describe('receiveCallback', () => {
 
     const result = await run({ openBrowser: (url) => void open(url).then((r) => (seen = r)) });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       code: 'THE-CODE',
       redirectUri: 'http://localhost:27183/callback',
       port: 27183,
     });
     await vi.waitFor(() => expect(seen?.status).toBe(200));
     expect(seen?.body).toContain('close this tab');
+  });
+
+  it('hands back the callback URL with every parameter intact', async () => {
+    const open = browser(
+      (state) => `code=c3&state=${state}&iss=https%3A%2F%2Faccounts.google.com&scope=email`,
+    );
+
+    const result = await run({ openBrowser: (url) => void open(url) });
+
+    const url = new URL(result.callbackUrl);
+    expect(url.origin + url.pathname).toBe(result.redirectUri);
+    expect(url.searchParams.get('code')).toBe('c3');
+    expect(url.searchParams.get('iss')).toBe('https://accounts.google.com');
+    expect(url.searchParams.get('scope')).toBe('email');
   });
 
   it('falls back to the second port when the first is busy', async () => {
