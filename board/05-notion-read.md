@@ -99,11 +99,6 @@ Every placeholder carries the block id:
 `child_page` blocks are not in the body at all. Their position is lost, which
 is fine: they are files.
 
-This ticket must record, in the Outcome, which block types in the fixture
-cannot be created through the API (link previews, synced block references,
-possibly others). Ticket 06 needs that list, because whole-body replace has
-to keep those blocks in place rather than recreate them.
-
 ## Tests
 
 - `to-markdown` against every fixture page: snapshot of the produced
@@ -122,5 +117,5 @@ to keep those blocks in place rather than recreate them.
 
 ## Done when
 
-`pnpm check` green, every fixture page converts, the manual's Notion table
-matches the tests, and the Outcome lists non-recreatable block types.
+`pnpm check` green, every fixture page converts, and the manual's Notion table
+matches the tests.

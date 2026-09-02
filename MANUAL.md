@@ -473,8 +473,10 @@ merge, push.
 
 The first version replaces the document body.
 
-- **Notion:** blocks are regenerated. Block-level comments and per-block history
-  on the edited page are lost. Page-level comments, properties, sharing and the
+- **Notion:** every block except child pages is deleted and the body is
+  regenerated. Block-level comments, per-block history, and any block the API
+  cannot create (link previews, synced-block references) are lost on the
+  edited page. Page-level comments, properties, sharing, child pages and the
   page id survive.
 - **Google Docs:** the body text is replaced. Text colour, highlight, fonts,
   sizes and alignment **inside the body are lost on every push**, because the
