@@ -380,7 +380,7 @@ below.
 
 Inline: bold, italic, strikethrough, code, links as in GFM. Underline is
 `<u>…</u>`. Text and background colours are `<span data-color="red">…</span>`.
-These are preserved so that a round trip does not strip them.A line break
+These are preserved so that a round trip does not strip them. A line break
 inside one block is two trailing spaces and a newline.
 
 **Block attributes.** What Notion stores on a block that GFM cannot express
