@@ -127,6 +127,28 @@ describe('assignNames', () => {
     expect(assignNames([sib('a', 'Minutes')], previous)).toEqual(new Map([['a', 'Minutes.md']]));
   });
 
+  it('keeps an unsuffixed previous name', () => {
+    const previous = new Map([['a', 'Notes.md']]);
+    expect(assignNames([sib('a', 'Notes')], previous)).toEqual(new Map([['a', 'Notes.md']]));
+  });
+
+  it('drops an unsuffixed previous name when the title changed', () => {
+    const previous = new Map([['a', 'Notes.md']]);
+    expect(assignNames([sib('a', 'Minutes')], previous)).toEqual(new Map([['a', 'Minutes.md']]));
+  });
+
+  it('keeps a suffixed previous name for an extensionless document', () => {
+    const previous = new Map([['a', 'deal (2)']]);
+    expect(assignNames([sib('a', 'deal', '')], previous)).toEqual(new Map([['a', 'deal (2)']]));
+  });
+
+  it('puts the suffix before the extension, so callers should split it off', () => {
+    // A Drive file's own extension belongs in `ext`, not in `title`: passing
+    // "deal.pdf" as the title would suffix to "deal.pdf (2)".
+    const names = assignNames([sib('a', 'deal', '.pdf'), sib('b', 'deal', '.pdf')]);
+    expect(names.get('b')).toBe('deal (2).pdf');
+  });
+
   it('drops a previous name when the extension changed', () => {
     const previous = new Map([['a', 'Notes.md']]);
     expect(assignNames([sib('a', 'Notes', '.pdf')], previous)).toEqual(

@@ -25,8 +25,9 @@ const REF = /^([a-z]+):([^\s/]+)$/;
 export function parseSourceRef(text: string): SourceRef | undefined {
   const match = REF.exec(text);
   if (!match) return undefined;
-  const [, source, id] = match;
-  if (source === undefined || id === undefined) return undefined;
+  // The capture groups always match when the regex does; the defaults are only
+  // there because TypeScript cannot know that.
+  const [, source = '', id = ''] = match;
   if (!SOURCES.includes(source)) return undefined;
   return { source: source as Source, id };
 }

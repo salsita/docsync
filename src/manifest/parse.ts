@@ -17,13 +17,9 @@ export function parseManifest(text: string): ParseResult {
   const doc = parseDocument(text, { lineCounter, keepSourceTokens: true });
   const errors: ManifestError[] = [];
 
-  const lineOf = (node: Node | null | undefined): number => {
-    const range = node?.range;
-    if (!range) return 1;
-    return lineCounter.linePos(range[0]).line;
-  };
+  // linePos(0) is line 1, which is the right fallback for a node with no range.
   const report = (node: Node | null | undefined, message: string): void => {
-    errors.push({ line: lineOf(node), message });
+    errors.push({ line: lineCounter.linePos(node?.range?.[0] ?? 0).line, message });
   };
 
   for (const error of doc.errors) {

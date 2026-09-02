@@ -26,7 +26,7 @@ export function fileNameFor(title: string, ext: string): string {
 
   // A Windows device name is reserved with any extension at all, so the check is
   // on the part before the first dot: both `CON` and `CON.md` need the suffix.
-  const head = stem.split('.')[0] ?? '';
+  const head = stem.split('.', 1).join('');
   if (RESERVED.test(head)) stem = `${head}-${stem.slice(head.length)}`;
 
   if (stem === '') stem = 'untitled';
@@ -63,7 +63,7 @@ export function assignNames(
     }
   }
 
-  for (const sibling of [...pending].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+  for (const sibling of [...pending].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     for (let n = 1; ; n += 1) {
       const candidate = candidateName(sibling, n);
       if (!taken.has(candidate.toLowerCase())) {
@@ -106,25 +106,19 @@ function trimEdges(text: string): string {
   return out;
 }
 
-function byteLength(text: string): number {
-  let bytes = 0;
-  for (const char of text) bytes += utf8Length(char.codePointAt(0) ?? 0);
-  return bytes;
-}
+const encoder = new TextEncoder();
 
-function utf8Length(code: number): number {
-  if (code < 0x80) return 1;
-  if (code < 0x800) return 2;
-  if (code < 0x10000) return 3;
-  return 4;
+function byteLength(text: string): number {
+  return encoder.encode(text).length;
 }
 
 /** Cuts `text` to at most `limit` bytes, never inside a character. */
 function truncateToBytes(text: string, limit: number): string {
+  if (byteLength(text) <= limit) return text;
   let bytes = 0;
   let out = '';
   for (const char of text) {
-    const size = utf8Length(char.codePointAt(0) ?? 0);
+    const size = byteLength(char);
     if (bytes + size > limit) break;
     bytes += size;
     out += char;
