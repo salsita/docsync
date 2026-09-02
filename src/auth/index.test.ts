@@ -7,6 +7,7 @@ import {
   AppsFileIncompleteError,
   appsFilePath,
   createCredentialProvider,
+  grantHint,
   NotSignedInError,
   signIn,
   signOut,
@@ -76,6 +77,29 @@ describe('signIn to Notion', () => {
       accessToken: 'ntn_the-token',
       identity,
     });
+  });
+
+  it('says what to grant before opening the browser', async () => {
+    const { server, endpoints } = await mockNotion();
+    servers.push(server);
+    const lines: string[] = [];
+    let browserOpened = false;
+
+    await signIn('notion', {
+      ...base(),
+      notionEndpoints: endpoints,
+      log: (line) => {
+        expect(browserOpened).toBe(false);
+        lines.push(line);
+      },
+      openBrowser: (url) => {
+        browserOpened = true;
+        withCode('c')(url);
+      },
+    });
+
+    expect(lines[0]).toContain('teamspaces');
+    expect(grantHint('gdocs')).toContain('Drive and Docs');
   });
 
   it('sends the browser to Notion with owner=user', async () => {

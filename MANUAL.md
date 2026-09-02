@@ -60,23 +60,27 @@ When the entry is missing, it writes a template and opens it in `$EDITOR`
 
 ```yaml
 # OAuth apps used by docsync. This file is yours; docsync only reads it.
-# Register each app once and paste the values here.
+# Your team registers one app per source and shares the values; paste them here.
+# Registering the apps yourself is documented in MANUAL.md §2.
 
 google:
-  # Google Cloud Console → APIs & Services → Credentials → Create → OAuth client
-  # ID → type "Desktop app". Enable the Drive API and the Docs API.
   client_id: ""
   client_secret: ""
 
 notion:
-  # notion.so/profile/integrations → New integration → type "Public".
-  # Redirect URIs: http://localhost:27183/callback and http://localhost:27184/callback
   client_id: ""
   client_secret: ""
 ```
 
-Save, close, and the browser flow starts. You pick the pages to grant in
-Notion's own dialog; nothing needs to be shared with an integration by hand.
+Most people never register anything: one person on the team creates the two
+apps (table above) and shares the values through the team's secret store.
+
+Save, close, and the browser flow starts. Before opening the browser the
+terminal says what to grant. For Notion you pick pages in Notion's own
+dialog: grant the teamspaces you work in, since everything under a granted
+page is included, and you can change the selection later under Notion's
+Settings → Connections. For Google, approve the Drive and Docs scopes.
+Nothing needs to be shared with an integration by hand.
 The resulting tokens are stored in the OS keychain (macOS Keychain, Windows
 Credential Manager, Secret Service on Linux). The apps file is written with
 owner-only permissions and holds the client secrets and nothing else.

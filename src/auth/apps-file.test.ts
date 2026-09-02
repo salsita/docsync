@@ -67,9 +67,9 @@ describe('loadOAuthApp', () => {
 
     const text = readFileSync(path, 'utf8');
     expect(text).toContain('# OAuth apps used by docsync.');
-    expect(text).toContain('http://localhost:27183/callback');
+    expect(text).toContain('MANUAL.md §2');
     expect(text).toContain('http://localhost:27184/callback');
-    expect(text).toContain('# notion.so/profile/integrations');
+    expect(text).toContain('# Your team registers one app per source');
   });
 
   it.runIf(posix)('creates the directory 0700 and the file 0600', async () => {

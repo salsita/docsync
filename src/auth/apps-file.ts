@@ -27,17 +27,14 @@ import type { AuthDeps, OAuthApp } from './types.js';
  * so the fallback port has to be registered up front or the retry is useless.
  */
 export const APPS_FILE_TEMPLATE = `# OAuth apps used by docsync. This file is yours; docsync only reads it.
-# Register each app once and paste the values here.
+# Your team registers one app per source and shares the values; paste them here.
+# Registering the apps yourself is documented in MANUAL.md §2.
 
 google:
-  # Google Cloud Console → APIs & Services → Credentials → Create → OAuth client
-  # ID → type "Desktop app". Enable the Drive API and the Docs API.
   client_id: ""
   client_secret: ""
 
 notion:
-  # notion.so/profile/integrations → New integration → type "Public".
-  # Redirect URIs: http://localhost:27183/callback and http://localhost:27184/callback
   client_id: ""
   client_secret: ""
 `;

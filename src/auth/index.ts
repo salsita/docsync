@@ -21,8 +21,25 @@ import { createCredentialProvider } from './provider.js';
 import { createKeychainStore } from './store.js';
 import type { AuthDeps, Credential, Identity } from './types.js';
 
+/**
+ * What to grant, said in the terminal before the browser opens. Most people
+ * never read the vendor's consent screen carefully; this is the one line that
+ * tells them what docsync needs (MANUAL §2).
+ */
+export function grantHint(source: Source): string {
+  if (source === 'notion') {
+    return [
+      'Notion will ask which pages docsync may access. Grant the teamspaces you',
+      'work in: everything under a granted page is included. You can change the',
+      'selection later under Notion Settings → Connections.',
+    ].join('\n');
+  }
+  return 'Google will ask for access to Drive and Docs. Approve both; docsync needs them to read and update your documents.';
+}
+
 async function signInToNotion(source: Source, deps: AuthDeps): Promise<Credential> {
   const app = await loadOAuthApp(source, deps);
+  (deps.log ?? console.log)(`${grantHint(source)}\n`);
   const state = randomState();
   const { code, redirectUri } = await receiveCallback({
     source,
@@ -51,6 +68,7 @@ async function signInToNotion(source: Source, deps: AuthDeps): Promise<Credentia
 async function signInToGoogle(source: Source, deps: AuthDeps): Promise<Credential> {
   const app = await loadOAuthApp(source, deps);
   const config = await googleConfiguration(app, deps);
+  (deps.log ?? console.log)(`${grantHint(source)}\n`);
   const codeVerifier = randomPKCECodeVerifier();
   const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
   const state = randomState();
