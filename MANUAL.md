@@ -218,16 +218,21 @@ With no sources, the result is a repo with one empty commit. Add roots later.
 Resolves each source ref, appends roots to the manifest, then fetches and
 fast-forwards if the working tree is clean.
 
-The `=<path>` alias is optional:
+The `=<path>` alias is optional. A trailing slash means "under this
+directory, named by the source title". No trailing slash means "exactly this
+name".
 
-| Form                         | Resulting `path`                                                                                    |
-| ---------------------------- | --------------------------------------------------------------------------------------------------- |
-| `notion:2f3a…`               | `<title>/` for a page with children or a folder, `<title>.md` for a leaf document, at the repo root |
-| `notion:2f3a…=specs/`        | Inside `specs/`, under the source title: `specs/<title>/` or `specs/<title>.md`                     |
-| `notion:2f3a…=specs/auth.md` | Exactly `specs/auth.md`. Leaf documents only.                                                       |
-| `notion:2f3a…=specs/auth/`   | A directory named `auth`, containing the document and its children, ignoring the source title       |
+| Alias | Leaf document | Page with children, or folder |
+|---|---|---|
+| none | `<title>.md` | `<title>/` |
+| `=specs/` | `specs/<title>.md` | `specs/<title>/` |
+| `=specs/auth.md` | `specs/auth.md` | error: a container cannot be a file |
+| `=specs/auth` | error: a document needs an extension | `specs/auth/` |
 
-So the trailing slash means "use the source title, but put it here".
+The manifest stores the resolved path, so a later title change at the source
+does not move the root. A leaf document that later gains children keeps its
+file path; the children go in a sibling directory with the same stem
+(`specs/auth.md` and `specs/auth/`).
 
 ### `docsync remove <path>...`
 
