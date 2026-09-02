@@ -1,0 +1,47 @@
+[
+  {
+    "object": "block",
+    "id": "1bfeca0b-61bb-452c-bc89-e2f0e009fe06",
+    "parent": {
+      "type": "page_id",
+      "page_id": "3cf715cb-eb08-81e2-bf38-e40b17147f5c"
+    },
+    "created_time": "2026-09-02T13:25:00.000Z",
+    "last_edited_time": "2026-09-02T13:25:00.000Z",
+    "created_by": {
+      "object": "user",
+      "id": "2e924337-300b-4281-b820-a7ff207370b1"
+    },
+    "last_edited_by": {
+      "object": "user",
+      "id": "2e924337-300b-4281-b820-a7ff207370b1"
+    },
+    "has_children": false,
+    "in_trash": false,
+    "type": "paragraph",
+    "paragraph": {
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "Tests leading-dot removal and trailing-dot trimming.",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "Tests leading-dot removal and trailing-dot trimming.",
+          "href": null
+        }
+      ],
+      "icon": null,
+      "color": "default"
+    },
+    "archived": false
+  }
+]

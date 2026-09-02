@@ -1,0 +1,47 @@
+[
+  {
+    "object": "block",
+    "id": "a2913d4e-d4b5-4d5f-852f-a00139a5e650",
+    "parent": {
+      "type": "page_id",
+      "page_id": "3cf715cb-eb08-8149-88d2-d4ff8459079c"
+    },
+    "created_time": "2026-09-02T13:25:00.000Z",
+    "last_edited_time": "2026-09-02T13:25:00.000Z",
+    "created_by": {
+      "object": "user",
+      "id": "2e924337-300b-4281-b820-a7ff207370b1"
+    },
+    "last_edited_by": {
+      "object": "user",
+      "id": "2e924337-300b-4281-b820-a7ff207370b1"
+    },
+    "has_children": false,
+    "in_trash": false,
+    "type": "paragraph",
+    "paragraph": {
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "Tests filename derivation from a hostile title.",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "Tests filename derivation from a hostile title.",
+          "href": null
+        }
+      ],
+      "icon": null,
+      "color": "default"
+    },
+    "archived": false
+  }
+]
