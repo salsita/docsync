@@ -56,8 +56,8 @@ one is missing.
 
 ### Home directory
 
-`~/.docsync/` holds cached tokens and the current skill file (§10). On Windows
-this is `%USERPROFILE%\.docsync\`.
+`~/.docsync/` holds cached tokens. On Windows this is
+`%USERPROFILE%\.docsync\`.
 
 ---
 
@@ -71,7 +71,7 @@ ls
 ```
 
 ```
-.agents/                # skill file for agents (§10)
+.agents/  .claude/  .cursor/   # skill file for agents (§10)
 Product Specs/          # the Notion page's sub-pages
 Product Specs.md        # the Notion page
 Contracts/              # the Drive folder, recursively
@@ -160,8 +160,8 @@ Creates a checkout.
 2. Writes an empty manifest to `.docsync.yaml`.
 3. `git init -b main`, with `core.autocrlf=false` so line endings are LF
    everywhere.
-4. Adds `.docsync.yaml` and `.agents/skills/docsync` to `.git/info/exclude`.
-5. Links the skill file (§10).
+4. Adds `.docsync.yaml` and the skill file paths to `.git/info/exclude`.
+5. Writes the skill file (§10).
 6. For each `<src>` given, resolves it at the source and appends a root
    (same code path as `docsync add`).
 7. `git remote add origin docsync::.docsync.yaml`.
@@ -219,11 +219,6 @@ See Credentials.
 
 Prints what a source ref is: type, title, child count, last editor, last edit
 time. Useful before `add`.
-
-### `docsync skill [--for <agent>]`
-
-Re-links the skill file (§10). `--for claude` or `--for cursor` adds a link in
-that agent's own directory as well.
 
 ---
 
@@ -442,8 +437,8 @@ The remote URL is `docsync::<manifest>`, where `<manifest>` is one of:
 | `docsync::../ai-starter/checkouts/sales.yaml` | Relative paths always resolve against the working tree, never the shell's directory. |
 | `docsync::gdocs:<id>`, `docsync::notion:<id>` | **later**: the manifest is itself a document at the source. |
 
-`git clone docsync::/abs/path/manifest.yaml my-docs` is a normal clone. It
-links the skill file too.
+`git clone docsync::/abs/path/manifest.yaml my-docs` is a normal clone. The
+helper writes the skill file during it.
 
 Several checkouts can share one manifest. Manifest history, if you want it, is
 the history of whatever git repo the manifest file lives in.
@@ -454,26 +449,23 @@ the history of whatever git repo the manifest file lives in.
 
 ### The skill file
 
-Every checkout contains `.agents/skills/docsync/SKILL.md`, which tells an agent
-how to work in a docsync checkout: pull first, edit on a branch, never touch
-frontmatter or the index, never edit inside placeholders, and never push unless
-asked. `.agents/skills/` is the location shared by Claude Code, Codex, Cursor
-and others. `docsync skill --for <agent>` adds a link in an agent-specific
-directory when one is needed.
+Every checkout contains a skill file that tells an agent how to work in a
+docsync checkout: pull first, edit on a branch, never touch frontmatter or the
+index, never edit inside placeholders, and never push unless asked.
 
-The path in the checkout is a link, so it always shows the skill file of the
-installed version:
+The same file is written to the three locations the supported agents read:
 
-- The tool keeps the current skill file at `~/.docsync/skill/SKILL.md` and
-  refreshes it from its own bundled copy every time any `docsync` command runs.
-  This location is stable across Node version managers and reinstalls.
-- On macOS and Linux, `.agents/skills/docsync` is a symlink to
-  `~/.docsync/skill`.
-- On Windows it is a directory junction, which needs no admin rights or
-  developer mode.
-- The link is excluded from git via `.git/info/exclude`, like the manifest.
+| Agent | Path |
+|---|---|
+| Codex | `.agents/skills/docsync/SKILL.md` |
+| Claude Code | `.claude/skills/docsync/SKILL.md` |
+| Cursor | `.cursor/skills/docsync/SKILL.md` |
 
-If the link is broken, `docsync skill` repairs it.
+They are plain copies, excluded from git via `.git/info/exclude`. Every
+`docsync` command and every helper run compares them with the bundled copy of
+the installed version and overwrites them when they differ, so upgrading
+docsync updates every checkout the next time it is touched. Do not edit them;
+your edits will be overwritten.
 
 ### The loop
 
@@ -495,7 +487,7 @@ docsync is expected to work on Windows. Specifically:
 - Paths in manifests and frontmatter always use `/`.
 - Line endings are LF. `init` sets `core.autocrlf=false`.
 - Filenames avoid reserved characters and names (§6).
-- The skill link is a junction (§10).
+- No symlinks anywhere. The skill file is a copy.
 - `~/.docsync/` is `%USERPROFILE%\.docsync\`.
 - **To verify early:** Git for Windows must be able to execute the
   `git-remote-docsync` shim that npm installs. If it cannot run a `.cmd` shim,
@@ -503,7 +495,11 @@ docsync is expected to work on Windows. Specifically:
 
 ---
 
-## 12. Limitations of the first version
+## 12. Roadmap
+
+### Phase 1 — the core loop
+
+Everything in this manual not marked **later**. Limitations of phase 1:
 
 - Notion databases are not synced. Pages inside a database are not synced either.
 - Sheets, Slides and Drawings are exported read-only.
@@ -513,6 +509,36 @@ docsync is expected to work on Windows. Specifically:
 - Google Docs revisions are collapsed into one commit per fetch.
 - One branch (`main`) per remote. Other local branches are fine; the helper only
   serves `main`.
+
+### Phase 2 — attachments
+
+Files hosted by the source are downloaded on fetch into `<title>.assets/` next
+to the document and linked relatively from the Markdown. This is required for
+Notion anyway, since its hosted-file URLs are signed and expire after an hour.
+
+Push uploads new or changed files. Notion's File Upload API accepts the bytes
+directly (single request up to 20 MB, multipart above) and the upload is
+attached to the image, file, PDF or video block. For Google Docs the image is
+uploaded to Drive and inserted by reference.
+
+### Phase 3 — diff-based write-back
+
+Block ids and paragraph ranges are tracked, and only what changed is patched.
+Keeps formatting outside the dialect on untouched paragraphs, and keeps
+comments anchored. Removes the biggest phase-1 limitation for Google Docs.
+
+### Phase 4 — comment threads
+
+Pull comment threads alongside the document, push replies and resolutions.
+Comments can be client-facing, so docsync never writes a comment on its own;
+only what you author and push. File format to be designed when we get there.
+
+### Later
+
+- Google Docs revision history replayed as individual commits.
+- Manifest stored at the source: `docsync::gdocs:<id>`.
+- Notion databases.
+- Writable Sheets and Slides, if a lossless path exists.
 
 ---
 
@@ -528,7 +554,6 @@ docsync pull
 docsync push
 docsync resolve <src>
 docsync auth    <source>
-docsync skill   [--for <agent>]
 docsync --version
 ```
 
