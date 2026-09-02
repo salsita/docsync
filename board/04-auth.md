@@ -12,7 +12,7 @@ one interface and never see the flow.
 
 | Concern | Choice | Why |
 |---|---|---|
-| OAuth library | `openid-client` (v6, ESM, no build script) | Authorization code + PKCE, loopback redirect, refresh grant, discovery for Google, manual metadata for Notion. One library for both sources and for gcloud credentials. |
+| OAuth library | `openid-client` (v6, ESM, no build script) | Authorization code + PKCE, loopback redirect, refresh grant, discovery for Google, manual metadata for Notion. One library for both sources. |
 | Keychain | `@napi-rs/keyring` | Prebuilt per-platform binaries, no postinstall script, so `allowBuilds` stays empty. macOS Keychain, Windows Credential Manager, Secret Service. **Verify it installs under `strictDepBuilds` before writing code; if it needs a build, stop and report.** |
 | Loopback port | 27183, fallback 27184 | Notion requires exact redirect URIs, so ports are fixed and both are in the template instructions. Google allows any loopback port. |
 | Google scopes | `openid email https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents` | Full Drive scope is required to list folders and update existing files; `drive.file` only covers files the app created. `openid email` gives the "signed in as" line. |
@@ -27,9 +27,9 @@ one interface and never see the flow.
 |---|---|
 | `apps-file.ts` | Read `oauth-apps.yaml`; write the commented template when missing; open `$EDITOR` (`%EDITOR%`, then `notepad` on Windows, `vi` elsewhere) and re-read; validate that the needed entry is filled. |
 | `loopback.ts` | Start an HTTP server on the first free port of the list, hand the authorization URL to the browser (`open`-style spawn of the platform opener, printing the URL as well), receive one callback, respond with a small "you can close this tab" page, shut down. Timeout after 5 minutes. |
-| `google.ts` | `openid-client` discovery against `https://accounts.google.com`, PKCE, refresh grant. Also `readGcloudAdc()`: parse `~/.config/gcloud/application_default_credentials.json` (`%APPDATA%\gcloud\…` on Windows) when it is `type: authorized_user`, and use its `client_id`, `client_secret`, `refresh_token` with the same refresh grant. Prefer ADC when present and it carries the Drive scope; otherwise fall through to the apps-file client. |
+| `google.ts` | `openid-client` discovery against `https://accounts.google.com`, PKCE, refresh grant. |
 | `notion.ts` | Manual `Configuration` with `authorization_endpoint: https://api.notion.com/v1/oauth/authorize`, `token_endpoint: https://api.notion.com/v1/oauth/token`, client auth `ClientSecretBasic`, `owner=user` on the authorization URL. Notion tokens do not expire and have no refresh. The token response carries `workspace_name`, `bot_id` and `owner.user`; keep them for "signed in as". |
-| `store.ts` | Keychain read/write/delete under service `docsync`, account `<source>`. Value is JSON: tokens, expiry, identity, and which client (apps file or ADC) issued it. |
+| `store.ts` | Keychain read/write/delete under service `docsync`, account `<source>`. Value is JSON: tokens, expiry, identity. |
 | `provider.ts` | `CredentialProvider` interface: `accessToken(source): Promise<string>` that refreshes when within 60 s of expiry, and `identity(source)`. One implementation over `store.ts`; one in-memory fake for tests. |
 | `errors.ts` | `NotSignedInError(source)` whose message is the exact command to run, and `AppsFileIncompleteError(source)` pointing at the file. |
 
@@ -55,16 +55,15 @@ ticket exposes `signIn(source)`, `signOut(source)`, `whoAmI(source)` for it.
   mismatch on callback → rejected; timeout.
 - `google` and `notion`: the code exchange and refresh against a local mock
   server driven by `openid-client`'s configuration override for the issuer
-  URL (or `undici` MockAgent). ADC file parsing for `authorized_user` and
-  rejection of `service_account`.
+  URL (or `undici` MockAgent).
 - `store`: round trip against the real keychain, tagged so it can be skipped
   in CI where no keychain exists (Linux runners); a fake store for everything
   else.
 - `provider`: refresh happens at the 60 s boundary, `NotSignedInError` when
   the store is empty.
 
-End to end on a real machine, once each, recorded in the Outcome: Google via
-ADC, Google via apps file, Notion.
+End to end on a real machine, once each, recorded in the Outcome: Google and
+Notion.
 
 ## Done when
 

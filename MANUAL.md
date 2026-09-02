@@ -51,9 +51,8 @@ bring one per source.
 
 | Source | Sign in | What you need |
 |---|---|---|
-| Google, with gcloud | `gcloud auth application-default login --scopes=https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents,openid` | Nothing. docsync reads Application Default Credentials like every Google SDK. |
-| Google, without gcloud | `docsync auth google` | An OAuth client of type *Desktop app* in Google Cloud Console. |
-| Notion | `docsync auth notion` | A *public* integration in Notion's integration settings, with `http://localhost:27183/callback` as its redirect URI. |
+| Google | `docsync auth google` | An OAuth client of type *Desktop app* in Google Cloud Console, with the Drive API and the Docs API enabled. |
+| Notion | `docsync auth notion` | A *public* integration in Notion's integration settings, with `http://localhost:27183/callback` and `http://localhost:27184/callback` as redirect URIs. |
 
 `docsync auth <source>` looks for the client in `~/.docsync/oauth-apps.yaml`.
 When the entry is missing, it writes a template and opens it in `$EDITOR`
@@ -71,7 +70,7 @@ google:
 
 notion:
   # notion.so/profile/integrations → New integration → type "Public".
-  # Redirect URI: http://localhost:27183/callback
+  # Redirect URIs: http://localhost:27183/callback and http://localhost:27184/callback
   client_id: ""
   client_secret: ""
 ```
