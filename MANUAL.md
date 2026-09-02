@@ -412,7 +412,7 @@ A paragraph in green.
 
 | Google Docs                                   | Markdown                                                                                              |
 | --------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Title / Subtitle                              | `# Title` / `## Subtitle` on the first lines, tagged in frontmatter as `title-style: true`            |
+| Title / Subtitle | `# Title` / `## Subtitle`, each with `<!-- docsync: style=title -->` or `style=subtitle` on the line above, since a plain `#` is Heading 1 |
 | Heading 1–6                                   | `#` … `######`                                                                                        |
 | paragraph                                     | paragraph                                                                                             |
 | bulleted / numbered list, nested              | `-` / `1.`, nested by indentation                                                                     |
@@ -421,7 +421,7 @@ A paragraph in green.
 | horizontal rule                               | `---`                                                                                                 |
 | page break                                    | `<!-- docsync:pagebreak -->`                                                                          |
 | footnote                                      | `[^n]` with the definition at the end                                                                 |
-| image                                         | downloaded into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
+| image | `<!-- docsync:object gdocs:<objectId> type=image -->` in the first version; downloaded into `<title>.assets/` and linked relatively **later** |
 | link                                          | `[text](url)`                                                                                         |
 | bold, italic, strikethrough, code font        | as in GFM                                                                                             |
 | underline                                     | `<u>…</u>`                                                                                            |
