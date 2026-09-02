@@ -37,7 +37,9 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "@napi-rs/keyring": "^2.0.0",
     "ignore": "^7.0.8",
+    "openid-client": "^6.8.7",
     "yaml": "^2.9.0"
   }
 }
