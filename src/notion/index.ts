@@ -114,8 +114,10 @@ async function toFile(
 /**
  * What one page is, from its own object and its direct blocks (MANUAL §5).
  *
- * A page with child pages is a container: on disk it is `<title>.md` and the
- * directory `<title>/` beside it, which is what `resolveAlias` needs to know.
+ * Every page is a document, children or not: on disk it is `<title>.md`, and a
+ * page with child pages owns the directory `<title>/` beside it as well
+ * (MANUAL §6). Only a Drive folder is a `container`, so the kind here is always
+ * `leaf` and the child count is what says whether there is a directory too.
  * Nothing is converted and no subtree is walked — this runs before there is a
  * checkout, and `docsync add` must be cheap.
  */
@@ -133,7 +135,7 @@ export async function describe(
   return {
     ref: { source: 'notion', id },
     title: titleOf(page),
-    kind: childCount === 0 ? 'leaf' : 'container',
+    kind: 'leaf',
     childCount,
     // Every Notion page is a Markdown document (MANUAL §6).
     ext: '.md',

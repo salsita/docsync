@@ -113,12 +113,14 @@ describe.skipIf(process.platform === 'win32')(
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`, `gdocs:${CONTRACTS}`);
 
+      // The listing of MANUAL §3: the page is a file, its children sit in the
+      // sibling directory, and the Drive folder is a directory.
       expect(w.files(co)).toEqual([
         '.docsync/index.yaml',
         'Contracts/Terms.md',
         'Contracts/logo.png',
+        'Product Specs.md',
         'Product Specs/Auth.md',
-        'Product Specs/Product Specs.md',
       ]);
       expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in.');
       // The manifest, the formatter files and the skill files belong to the
@@ -177,14 +179,14 @@ describe.skipIf(process.platform === 'win32')(
         '--no-fetch',
         `notion:${LEAF}`,
         `gdocs:${ROADMAP}=notes/`,
-        `notion:${SPECS}=specs/product`,
+        `notion:${SPECS}=specs/product.md`,
         `gdocs:${CONTRACTS}=filed/`,
       );
 
       expect(added.code).toBe(0);
       expect(w.read(co, '.docsync.yaml')).toContain('path: Leaf.md');
       expect(w.read(co, '.docsync.yaml')).toContain('path: notes/Roadmap.md');
-      expect(w.read(co, '.docsync.yaml')).toContain('path: specs/product/');
+      expect(w.read(co, '.docsync.yaml')).toContain('path: specs/product.md');
       expect(w.read(co, '.docsync.yaml')).toContain('path: filed/');
       // `--no-fetch` stops at the manifest (ticket 10).
       expect(w.files(co)).toEqual(['.docsync/index.yaml']);
@@ -200,14 +202,25 @@ describe.skipIf(process.platform === 'win32')(
       expect(run.err).toContain('needs an extension');
     });
 
-    it('add refuses a container that was given a file name', async () => {
+    it('add refuses a Drive folder that was given a file name', async () => {
       const w = world();
       const co = await checkout(w);
 
-      const run = await w.run(co, 'add', '--no-fetch', `notion:${SPECS}=specs/product.md`);
+      const run = await w.run(co, 'add', '--no-fetch', `gdocs:${CONTRACTS}=filed/terms.md`);
 
       expect(run.code).toBe(1);
-      expect(run.err).toContain('a container cannot be a file');
+      expect(run.err).toContain('a folder cannot be a file');
+    });
+
+    it('add gives a page with children a file of its own, children beside it', async () => {
+      const w = world();
+      const co = await checkout(w);
+
+      const run = await w.run(co, 'add', '--no-fetch', `notion:${SPECS}`);
+
+      expect(run.code).toBe(0);
+      expect(run.out).toContain('Added Product Specs.md');
+      expect(w.read(co, '.docsync.yaml')).toContain('path: Product Specs.md');
     });
 
     it('add fetches and fast-forwards when the tree is clean', async () => {
@@ -217,11 +230,11 @@ describe.skipIf(process.platform === 'win32')(
       const run = await w.run(co, 'add', `notion:${SPECS}`);
 
       expect(run.code).toBe(0);
-      expect(run.out).toContain('Added Product Specs/');
+      expect(run.out).toContain('Added Product Specs.md');
       expect(w.files(co)).toEqual([
         '.docsync/index.yaml',
+        'Product Specs.md',
         'Product Specs/Auth.md',
-        'Product Specs/Product Specs.md',
       ]);
       expect(run.out).toContain('Product Specs/Auth.md');
       expect(run.out).toContain('by Ada Lovelace');
@@ -231,10 +244,10 @@ describe.skipIf(process.platform === 'win32')(
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`);
 
-      const removed = await w.run(co, 'remove', 'Product Specs/');
+      const removed = await w.run(co, 'remove', 'Product Specs.md');
       expect(removed.code).toBe(0);
       expect(w.files(co)).toEqual(['.docsync/index.yaml']);
-      expect(w.git(co, 'log', '-1', '--format=%s')).toBe('Remove Product Specs/');
+      expect(w.git(co, 'log', '-1', '--format=%s')).toBe('Remove Product Specs.md');
       expect(w.read(co, '.docsync.yaml')).not.toContain(SPECS);
 
       // The removal reaches the remote as an unsubscribe: nothing is trashed.
@@ -261,7 +274,7 @@ describe.skipIf(process.platform === 'win32')(
 
       const quiet = await w.run(co, 'status');
       expect(quiet.all).toContain('## main...origin/main');
-      expect(quiet.out).toContain(`notion:${SPECS.slice(0, 4)}…  Product Specs/  fetched 20`);
+      expect(quiet.out).toContain(`notion:${SPECS.slice(0, 4)}…  Product Specs.md  fetched 20`);
       expect(quiet.out).toContain('up to date');
 
       const state = w.store.load();
@@ -364,7 +377,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(run.code).toBe(0);
       expect(run.out.split('\n').slice(0, 4)).toEqual([
         `ref       notion:${SPECS}`,
-        'type      container',
+        'type      leaf',
         'title     Product Specs',
         'children  1',
       ]);

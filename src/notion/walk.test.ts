@@ -22,7 +22,9 @@ async function walk(overrides: Partial<Root> = {}, previous?: Map<string, string
 }
 
 describe('walkRoot', () => {
-  it('puts the root page inside its directory and the children beside it', async () => {
+  // A directory root is no longer what `docsync add` writes for a page, but a
+  // manifest written by hand or by an earlier version still has one (ticket 20).
+  it('puts the root page inside a directory root and the children beside it', async () => {
     const { root: page, pages } = await walk();
 
     expect(page.path).toBe('Docsync test/Docsync test.md');
@@ -46,6 +48,30 @@ describe('walkRoot', () => {
 
     expect(blocks?.children.map((child) => child.title)).toEqual(['Nested']);
     expect(blocks?.children[0]?.path).toBe('Docsync test/Docsync test/Blocks/Nested.md');
+  });
+
+  it('lays a file root out as `docsync add` now writes it, children and all', async () => {
+    const { root: page, pages } = await walk({ path: 'Docsync test.md' });
+
+    expect(page.path).toBe('Docsync test.md');
+    expect(pages.map((one) => one.path).sort()).toEqual([
+      'Docsync test.md',
+      'Docsync test/Blocks.md',
+      'Docsync test/Blocks/Nested.md',
+      'Docsync test/CON-.md',
+      'Docsync test/Hidden leading dot.md',
+      'Docsync test/Leaf.md',
+      'Docsync test/Notes (2).md',
+      'Docsync test/Notes.md',
+      'Docsync test/Title-With- Illegal-Chars- -Quoted- -Tag- -Pipe-.md',
+    ]);
+  });
+
+  it('keeps ignore patterns relative to the root page, from a file root', async () => {
+    const { pages } = await walk({ path: 'Docsync test.md', ignore: ['Blocks/**'] });
+
+    expect(pages.map((one) => one.path)).toContain('Docsync test/Blocks.md');
+    expect(pages.map((one) => one.path)).not.toContain('Docsync test/Blocks/Nested.md');
   });
 
   it('names a file root exactly, with its children beside it', async () => {

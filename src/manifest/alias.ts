@@ -23,6 +23,10 @@ export type AliasResult = { ok: true; path: string } | { ok: false; message: str
  * A trailing slash means "under here, named by the source title"; no trailing
  * slash means "exactly this name". The resolved path is what the manifest
  * stores, so a later title change at the source does not move the root.
+ *
+ * Only a `container` — a Drive folder — becomes a directory. A Notion page is
+ * a document whether or not it has children, since its children live in the
+ * sibling directory of the same stem, so a page that gains one does not move.
  */
 export function resolveAlias(alias: string | undefined, resolved: ResolvedObject): AliasResult {
   const ext = resolved.ext ?? '.md';
@@ -43,7 +47,7 @@ export function resolveAlias(alias: string | undefined, resolved: ResolvedObject
       if (namesAFile) {
         return {
           ok: false,
-          message: `"${prefix}" names a file, but a container cannot be a file; drop the extension`,
+          message: `"${prefix}" names a file, but a folder cannot be a file; drop the extension`,
         };
       }
       path = `${prefix}/`;

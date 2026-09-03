@@ -4,8 +4,9 @@ import type { SourceRef } from '../source-ref.js';
 /**
  * What a source object is, as far as the local layout is concerned.
  *
- * A `leaf` becomes one file; a `container` becomes a directory. A Notion page
- * with child pages is a container that also has a document of its own (MANUAL §6).
+ * A `leaf` becomes one file; a `container` becomes a directory. Only a Drive
+ * folder is a container: a Notion page is a document with or without children,
+ * and its children go in the sibling directory of the same stem (MANUAL §6).
  */
 export type Kind = 'leaf' | 'container';
 

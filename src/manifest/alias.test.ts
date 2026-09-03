@@ -16,35 +16,35 @@ function error(alias: string | undefined, kind: Kind, title = 'Auth'): string {
 
 describe('resolveAlias', () => {
   describe('the table in MANUAL §5', () => {
-    it('no alias, leaf', () => {
+    it('no alias, document', () => {
       expect(path(undefined, 'leaf')).toBe('Auth.md');
     });
 
-    it('no alias, container', () => {
+    it('no alias, Drive folder', () => {
       expect(path(undefined, 'container')).toBe('Auth/');
     });
 
-    it('directory alias, leaf', () => {
+    it('directory alias, document', () => {
       expect(path('specs/', 'leaf')).toBe('specs/Auth.md');
     });
 
-    it('directory alias, container', () => {
+    it('directory alias, Drive folder', () => {
       expect(path('specs/', 'container')).toBe('specs/Auth/');
     });
 
-    it('file alias, leaf', () => {
+    it('file alias, document', () => {
       expect(path('specs/auth.md', 'leaf')).toBe('specs/auth.md');
     });
 
-    it('file alias, container', () => {
-      expect(error('specs/auth.md', 'container')).toContain('a container cannot be a file');
+    it('file alias, Drive folder', () => {
+      expect(error('specs/auth.md', 'container')).toContain('a folder cannot be a file');
     });
 
-    it('extensionless alias, leaf', () => {
+    it('extensionless alias, document', () => {
       expect(error('specs/auth', 'leaf')).toContain('needs an extension');
     });
 
-    it('extensionless alias, container', () => {
+    it('extensionless alias, Drive folder', () => {
       expect(path('specs/auth', 'container')).toBe('specs/auth/');
     });
   });

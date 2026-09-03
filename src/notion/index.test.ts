@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/index.js';
 import { parseDocument } from '../frontmatter.js';
 import type { IndexEntry } from '../index-file.js';
+import { resolveAlias } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import type { NotionApi } from './api.js';
 import { fixtureApi, ROOT_ID } from './fixtures.mock.js';
@@ -14,7 +15,9 @@ const provider = createFakeCredentialProvider({
   notion: { accessToken: 'secret_test', identity: { workspace: 'Test' } },
 });
 
-const root: Root = { src: { source: 'notion', id: ROOT_ID }, path: 'Docsync test/', ignore: [] };
+// What `docsync add notion:<page>` writes: the page is a file, its children
+// are in the sibling directory of the same stem (MANUAL §4, §6).
+const root: Root = { src: { source: 'notion', id: ROOT_ID }, path: 'Docsync test.md', ignore: [] };
 
 function entry(path: string, id: string, lastEditedTime: string): IndexEntry {
   return { path, src: { source: 'notion', id }, type: 'notion-page', lastEditedTime };
@@ -44,7 +47,7 @@ describe('fetchRoot', () => {
     expect(entries).toHaveLength(files.length);
     expect(entries.map((one) => one.path)).toEqual(files.map((file) => file.path));
     expect(entries[0]).toEqual(
-      entry('Docsync test/Docsync test.md', ROOT_ID, files[0]?.entry.lastEditedTime ?? ''),
+      entry('Docsync test.md', ROOT_ID, files[0]?.entry.lastEditedTime ?? ''),
     );
     expect(entries.every((one) => one.type === 'notion-page')).toBe(true);
   });
@@ -140,13 +143,13 @@ describe('fetchRoot', () => {
   it('marks only the page whose time moved', async () => {
     const first = await fetch();
     const previous = new Map(first.entries.map((one) => [one.path, one]));
-    const stale = previous.get('Docsync test/Docsync test/Leaf.md');
+    const stale = previous.get('Docsync test/Leaf.md');
     if (stale) previous.set(stale.path, { ...stale, lastEditedTime: '2000-01-01T00:00:00.000Z' });
 
     const { files } = await fetch(previous);
 
     expect(files.filter((file) => file.changed).map((file) => file.path)).toEqual([
-      'Docsync test/Docsync test/Leaf.md',
+      'Docsync test/Leaf.md',
     ]);
   });
 
@@ -158,7 +161,7 @@ describe('fetchRoot', () => {
       { api: fixtureApi() },
     );
 
-    expect(files.map((file) => file.path)).not.toContain('Docsync test/Docsync test/Notes.md');
+    expect(files.map((file) => file.path)).not.toContain('Docsync test/Notes.md');
     expect(skipped.map((one) => one.title)).toEqual(['Notes', 'Notes']);
   });
 
@@ -190,17 +193,27 @@ describe('fetchRoot', () => {
 describe('describe', () => {
   const api = fixtureApi();
 
-  it('calls a page with child pages a container, and counts them', async () => {
+  it('calls a page with child pages a leaf, and still counts them', async () => {
     const one = await describeRef({ source: 'notion', id: ROOT_ID }, provider, { api });
 
     expect(one).toMatchObject({
       ref: { source: 'notion', id: ROOT_ID },
       title: 'Docsync test',
-      kind: 'container',
+      kind: 'leaf',
       ext: '.md',
     });
     expect(one.childCount).toBeGreaterThan(0);
     expect(one.lastEditedTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('resolves the alias table of MANUAL §5 for a page with children', async () => {
+    const one = await describeRef({ source: 'notion', id: ROOT_ID }, provider, { api });
+    const alias = (given?: string) => resolveAlias(given, { title: one.title, kind: one.kind });
+
+    expect(alias(undefined)).toEqual({ ok: true, path: 'Docsync test.md' });
+    expect(alias('specs/')).toEqual({ ok: true, path: 'specs/Docsync test.md' });
+    expect(alias('specs/root.md')).toEqual({ ok: true, path: 'specs/root.md' });
+    expect(alias('specs/root')).toMatchObject({ ok: false });
   });
 
   it('calls a page with no child pages a leaf', async () => {

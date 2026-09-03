@@ -197,7 +197,7 @@ describe('formatResolved', () => {
     const out = formatResolved({
       ref: { source: 'notion', id: '2f3a9c00000000000000000000000000' },
       title: 'Product Specs',
-      kind: 'container',
+      kind: 'leaf',
       childCount: 3,
       editor: ADA,
       lastEditedTime: '2026-09-03T10:12:00Z',
@@ -206,7 +206,7 @@ describe('formatResolved', () => {
     expect(out).toBe(
       [
         'ref       notion:2f3a9c00000000000000000000000000',
-        'type      container',
+        'type      leaf',
         'title     Product Specs',
         'children  3',
         'editor    Ada Lovelace <ada@example.com>',

@@ -338,12 +338,13 @@ export function createFakeSource(store: FakeStore): Source {
     const children = Object.values(state.objects).filter(
       (one) => one.parent === ref.id && one.trashed !== true,
     );
-    const container = object.kind === 'folder' || children.length > 0;
     const name = fileName(object);
     return {
       ref,
       title: object.title,
-      kind: container ? 'container' : 'leaf',
+      // Only a Drive folder is a container; a page with children is a document
+      // that owns the directory beside it (MANUAL §6).
+      kind: object.kind === 'folder' ? 'container' : 'leaf',
       childCount: children.length,
       ...(object.kind === 'folder' ? {} : { ext: name.slice(stem(name).length) || '.md' }),
       ...(object.editor === undefined ? {} : { editor: object.editor }),
