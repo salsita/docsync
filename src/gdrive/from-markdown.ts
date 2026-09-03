@@ -132,9 +132,12 @@ export function mdastToRequests(tree: Root): RequestPlan {
  * The blocks of one document, in document order, each addressed as if it were
  * inserted at index 1 — which it will be, because they go out in reverse.
  */
-export function mdastToSegments(tree: Root): { segments: Segment[]; dropped: string[] } {
+export function mdastToSegments(
+  tree: Root,
+  base = BODY_BASE,
+): { segments: Segment[]; dropped: string[] } {
   const context: Context = { dropped: [], definitions: definitionsOf(tree), inFootnote: false };
-  return { segments: buildSegments(tree.children, context, BODY_BASE), dropped: context.dropped };
+  return { segments: buildSegments(tree.children, context, base), dropped: context.dropped };
 }
 
 /**

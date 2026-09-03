@@ -364,6 +364,45 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
     );
   }
 
+  /** The rows of the table that starts at an index, as `structure` counts. */
+  function tableAt(index: number): Cell[][] | undefined {
+    let at = 1;
+    for (const node of body) {
+      if (node.kind === 'para') {
+        at += paraLength(node.para);
+        continue;
+      }
+      if (at === index) return node.rows;
+      at += tableLength(node.rows);
+    }
+    return undefined;
+  }
+
+  /** A row of empty cells, which is what `insertTableRow` makes. */
+  function insertTableRow(request: Record<string, unknown>): void {
+    const where = request.tableCellLocation as {
+      tableStartLocation: { index: number };
+      rowIndex?: number;
+    };
+    const rows = tableAt(where.tableStartLocation.index);
+    if (rows === undefined) throw new Error(`no table at ${where.tableStartLocation.index}`);
+    const columns = rows[0]?.length ?? 0;
+    const made: Cell[] = [];
+    for (let column = 0; column < columns; column += 1) made.push([emptyPara()]);
+    const at = (where.rowIndex ?? 0) + (request.insertBelow === true ? 1 : 0);
+    rows.splice(at, 0, made);
+  }
+
+  function deleteTableRow(request: Record<string, unknown>): void {
+    const where = request.tableCellLocation as {
+      tableStartLocation: { index: number };
+      rowIndex?: number;
+    };
+    const rows = tableAt(where.tableStartLocation.index);
+    if (rows === undefined) throw new Error(`no table at ${where.tableStartLocation.index}`);
+    rows.splice(where.rowIndex ?? 0, 1);
+  }
+
   function createFootnote(request: Record<string, unknown>): BatchReply {
     const location = request.location as { index: number };
     footnoteCount += 1;
@@ -385,6 +424,16 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       deleteFromSegment(range.segmentId, range.startIndex, range.endIndex);
       return;
     }
+    // A range inside one cell is the cell's own business; the body loop below
+    // would take the whole table out with it.
+    const cell = cellAt(range.startIndex);
+    if (cell !== undefined && range.endIndex <= cell.end) {
+      const kept = prune(cell.cell, range.startIndex - cell.start, range.endIndex - cell.start);
+      cell.cell.length = 0;
+      cell.cell.push(...(kept.length === 0 ? [emptyPara()] : kept));
+      return;
+    }
+
     const kept: Node[] = [];
     let index = 1;
     let merging: Para | undefined;
@@ -426,12 +475,11 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
   }
 
   /**
-   * The same, for a footnote segment, which holds paragraphs and nothing else.
-   * Kept apart from the body's version because the body also holds tables.
+   * The same, for a run of paragraphs that is not the body: a footnote
+   * segment, or one cell of a table. Kept apart from the body's version
+   * because the body also holds tables.
    */
-  function deleteFromSegment(segmentId: string, startIndex: number, endIndex: number): void {
-    const content = footnotes.get(segmentId);
-    if (content === undefined) return;
+  function prune(content: readonly Para[], startIndex: number, endIndex: number): Para[] {
     const kept: Para[] = [];
     let index = 0;
     let merging: Para | undefined;
@@ -458,7 +506,39 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       }
       merging = newlineGone ? target : undefined;
     }
+    return kept;
+  }
+
+  function deleteFromSegment(segmentId: string, startIndex: number, endIndex: number): void {
+    const content = footnotes.get(segmentId);
+    if (content === undefined) return;
+    const kept = prune(content, startIndex, endIndex);
     footnotes.set(segmentId, kept.length === 0 ? [emptyPara()] : kept);
+  }
+
+  /** The table cell an index falls in, and where its paragraphs start. */
+  function cellAt(index: number): { cell: Cell; start: number; end: number } | undefined {
+    let at = 1;
+    for (const node of body) {
+      if (node.kind === 'para') {
+        at += paraLength(node.para);
+        continue;
+      }
+      let inner = at + 1;
+      for (const row of node.rows) {
+        inner += 1;
+        for (const cell of row) {
+          const start = inner + 1;
+          const length = cell.reduce((total, para) => total + paraLength(para), 0);
+          if (index >= start && index < start + length) {
+            return { cell, start, end: start + length };
+          }
+          inner += 1 + length;
+        }
+      }
+      at += tableLength(node.rows);
+    }
+    return undefined;
   }
 
   /** Removes the items, and the parts of items, that a range covers. */
@@ -555,18 +635,20 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       index += 1;
       const tableRows: TableRow[] = [];
       for (const row of node.rows) {
+        const rowStart = index;
         index += 1;
         const cells: TableCell[] = [];
         for (const cell of row) {
+          const cellStart = index;
           index += 1;
           const content = structure(
             cell.map((para) => ({ kind: 'para' as const, para })),
             index,
           );
           index += cell.reduce((total, para) => total + paraLength(para), 0);
-          cells.push({ content });
+          cells.push({ startIndex: cellStart, endIndex: index, content });
         }
-        tableRows.push({ tableCells: cells });
+        tableRows.push({ startIndex: rowStart, endIndex: index, tableCells: cells });
       }
       index += 1;
       out.push({
@@ -640,6 +722,14 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
             break;
           case 'insertTable':
             insertTable(payload);
+            replies.push({});
+            break;
+          case 'insertTableRow':
+            insertTableRow(payload);
+            replies.push({});
+            break;
+          case 'deleteTableRow':
+            deleteTableRow(payload);
             replies.push({});
             break;
           case 'createFootnote':

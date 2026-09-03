@@ -65,6 +65,8 @@ export interface LiveDocument {
   blocks: Ranged[];
   /** Every pending suggestion in the document. */
   suggestions: string[];
+  /** One past the last index of the body: where an append has to go. */
+  end: number;
 }
 
 /** The live document read as the version a push diffs against (MANUAL §7). */
@@ -75,6 +77,7 @@ export function readLive(doc: DocsDocument): LiveDocument {
     tree,
     blocks: blockRanges(tree.children),
     suggestions,
+    end: doc.body?.content?.at(-1)?.endIndex ?? 2,
   };
 }
 
