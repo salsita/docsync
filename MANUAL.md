@@ -482,21 +482,24 @@ shows real per-edit history for Google Docs.
 
 Git sends the commits between `origin/main` and your branch. The helper:
 
-1. Rejects the push if `origin/main` is not an ancestor of what you push. This
+1. Fetches first. If the source changed since your last fetch, the push is
+   rejected with "the source changed", exactly as if someone had pushed to a
+   git remote before you. Pull, merge, push again.
+2. Rejects the push if `origin/main` is not an ancestor of what you push. This
    is git's normal non-fast-forward rule. Fetch, merge or rebase, push again.
-2. Reads the manifest. Added or modified files under no root are refused.
+3. Reads the manifest. Added or modified files under no root are refused.
    Deleted files under no root are ignored: that is what `docsync remove`
    produces, and it means unsubscribe, not trash. Changes to
    `.docsync/index.yaml` are refused.
-3. Refuses changes to read-only exports (Sheets, Slides, Drawings).
-4. Diffs the tree per root and applies:
+4. Refuses changes to read-only exports (Sheets, Slides, Drawings).
+5. Diffs the tree per root and applies:
    - **modified** → update the document (see Write-back below)
    - **added** → create the document, or upload the binary
    - **deleted** → trash the document (Notion archive, Drive trash). Never
      permanent. Printed prominently.
    - **renamed** → same document (by id), possibly a title change and, for
      Drive, a move between folders
-5. **Post-push fetch.** Re-reads every document it touched. If the canonical
+6. **Post-push fetch.** Re-reads every document it touched. If the canonical
    form differs from what was pushed (new ids, source-side normalization), it
    writes one more commit on top of `origin/main`. Your branch is then one
    fast-forward behind. `docsync push` fast-forwards for you when the working
