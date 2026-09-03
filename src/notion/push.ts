@@ -12,39 +12,13 @@ import type { CredentialProvider } from '../auth/index.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
+import type { FileChange, PushReport } from '../push-types.js';
 import type { NotionApi } from './api.js';
 import { type BlockInput, mdastToBlocks, resolvePath } from './from-markdown.js';
 import { notionApi } from './index.js';
 import { bareId } from './to-markdown.js';
 import { titleOf } from './walk.js';
 import { createNotionWriter } from './write.js';
-
-/** What git says happened to one file. */
-export type ChangeKind = 'added' | 'modified' | 'deleted' | 'renamed';
-
-/** One changed file, as the helper reads it out of the pushed commits. */
-export interface FileChange {
-  kind: ChangeKind;
-  /** Repo-relative path, `/`-separated, as of after the change. */
-  path: string;
-  /** Where a renamed file came from. */
-  previousPath?: string;
-  /**
-   * The whole file, frontmatter included. Absent for a deletion, and absent
-   * for a rename whose content did not change — which is what makes such a
-   * rename one API call and nothing more.
-   */
-  text?: string;
-}
-
-/** What a push did to one document, for the CLI to print (ticket 10). */
-export interface PushedDocument {
-  path: string;
-  title: string;
-  action: 'created' | 'updated' | 'renamed' | 'trashed';
-}
-
-export type PushReport = PushedDocument[];
 
 export interface PushOptions {
   /** The API to use. Tests pass a fake one; a real push passes nothing. */
@@ -195,3 +169,5 @@ function linksTo(change: FileChange, creating: ReadonlySet<string>): string[] {
   });
   return targets;
 }
+
+export type { ChangeKind, FileChange, PushedDocument, PushReport } from '../push-types.js';

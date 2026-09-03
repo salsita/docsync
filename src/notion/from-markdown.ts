@@ -25,6 +25,7 @@ import type {
   Table,
 } from 'mdast';
 import { parseMarkdown } from '../markdown.js';
+import { PushError } from '../push-types.js';
 import type { RawObject } from './api.js';
 import { bareId } from './to-markdown.js';
 
@@ -63,20 +64,6 @@ export interface FromMarkdownOptions {
   ids?: ReadonlyMap<string, string>;
   /** Repo-relative path of the file being converted, for those relative links. */
   from?: string;
-}
-
-/** A file we cannot push, with the place in it that says why (MANUAL §7). */
-export class PushError extends Error {
-  readonly path: string | undefined;
-  readonly line: number | undefined;
-
-  constructor(message: string, path?: string, line?: number) {
-    const where = path === undefined ? '' : ` (${path}${line === undefined ? '' : `:${line}`})`;
-    super(`${message}${where}`);
-    this.name = 'PushError';
-    this.path = path;
-    this.line = line;
-  }
 }
 
 const DEFAULT_COLOR = 'default';
@@ -709,3 +696,5 @@ export function resolvePath(from: string, relative: string): string {
   }
   return parts.join('/');
 }
+
+export { PushError } from '../push-types.js';
