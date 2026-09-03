@@ -56,3 +56,32 @@ edited characters.
 `pnpm check` green; the smoke script passes; manual §7's Docs paragraph
 lists only the remaining losses: formatting on rewritten characters, moved
 paragraphs, rules and images the dialect cannot create.
+
+## Outcome
+
+Landed 2026-09-03 in five agent commits (`6da7f3f` … `b182813`) plus the
+landing commit. `pnpm check` green, 1163 tests. The smoke script ran once
+against a Doc it created and trashed: a red paragraph, an inline image and
+a comment on untouched text all survived a push that updated two other
+blocks.
+
+Deviations and findings:
+
+- **Provenance instead of a separate mapper.** `to-markdown` stamps every
+  node with the live index range it came from and derives the base body
+  (suggested insertions dropped, deletions kept) in the same pass, so the
+  shared `flattenBlocks` gives base block *n* = live block *n* with ranges.
+- **Restyle pairing.** The shared diff never pairs across types; `patch.ts`
+  pairs a lone deleted paragraph-like block with the lone inserted one that
+  follows and writes the difference as a paragraph-style or bullet request
+  plus a text diff, with no similarity gate. Consistent with the one-for-one
+  fallback added in ticket 15. A heading demoted to a paragraph keeps its
+  text and anchors.
+- **Suggestions at paragraph granularity:** an edit in a paragraph carrying
+  a pending suggestion rewrites that paragraph's text; the ids are reported
+  and, since landing, printed by the CLI under the document's line.
+- Nesting changes on list items are delete-and-insert; a nested inserted
+  item lands at its container's top level. A trailing append leaves one
+  empty paragraph at the end of the body. Deleting the block after a page
+  break leaves the break. All said in manual §7.
+- Manual: §7 Docs paragraph rewritten, phase 3 marked done in §12.

@@ -617,16 +617,20 @@ What is lost, per source:
   with more than a hundred rich-text runs keeps its text but loses the
   formatting past the ninety-ninth run. Page-level comments, properties,
   sharing, child pages, child databases and the page id always survive.
-- **Google Docs (later, phase 3):** formatting on the characters you
-  rewrote; the anchor of a comment that overlaps an edit; a pending
-  suggestion inside an edited span, which is overwritten as plain text and
-  named in the push report. Horizontal rules and images cannot be created by
-  the dialect, so a new one in your Markdown is dropped; an existing one in
-  untouched text survives. A fenced code block is written as Courier New
-  paragraphs and a blockquote as plain paragraphs, since Docs has neither.
-  Until then, Docs pushes replace the body: text colour, highlight, fonts,
-  sizes and alignment inside the body are lost on every push, rules and
-  image placeholders are dropped, and comment anchors may detach.
+- **Google Docs:** formatting on the characters you rewrote; the anchor of
+  a comment that overlaps an edit; a pending suggestion in a paragraph you
+  edited, which is overwritten as plain text and named in the push report. A
+  paragraph you moved, and one rewritten so far that the diff cannot pair it,
+  are written afresh where they land. Horizontal rules and images cannot be
+  created by the dialect, so a new one in your Markdown is dropped; an
+  existing one in text you did not touch survives. A table that gained or
+  lost a column is rewritten whole; a row added or removed leaves the other
+  rows alone. A list item you nested deeper is written afresh at the level
+  it lands in. A fenced code block is written as Courier New paragraphs and
+  a blockquote as plain paragraphs, since Docs has neither. Everything else
+  on text you did not touch, colour, highlight, fonts, sizes, alignment,
+  inline images, footnotes, page breaks and comment anchors, survives,
+  because nothing the push sends addresses it.
 - **Drive binaries:** a new revision of the same file is uploaded.
   Everything else about the file is untouched.
 
@@ -739,8 +743,6 @@ Everything in this manual not marked **later**. Limitations of phase 1:
 
 - Notion databases are not synced. Pages inside a database are not synced either.
 - Sheets, Slides and Drawings are exported read-only.
-- Google Docs write-back replaces the body until phase 3 lands: range-level
-  formatting is lost on push and comment anchors may detach.
 - Images and files hosted by the source are placeholders, not downloaded.
 - Google Docs revisions are collapsed into one commit per fetch.
 - One branch (`main`) per remote. Other local branches are fine; the helper only
@@ -759,9 +761,8 @@ uploaded to Drive and inserted by reference.
 
 ### Phase 3 — diff-based write-back
 
-Only what changed is patched, block by block and character by character
-(§7 "Write-back"); nothing is stored in the Markdown for it. Notion first,
-then Google Docs, where it removes the biggest phase-1 limitation.
+Done. Only what changed is patched, block by block and character by
+character (§7 "Write-back"); nothing is stored in the Markdown for it.
 
 ### Phase 4 — comment threads
 

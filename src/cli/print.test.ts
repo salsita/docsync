@@ -132,6 +132,7 @@ describe('formatPushReport', () => {
             title: 'One',
             action: 'updated',
             blocks: { kept: 3, updated: 1, inserted: 0, deleted: 0 },
+            suggestions: ['suggest.abc', 'suggest.def'],
           },
         ],
       }),
@@ -141,6 +142,7 @@ describe('formatPushReport', () => {
       [
         'updated  Specs/Auth.md  (3 blocks changed, 41 kept)',
         'updated  Specs/One.md   (1 block changed, 3 kept)',
+        '  Specs/One.md: wrote over 2 pending suggestions (suggest.abc, suggest.def)',
       ].join('\n'),
     );
   });

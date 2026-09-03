@@ -102,6 +102,18 @@ export function formatPushReport(report: PushReportFile | undefined): string {
   if (rest.length > 0) lines.push(...columns(rest.map(actionRow)));
   else if (trashed.length === 0) lines.push(NOTHING);
 
+  // A pending suggestion inside an edited paragraph was written over as plain
+  // text (MANUAL §7); the ids are what lets someone find it in the Doc's
+  // history.
+  for (const one of rest) {
+    if (one.suggestions !== undefined && one.suggestions.length > 0) {
+      lines.push(
+        `  ${one.path}: wrote over ${plural(one.suggestions.length, 'pending suggestion')} ` +
+          `(${one.suggestions.join(', ')})`,
+      );
+    }
+  }
+
   if (trashed.length > 0) {
     if (lines.length > 0) lines.push('');
     lines.push('Trashed:', ...trashed.map((one) => `  ${one.path}`));
