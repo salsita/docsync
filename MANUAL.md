@@ -112,16 +112,15 @@ ls
 
 ```
 .agents/  .claude/  .cursor/   # skill file for agents (§10)
-Product Specs/                    # the Notion page tree
-Product Specs/Product Specs.md    # the page itself
-Product Specs/Product Specs/      # its sub-pages (§6)
-Contracts/                        # the Drive folder, recursively
+Product Specs.md        # the Notion page
+Product Specs/          # its sub-pages, recursively (§6)
+Contracts/              # the Drive folder, recursively
 ```
 
 Edit, review, push:
 
 ```bash
-$EDITOR "Product Specs/Product Specs/Auth.md"
+$EDITOR "Product Specs/Auth.md"
 git diff
 git commit -am "Clarify session expiry"
 git push
@@ -171,13 +170,15 @@ Fields per root:
 
 ### Path rules
 
-- A path with a **trailing slash** (`Contracts/`) is a directory. The root's
-  own document is placed inside it under its source title. For a folder or a
-  page with children, the children go in there too.
+- A path with a **trailing slash** (`Contracts/`) is a directory. A Drive
+  folder's contents go in there. A document is placed inside it under its
+  source title, and a Notion page's children in the sibling directory of the
+  same stem beside it (`specs/Auth.md` and `specs/Auth/`).
 - A path **without** a trailing slash (`notes/roadmap.md`) names the file
-  itself. Only valid for a single document with no children, and it must carry
+  itself. Valid for any single document, Notion page with children included;
+  the children go in the sibling directory (`notes/roadmap/`). It must carry
   an extension: `.md` for a Notion page or a Google Doc, its own for any other
-  Drive file. Write `notes/roadmap/` if you meant a directory.
+  Drive file. A Drive folder cannot be a file root.
 - Paths are relative to the repo root. No leading `/`, no `.` or `..` segment,
   no empty segment, no segment starting with a dot, no `\`. Unicode is
   normalised to NFC.
@@ -246,17 +247,17 @@ The `=<path>` alias is optional. A trailing slash means "under this
 directory, named by the source title". No trailing slash means "exactly this
 name".
 
-| Alias | Leaf document | Page with children, or folder |
+| Alias | Document (a Notion page, with or without children, or a Drive file) | Drive folder |
 |---|---|---|
 | none | `<title>.md` | `<title>/` |
 | `=specs/` | `specs/<title>.md` | `specs/<title>/` |
-| `=specs/auth.md` | `specs/auth.md` | error: a container cannot be a file |
+| `=specs/auth.md` | `specs/auth.md` | error: a folder cannot be a file |
 | `=specs/auth` | error: a document needs an extension | `specs/auth/` |
 
-The manifest stores the resolved path, so a later title change at the source
-does not move the root. A leaf document that later gains children keeps its
-file path; the children go in a sibling directory with the same stem
-(`specs/auth.md` and `specs/auth/`).
+A Notion page's children always go in the sibling directory with the same
+stem as its file (`specs/auth.md` and `specs/auth/`), so a page that gains
+children later does not move. The manifest stores the resolved path, so a
+later title change at the source does not move the root either.
 
 ### `docsync remove <path>...`
 
