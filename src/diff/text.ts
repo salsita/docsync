@@ -295,10 +295,14 @@ function walk(nodes: readonly PhrasingContent[], style: InlineStyle, out: Styled
   }
 }
 
-/** The style of every character, so that two versions can be compared. */
+/**
+ * The style at every offset, so that two versions can be compared. Offsets are
+ * UTF-16 units, the same units a span carries and the same ones both APIs
+ * count text in; a surrogate pair takes two, and both halves are in one run.
+ */
 function styleByCharacter(runs: readonly StyledRun[]): InlineStyle[] {
   const out: InlineStyle[] = [];
-  for (const run of runs) for (const _ of run.text) out.push(run.style);
+  for (const run of runs) for (let at = 0; at < run.text.length; at += 1) out.push(run.style);
   return out;
 }
 
@@ -320,9 +324,7 @@ export function diffInline(
 
   for (const span of spans) {
     if (span.kind !== 'keep') continue;
-    // `[...text]` and not `text.length`: the style arrays are per code point,
-    // which is what keeps an emoji from splitting a change in two.
-    const length = [...span.text].length;
+    const length = span.text.length;
     let at = 0;
     while (at < length) {
       const change = difference(baseStyles[span.base + at], nextStyles[span.next + at]);
