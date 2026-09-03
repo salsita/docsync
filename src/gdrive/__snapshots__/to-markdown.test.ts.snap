@@ -1,0 +1,98 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the recorded documents > converts 1JpyYD74bPVxNEv-urdbH1E_wIs9Kx4wxBVTM_N2rX2k 1`] = `
+"Tests filename derivation from a hostile title.
+"
+`;
+
+exports[`the recorded documents > converts 1XiXnvbH_m7-Ky59WIji4J84oC5u9b2jT8rPok950poU 1`] = `
+"Tests leading-dot removal.
+"
+`;
+
+exports[`the recorded documents > converts 1a-9FG_jwht91hmvglPsRpyi13yr9mlmTiUrXewEVyfI 1`] = `
+"A document with one paragraph, nothing else.
+"
+`;
+
+exports[`the recorded documents > converts 1bTJ2HHyIP0ZqnRZuOpOo1q3tZLErUtTNIAVAbk05lL8 1`] = `
+"Second of two documents titled Notes.
+"
+`;
+
+exports[`the recorded documents > converts 1l7guufqbuTp_eztzKAkU-gJGAffYmZWFKB3TQbHkf6g 1`] = `
+"First of two documents titled Notes.
+"
+`;
+
+exports[`the recorded documents > converts 1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4 1`] = `
+"<!-- docsync: style=title -->
+
+# Elements
+
+<!-- docsync: style=subtitle -->
+
+## Every element the dialect handles, and a few it does not
+
+# Heading one
+
+A plain paragraph with **bold**, *italic*, <u>underline</u>, ~~strikethrough~~, \`code font\`, a [link](https://example.com/), red text and highlighted text.
+
+## Heading two
+
+A centred paragraph.
+
+A paragraph in Georgia at 14 points.
+
+### Heading three
+
+#### Heading four
+
+##### Heading five
+
+###### Heading six
+
+- Bullet[^1] one
+- Bullet two
+  - Nested bullet
+    - Deeper bullet
+- Bullet three with **bold**
+- Numbered one
+- Numbered two
+  - Nested numbered
+- Numbered three
+
+Two lines in one paragraph,
+
+separated by a soft line break.
+
+| **Name**  | **Value**  |
+| --------- | ---------- |
+| bold cell | plain cell |
+| a \\| pipe | blue       |
+
+---
+
+- [ ] Unchecked
+- [ ] Checked
+
+<!-- docsync:object gdocs:kix.655cbf6q1wjw type=image -->
+
+Paragraph before a page break.
+
+<!-- docsync:pagebreak -->
+
+Paragraph after a page break.
+
+Characters that need escaping in Markdown: \\* \\_ \\\` # \\[brackets] \\<angle> {braces} | ^ \\~ \\ and a trailing backslash \\\\
+
+Final paragraph.
+
+[^1]: A bullet is what shoots out of a gun's barrel.
+"
+`;
+
+exports[`the recorded documents > converts 12Q7xOSDxkV5zhacq39GLXAON3VhZkbN1rd2gt1hC9FQ 1`] = `
+"A document inside the Sub folder.
+"
+`;
