@@ -182,6 +182,67 @@ describe('insertTable', () => {
   });
 });
 
+describe('a table row', () => {
+  /** A two-by-two table with a letter in every cell, as `insertTable` lays it. */
+  function table() {
+    const model = createDocsModel();
+    model.apply([
+      { insertTable: { rows: 2, columns: 2, location: { index: 1 } } },
+      { insertText: { location: { index: 12 }, text: 'd' } },
+      { insertText: { location: { index: 10 }, text: 'c' } },
+      { insertText: { location: { index: 7 }, text: 'b' } },
+      { insertText: { location: { index: 5 }, text: 'a' } },
+    ]);
+    return model;
+  }
+
+  it('reports where every row and cell starts, as documents.get does', () => {
+    const [, element] = content(table());
+    const [first] = element?.table?.tableRows ?? [];
+    expect(first?.startIndex).toBe(3);
+    expect(first?.tableCells?.[0]?.startIndex).toBe(4);
+    expect(first?.tableCells?.[1]?.startIndex).toBe(7);
+  });
+
+  it('is inserted below the row named, with a cell to fill per column', () => {
+    const model = table();
+    model.apply([
+      {
+        insertTableRow: {
+          tableCellLocation: { tableStartLocation: { index: 2 }, rowIndex: 1, columnIndex: 0 },
+          insertBelow: true,
+        },
+      },
+      // The new row starts where the last one ended, at 17: a cell of its own
+      // is one unit, its empty paragraph another, so the cells are two apart.
+      { insertText: { location: { index: 21 }, text: 'f' } },
+      { insertText: { location: { index: 19 }, text: 'e' } },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe(
+      '| a | b |\n| - | - |\n| c | d |\n| e | f |\n',
+    );
+  });
+
+  it('is deleted whole by the row it names', () => {
+    const model = table();
+    model.apply([
+      {
+        deleteTableRow: {
+          tableCellLocation: { tableStartLocation: { index: 2 }, rowIndex: 1, columnIndex: 0 },
+        },
+      },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('| a | b |\n| - | - |\n');
+  });
+
+  it('has a range deleted inside one cell without losing the table', () => {
+    const model = table();
+    // "c" is the paragraph of the first cell of the second row.
+    model.apply([{ deleteContentRange: { range: { startIndex: 12, endIndex: 13 } } }]);
+    expect(documentToMarkdown(model.document())).toBe('| a | b |\n| - | - |\n|   | d |\n');
+  });
+});
+
 describe('insertPageBreak', () => {
   it('is a page break and a newline, so the paragraph is cut in two', () => {
     const model = createDocsModel();
