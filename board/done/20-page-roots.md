@@ -41,3 +41,19 @@ it.
 ## Done when
 
 `pnpm check` green; the quick start test's `ls` matches manual §3.
+
+## Outcome
+
+Landed 2026-09-03 in two agent commits (`b612873`, `6937ea8`) plus the
+landing commit. `pnpm check` green, 1034 tests.
+
+- Smaller than feared: `resolveAlias` was already kind-driven, so the change
+  is Notion's `describe` always answering `leaf` (child count kept), the
+  error wording "a folder cannot be a file", and tests. The directory-root
+  layout for a Notion page (`Specs/Specs.md`) stays supported and tested as
+  the hand-written case.
+- The fake `Source` now nests children as the real adapters do, closing the
+  ticket 10 follow-up; the CLI quick start test asserts exactly §3's listing.
+- At landing: `docsync resolve` prints `type document` / `type folder`
+  instead of the raw kind; the manual's §4 example manifest now says
+  `path: Product Specs.md`.

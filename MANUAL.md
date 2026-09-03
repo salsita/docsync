@@ -150,7 +150,7 @@ in the repo, untracked. It can live anywhere the remote URL can reach (§9).
 version: 1
 roots:
   - src: notion:2f3a9c…
-    path: Product Specs/
+    path: Product Specs.md
   - src: gdocs:1AbCdE…
     path: Contracts/
     ignore:

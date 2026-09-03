@@ -206,7 +206,7 @@ describe('formatResolved', () => {
     expect(out).toBe(
       [
         'ref       notion:2f3a9c00000000000000000000000000',
-        'type      leaf',
+        'type      document',
         'title     Product Specs',
         'children  3',
         'editor    Ada Lovelace <ada@example.com>',
@@ -227,7 +227,7 @@ describe('formatResolved', () => {
 
     expect(out.split('\n')).toEqual([
       'ref       gdocs:1AbCdE',
-      'type      leaf',
+      'type      document',
       'title     Roadmap',
       'children  0',
       'edited    2026-09-03 10:12',

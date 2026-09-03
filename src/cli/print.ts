@@ -149,7 +149,7 @@ export function formatResolved(resolved: SourceDescription): string {
 
   return columns([
     ['ref', formatSourceRef(resolved.ref)],
-    ['type', resolved.kind],
+    ['type', resolved.kind === 'container' ? 'folder' : 'document'],
     ['title', resolved.title],
     ['children', String(resolved.childCount)],
     ...(who === undefined ? [] : [['editor', who]]),

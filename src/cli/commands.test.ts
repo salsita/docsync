@@ -377,7 +377,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(run.code).toBe(0);
       expect(run.out.split('\n').slice(0, 4)).toEqual([
         `ref       notion:${SPECS}`,
-        'type      leaf',
+        'type      document',
         'title     Product Specs',
         'children  1',
       ]);
