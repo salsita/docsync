@@ -386,7 +386,7 @@ below.
 | numbered list                                                                                            | `1. item`                                                                                                              |
 | to-do                                                                                                    | `- [ ] item` / `- [x] item`                                                                                            |
 | quote                                                                                                    | `> text`                                                                                                               |
-| callout | `> [!CALLOUT] 💡` on the first line, body quoted below. Push also accepts the escaped spelling `> \[!CALLOUT]` that some editors produce. The marker line works with or without the two trailing spaces. |
+| callout | `> [!CALLOUT] 💡` on the first line, body quoted below. Push also accepts the escaped spelling `> \[!CALLOUT]` that some editors produce. The marker line works with or without the line break after it. |
 | toggle | `<details><summary>title</summary>`, a blank line, the children, a blank line, `</details>`. The blank line before the closing tag is required. |
 | toggle heading | the same, with the heading inside the summary: `<summary>## Title</summary>` |
 | code | fenced block with the language. Notion's `plain text` is a fence with no language. |
@@ -402,10 +402,12 @@ below.
 | other mentions | `[text](url)` |
 | bookmark, embed, synced block, database, columns, table of contents, breadcrumb, button, everything else | placeholder                                                                                                            |
 
-Inline: bold, italic, strikethrough, code, links as in GFM. Underline is
-`<u>…</u>`. Text and background colours are `<span data-color="red">…</span>`.
-These are preserved so that a round trip does not strip them. A line break
-inside one block is two trailing spaces and a newline.
+Inline: bold, italic, strikethrough, code, links as in GFM; italic is
+written `_like this_`, bold `**like this**`. Underline is `<u>…</u>`. Text and
+background colours are `<span data-color="red">…</span>`. These are preserved
+so that a round trip does not strip them. A line break inside one block is a
+backslash at the end of the line. Push also accepts `*italic*` and the
+two-trailing-spaces line break, since that is what many editors produce.
 
 **Block attributes.** What Notion stores on a block that GFM cannot express
 goes in an HTML comment on its own line directly above the block, only when
@@ -469,6 +471,27 @@ Anything the dialect cannot represent becomes:
 A Notion block has an id. A Google Docs structural element does not, so it
 is addressed by its document and the index it starts at; an inline object
 (image, drawing) has an id of its own and uses the `docsync:object` form.
+
+#### Formatters and editors
+
+The dialect is **stable under Prettier with default options**: formatting a
+fetched file changes nothing, so a formatter that runs on save in Cursor or
+VS Code produces no churn. `docsync init` writes a `.prettierrc` that pins
+`proseWrap: preserve` and an `.editorconfig` that keeps line endings LF and
+turns trailing-whitespace trimming off for Markdown, so an IDE's own defaults
+cannot undo this. Caveats:
+
+- **Double spaces collapse.** Prettier turns two spaces inside a sentence
+  into one. Fetch keeps them; a formatted file loses them, and the next push
+  writes the single space. The change is visible in your diff before you
+  push, never silent.
+- **Other formatters are not covered.** markdownlint with fixes, or an
+  editor's own Markdown formatter, may rewrite bullets, numbering or table
+  padding. Push accepts what they produce, but the next fetch normalises it
+  back, which shows up as churn in the history. Turn them off for checkouts.
+- **Whitespace trimming** deletes nothing the dialect relies on, since line
+  breaks are backslashes, but it does change a fenced code block whose
+  content has trailing spaces. That is the block's content, and it pushes.
 
 Placeholders round-trip. Moving or deleting one moves or deletes the block.
 Editing inside one is not possible.

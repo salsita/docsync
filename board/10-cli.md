@@ -11,7 +11,9 @@ Every command in the reference, with the output the manual describes.
 - `init`, `add`, `remove`, `status`, `fetch`, `pull`, `push`, `resolve`,
   `auth`, `--version`.
 - `init`: directory, manifest, `git init -b main`, `core.autocrlf=false`,
-  `info/exclude`, skill file, roots, remote, fetch, checkout.
+  `info/exclude`, skill file, `.prettierrc` (`proseWrap: preserve`) and
+  `.editorconfig` (LF, final newline, no trailing-whitespace trimming for
+  `*.md`) as in manual §6, roots, remote, fetch, checkout.
 - `push`: per-document report, trashed documents prominent, fast-forward when
   clean.
 - `pull`/`fetch`: changed documents and editors.

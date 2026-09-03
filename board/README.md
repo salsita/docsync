@@ -8,7 +8,7 @@ tickets move to `done/` with an **Outcome** section.
 
 | Phase | Tickets |
 |---|---|
-| 1 — core loop | 01–13, 18 |
+| 1 — core loop | 01–13, 18–19 |
 | 2 — attachments | 14 |
 | 3 — diff-based write-back | 15–16 |
 | 4 — comment threads | 17 |
