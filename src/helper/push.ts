@@ -67,8 +67,17 @@ export async function pushRef(deps: FetchDeps, request: PushRequest): Promise<Pu
     indexBlob === undefined ? '' : (await git.catBlob(indexBlob.sha)).toString('utf8'),
   );
   const diff = await git.diffTree(preflight.commit, pushed);
-  const plan = await planChanges(diff, request.manifest.roots, index, (path) =>
-    git.catBlob(`${pushed}:${path}`),
+  const plan = await planChanges(
+    diff,
+    request.manifest.roots,
+    index,
+    (path) => git.catBlob(`${pushed}:${path}`),
+    // The served tree is the base every diff-based write-back is computed
+    // from (MANUAL §7); it is already read above, so this costs one blob.
+    async (path) => {
+      const file = previous.get(path);
+      return file === undefined ? undefined : git.catBlob(file.sha);
+    },
   );
   const documents: PushedDocument[] = [];
   for (const { root, changes } of plan) {

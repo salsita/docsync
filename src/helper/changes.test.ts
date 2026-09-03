@@ -66,7 +66,22 @@ const read = async (path: string): Promise<Uint8Array> => {
   if (text === undefined) throw new Error(`no blob at ${path}`);
   return Buffer.from(text);
 };
-const plan = (...diff: DiffEntry[]) => planChanges(diff, ROOTS, index, read);
+
+/** The served tree: what each path held before the pushed commits (§7). */
+const BASE_AUTH = `---\nid: notion:${'b'.repeat(32)}\ntitle: Auth\n---\n\nBase.\n`;
+const BASE_ROAD = '---\nid: gdocs:1Id\n---\n\nBase road.\n';
+const baseBlobs: Record<string, string> = {
+  'Specs/Auth.md': BASE_AUTH,
+  'Files/Plan.md': '---\nid: gdocs:1Id\n---\n\nBase plan.\n',
+  'Files/logo.png': 'PNG',
+  'Files/notes.md': 'plain notes\n',
+  'notes/roadmap.md': BASE_ROAD,
+};
+const readBase = async (path: string): Promise<Uint8Array | undefined> => {
+  const text = baseBlobs[path];
+  return text === undefined ? undefined : Buffer.from(text);
+};
+const plan = (...diff: DiffEntry[]) => planChanges(diff, ROOTS, index, read, readBase);
 const D = (path: string): DiffEntry => ({ status: 'D', path });
 const M = (path: string): DiffEntry => ({ status: 'M', path });
 const A = (path: string): DiffEntry => ({ status: 'A', path });
@@ -81,7 +96,14 @@ describe('planChanges', () => {
     expect(await plan(M('Files/logo.png'), M('Specs/Auth.md'), M('notes/roadmap.md'))).toEqual([
       {
         root: NOTION,
-        changes: [{ kind: 'modified', path: 'Specs/Auth.md', text: blobs['Specs/Auth.md'] }],
+        changes: [
+          {
+            kind: 'modified',
+            path: 'Specs/Auth.md',
+            text: blobs['Specs/Auth.md'],
+            previousText: BASE_AUTH,
+          },
+        ],
       },
       {
         root: DRIVE,
@@ -89,7 +111,14 @@ describe('planChanges', () => {
       },
       {
         root: LEAF,
-        changes: [{ kind: 'modified', path: 'notes/roadmap.md', text: blobs['notes/roadmap.md'] }],
+        changes: [
+          {
+            kind: 'modified',
+            path: 'notes/roadmap.md',
+            text: blobs['notes/roadmap.md'],
+            previousText: BASE_ROAD,
+          },
+        ],
       },
     ]);
   });
@@ -154,6 +183,7 @@ describe('planChanges', () => {
             path: 'Specs/Login.md',
             previousPath: 'Specs/Auth.md',
             text: 'edited\n',
+            previousText: BASE_AUTH,
           },
         ],
       },
@@ -227,6 +257,18 @@ describe('planChanges', () => {
         ],
       },
     ]);
+  });
+
+  it('carries no base text for a binary, an addition or a path the base did not hold', async () => {
+    const [drive] = await plan(M('Files/logo.png'), A('Files/New.md'));
+    expect(drive?.changes.every((change) => change.previousText === undefined)).toBe(true);
+
+    // A document the served tree does not hold: the diff has no base to work
+    // from, and the adapter falls back to what it can do without one.
+    delete baseBlobs['Specs/Auth.md'];
+    const [notion] = await plan(M('Specs/Auth.md'));
+    expect(notion?.changes[0]?.previousText).toBeUndefined();
+    baseBlobs['Specs/Auth.md'] = BASE_AUTH;
   });
 
   it('treats a modified path the index does not know as an addition', async () => {

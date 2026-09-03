@@ -87,6 +87,15 @@ export interface FileChange {
    * not Markdown (MANUAL §6); a Notion root never does.
    */
   bytes?: Uint8Array;
+  /**
+   * The whole file as the served commit held it — the version this change is a
+   * diff *from*. Present for a `modified` document and for a `renamed` one
+   * whose content changed; absent for an addition, a deletion, a binary, and a
+   * path the served tree did not hold. Diff-based write-back (MANUAL §7) needs
+   * it: it is the base the live document must equal and the text the new one is
+   * diffed against.
+   */
+  previousText?: string;
 }
 
 /** What a push did to one document, for the CLI to print. */

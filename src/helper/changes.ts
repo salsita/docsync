@@ -29,6 +29,14 @@ export interface PlannedPush {
 export type BlobReader = (path: string) => Promise<Uint8Array>;
 
 /**
+ * The bytes of a path in the *served* tree — the commit the push is a diff
+ * from — or `undefined` when that tree does not hold it. Diff-based write-back
+ * (MANUAL §7) is computed against this version, so every text document that
+ * changed carries it as `previousText`.
+ */
+export type BaseReader = (path: string) => Promise<Uint8Array | undefined>;
+
+/**
  * Sorts a diff into per-root changes, in manifest order. Throws with a
  * message naming the path on anything the push must refuse.
  */
@@ -37,6 +45,7 @@ export async function planChanges(
   roots: readonly Root[],
   index: DocumentIndex,
   read: BlobReader,
+  readBase: BaseReader = async () => undefined,
 ): Promise<PlannedPush[]> {
   const planned = new Map<Root, FileChange[]>();
   const add = (root: Root, ...changes: FileChange[]): void => {
@@ -74,7 +83,14 @@ export async function planChanges(
           path: entry.path,
           previousPath: entry.previousPath,
         };
-        if (!identical) Object.assign(change, await content(previous, entry.path, read));
+        if (!identical) {
+          Object.assign(
+            change,
+            await content(previous, entry.path, read),
+            // A renamed document diffs against the file under its old path.
+            await base(previous, entry.previousPath, readBase),
+          );
+        }
         add(root, change);
         continue;
       }
@@ -110,6 +126,7 @@ export async function planChanges(
       kind: 'modified',
       path: entry.path,
       ...(wasDocument ? { text: Buffer.from(bytes).toString('utf8') } : { bytes }),
+      ...(await base(known, entry.path, readBase)),
     });
   }
 
@@ -137,6 +154,21 @@ async function content(
 ): Promise<Pick<FileChange, 'text' | 'bytes'>> {
   const bytes = await read(path);
   return isDocument(entry) ? { text: Buffer.from(bytes).toString('utf8') } : { bytes };
+}
+
+/**
+ * The version a document's change is a diff from, when there is one to read.
+ * Only a document has one: a binary is replaced whole, so a base would be bytes
+ * nobody diffs (MANUAL §7).
+ */
+async function base(
+  entry: IndexEntry,
+  path: string,
+  readBase: BaseReader,
+): Promise<Pick<FileChange, 'previousText'>> {
+  if (!isDocument(entry)) return {};
+  const bytes = await readBase(path);
+  return bytes === undefined ? {} : { previousText: Buffer.from(bytes).toString('utf8') };
 }
 
 /** A new file, under the frontmatter rules of MANUAL §6. */
