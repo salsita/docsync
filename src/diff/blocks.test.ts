@@ -172,6 +172,43 @@ describe('diffBlocks', () => {
     ]);
   });
 
+  it('updates a short block edited past half its text', () => {
+    // Git's measure calls these two 33% alike, which is not what a reader
+    // means: one paragraph was replaced by one paragraph, in the same place.
+    const ops = diff('One.\n\nTwo.\n\nThree.\n', 'One.\n\nTwo, edited.\n\nThree.\n');
+    expect(shape(ops)).toEqual([
+      'keep paragraph: One.',
+      'update paragraph: Two, edited.',
+      'keep paragraph: Three.',
+    ]);
+    expect(countOps(ops)).toEqual({ kept: 2, updated: 1, inserted: 0, deleted: 0 });
+  });
+
+  it('does not fall back when a hunk holds more than one candidate either way', () => {
+    // Two removed and one inserted: nothing here says which of the two the
+    // insertion is, so only the similar pair is an update.
+    const ops = diff(
+      'One.\n\nTwo.\n\nThe quick brown fox jumps over the dog.\n\nEnd.\n',
+      'One.\n\nThe quick brown fox leaps over the dog.\n\nEnd.\n',
+    );
+    expect(shape(ops)).toEqual([
+      'keep paragraph: One.',
+      'delete paragraph: Two.',
+      'update paragraph: The quick brown fox leaps over the dog.',
+      'keep paragraph: End.',
+    ]);
+  });
+
+  it('never falls back across block types', () => {
+    const ops = diff('One.\n\nTwo.\n\nEnd.\n', 'One.\n\n## Two, edited.\n\nEnd.\n');
+    expect(shape(ops)).toEqual([
+      'keep paragraph: One.',
+      'delete paragraph: Two.',
+      'insert heading:2: Two, edited.',
+      'keep paragraph: End.',
+    ]);
+  });
+
   it('does not pair blocks of different types, however alike', () => {
     const ops = diff('The quick brown fox.\n', '## The quick brown fox.\n');
     expect(shape(ops).sort()).toEqual([

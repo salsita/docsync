@@ -201,6 +201,13 @@ function alignment(a: readonly string[], b: readonly string[]): Uint32Array | un
  * One stretch of change. A removed and an inserted block of the same type that
  * are at least half the same text are one block edited; the best pair wins, so
  * a hunk with two candidates gives the edit to the closer one.
+ *
+ * Then one fallback, for the case the measure is wrong about: when exactly one
+ * removed and exactly one inserted block of the same type are left over, they
+ * are one block edited whatever they score. `Two.` became `Two, edited.` — a
+ * third of it survived, which git would call a different file and a reader
+ * calls a typo fixed. One paragraph replaced by one paragraph in the same
+ * place keeps its id and its comments (MANUAL §7).
  */
 function hunk(removed: readonly DiffBlock[], inserted: readonly DiffBlock[]): BlockOp[] {
   const pairs: { from: number; to: number; score: number }[] = [];
@@ -219,6 +226,24 @@ function hunk(removed: readonly DiffBlock[], inserted: readonly DiffBlock[]): Bl
     if (pairedFrom.has(pair.from) || takenTo.has(pair.to)) continue;
     pairedFrom.set(pair.from, pair.to);
     takenTo.add(pair.to);
+  }
+
+  // The one-for-one fallback. Two left over of the same type say which is
+  // which by being the only ones; three or more do not, and stay a deletion
+  // and an insertion rather than a guess.
+  const restFrom = [...removed.entries()].filter(([from]) => !pairedFrom.has(from));
+  const restTo = [...inserted.entries()].filter(([to]) => !takenTo.has(to));
+  const [only] = restFrom;
+  const [other] = restTo;
+  if (
+    restFrom.length === 1 &&
+    restTo.length === 1 &&
+    only !== undefined &&
+    other !== undefined &&
+    only[1].type === other[1].type
+  ) {
+    pairedFrom.set(only[0], other[0]);
+    takenTo.add(other[0]);
   }
 
   const ops: BlockOp[] = [];
