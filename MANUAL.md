@@ -573,31 +573,55 @@ merge, push.
 
 ### Write-back
 
-The first version replaces the document body.
+A push patches what changed and leaves the rest alone. There is nothing in
+the Markdown to make this possible: at push time the helper re-reads the live
+document, converts it, and requires the result to equal the version your
+commit started from. Push step 1 already guarantees that; the check makes it
+local. Base block *n* is then live block *n*, and the diff between your
+version and the base, computed the way `git diff` is but over blocks, says
+what to do with each:
 
-- **Notion:** every block except child pages and child databases is deleted
-  and the body is regenerated. Block-level comments, per-block history, and
-  any block the API cannot create (link previews, synced-block references) are
-  lost on the edited page. A block with more than a hundred rich-text runs
-  keeps its text but loses the formatting past the ninety-ninth run. Page-level
-  comments, properties, sharing, child pages, child databases and the page id
-  survive.
-- **Google Docs:** the body text is replaced. Text colour, highlight, fonts,
-  sizes and alignment **inside the body are lost on every push**, because the
-  dialect cannot carry them. Horizontal rules and image placeholders are
-  dropped, since the API cannot create the one and phase 1 does not upload
-  the other. A fenced code block is written as Courier New paragraphs and a
-  blockquote as plain paragraphs, since Docs has neither. Document-level defaults, named styles, sharing,
-  comments and the file id survive, but comment anchors may detach. In practice
-  this makes the first version suitable for Docs that are plain prose, and
-  unsuitable for heavily formatted ones.
-- **Drive binaries:** a new revision of the same file is uploaded. Everything
-  else about the file is untouched.
+- An **untouched block** is not written at all. It keeps its id, its
+  comments, its history, and every attribute the dialect cannot express.
+- An **edited block** is patched in place. Inside it, only the characters
+  that changed are rewritten: deleted spans are cut, inserted text takes the
+  formatting of the text before it, and a formatting change you made in the
+  dialect (bold, italic, strikethrough, underline, code, link) touches only
+  that attribute on that span. Everything else in the block survives.
+- An **inserted block** is created at its position; a **deleted block** is
+  deleted.
+- A **moved block** is a deletion and an insertion, because neither source
+  can move a block. It arrives at its new place as a new block: a new id on
+  Notion, and detached comments on both.
+- A block whose **type changed** (a paragraph made a heading) is a style
+  change on Google Docs and a delete-and-create on Notion, which cannot
+  change a block's type.
 
-**Later, and the top item on the roadmap:** diff-based write-back. Block ids
-and paragraph ranges are tracked, and only what changed is patched. That keeps
-formatting outside the dialect on untouched paragraphs, and keeps comments
-anchored.
+What is lost, per source:
+
+- **Notion:** formatting on the characters you rewrote; the id and comments
+  of a moved block or a block whose type changed. A block the API cannot
+  create (bookmark, embed, synced block, column list, …) survives untouched;
+  editing its placeholder is refused, deleting it deletes the block. A block
+  with more than a hundred rich-text runs keeps its text but loses the
+  formatting past the ninety-ninth run. Page-level comments, properties,
+  sharing, child pages, child databases and the page id always survive.
+- **Google Docs (later, phase 3):** formatting on the characters you
+  rewrote; the anchor of a comment that overlaps an edit; a pending
+  suggestion inside an edited span, which is overwritten as plain text and
+  named in the push report. Horizontal rules and images cannot be created by
+  the dialect, so a new one in your Markdown is dropped; an existing one in
+  untouched text survives. A fenced code block is written as Courier New
+  paragraphs and a blockquote as plain paragraphs, since Docs has neither.
+  Until then, Docs pushes replace the body: text colour, highlight, fonts,
+  sizes and alignment inside the body are lost on every push, rules and
+  image placeholders are dropped, and comment anchors may detach.
+- **Drive binaries:** a new revision of the same file is uploaded.
+  Everything else about the file is untouched.
+
+The push report says how much was touched: `updated (3 blocks changed,
+41 kept)`. A document whose live version does not match the base is refused
+with "the source changed": fetch, merge, push again.
 
 ### Conflicts
 
@@ -703,8 +727,8 @@ Everything in this manual not marked **later**. Limitations of phase 1:
 
 - Notion databases are not synced. Pages inside a database are not synced either.
 - Sheets, Slides and Drawings are exported read-only.
-- Write-back replaces the body (§7). Google Docs lose range-level formatting on
-  push. Notion loses block-level comments on edited pages.
+- Google Docs write-back replaces the body until phase 3 lands: range-level
+  formatting is lost on push and comment anchors may detach.
 - Images and files hosted by the source are placeholders, not downloaded.
 - Google Docs revisions are collapsed into one commit per fetch.
 - One branch (`main`) per remote. Other local branches are fine; the helper only
@@ -723,9 +747,9 @@ uploaded to Drive and inserted by reference.
 
 ### Phase 3 — diff-based write-back
 
-Block ids and paragraph ranges are tracked, and only what changed is patched.
-Keeps formatting outside the dialect on untouched paragraphs, and keeps
-comments anchored. Removes the biggest phase-1 limitation for Google Docs.
+Only what changed is patched, block by block and character by character
+(§7 "Write-back"); nothing is stored in the Markdown for it. Notion first,
+then Google Docs, where it removes the biggest phase-1 limitation.
 
 ### Phase 4 — comment threads
 
