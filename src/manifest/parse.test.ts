@@ -59,6 +59,27 @@ roots:
     expect(manifest.roots).toEqual([]);
   });
 
+  it('reads `comments: true` on a root (MANUAL §4)', () => {
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    comments: true\n',
+    );
+    expect(manifest.roots[0]?.comments).toBe(true);
+  });
+
+  it('keeps an explicit `comments: false`', () => {
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    comments: false\n',
+    );
+    expect(manifest.roots[0]?.comments).toBe(false);
+  });
+
+  it('leaves `comments` absent on a root that does not mention it, which is off', () => {
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n',
+    );
+    expect(manifest.roots[0]?.comments).toBeUndefined();
+  });
+
   it('normalises paths to NFC', () => {
     // "Cafe" + combining acute (NFD) comes back precomposed.
     const manifest = manifestOf(
@@ -109,6 +130,12 @@ roots:
       'an unknown root key',
       'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    depth: 2\n',
       'unknown key "depth"',
+      5,
+    ],
+    [
+      'a comments value that is not a boolean',
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    comments: yes please\n',
+      '"comments" must be true or false',
       5,
     ],
     [

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/provider.js';
 import type { IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
-import { DOC_IDS, fixtureApi, fixtureDocument, ROOT_ID } from './fixtures.mock.js';
+import { countingApi, DOC_IDS, fixtureApi, fixtureDocument, ROOT_ID } from './fixtures.mock.js';
 import { changedSince, describe as describeRef, fetchRoot } from './index.js';
 
 const ELEMENTS = '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4';
@@ -33,10 +33,11 @@ describe('fetchRoot', () => {
   it('answers one file per checked-out document, with its index entry', async () => {
     const result = await fetchRoot(root, provider, new Map(), options);
 
-    // Ten documents, and the comment sidecar of the one with threads.
-    expect(result.files).toHaveLength(11);
+    // Ten documents and no sidecar: comments are off unless the root asks
+    // for them (MANUAL §4).
+    expect(result.files).toHaveLength(10);
     expect(result.entries).toEqual(documents(result.files).map((file) => file.entry));
-    expect(result.files.filter((file) => file.entry === undefined)).toHaveLength(1);
+    expect(result.files.filter((file) => file.entry === undefined)).toHaveLength(0);
     expect(result.skipped).toEqual([]);
   });
 
@@ -222,6 +223,13 @@ describe('describe', () => {
 
 describe('the comment sidecar (MANUAL §6)', () => {
   const at = { ...options, now: () => new Date('2026-09-03T16:31:07Z') };
+  // The sidecar exists only on a root that asked for it (MANUAL §4).
+  const root: Root = {
+    src: { source: 'gdocs', id: ROOT_ID },
+    path: 'drive/',
+    ignore: [],
+    comments: true,
+  };
 
   const sidecarOf = async (api = fixtureApi()) => {
     const result = await fetchRoot(root, provider, new Map(), { ...at, api });
@@ -305,6 +313,72 @@ describe('the comment sidecar (MANUAL §6)', () => {
     await expect(fetchRoot(root, provider, new Map(), { ...at, api })).rejects.toThrow(
       'the .comments.md suffix is docsync',
     );
+  });
+});
+
+describe('the `comments` option (MANUAL §4, §7)', () => {
+  const at = { ...options, now: () => new Date('2026-09-03T16:31:07Z') };
+  const on: Root = { ...root, comments: true };
+
+  /** The index a fetch of `of` leaves behind, to fetch against a second time. */
+  const indexAfter = async (of: Root): Promise<Map<string, IndexEntry>> => {
+    const first = await fetchRoot(of, provider, new Map(), at);
+    return new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+  };
+
+  const sidecars = (files: readonly { path: string }[]): string[] =>
+    files.map((file) => file.path).filter((path) => path.endsWith('.comments.md'));
+
+  it('costs what a fetch cost before comments existed when it is off', async () => {
+    const previous = await indexAfter(root);
+    const counted = countingApi();
+
+    const second = await fetchRoot(root, provider, previous, { ...at, api: counted.api });
+
+    // The listing of the root and of its one subfolder, and the root's own
+    // metadata: nothing else, exactly as before ticket 17.
+    expect(counted.requests).toEqual([
+      `getFile:${ROOT_ID}`,
+      `listFolder:${ROOT_ID}`,
+      'listFolder:1RoSAIyz2ktweMqiOBnlnl6AsXClvD3Wo',
+    ]);
+    expect(sidecars(second.files)).toEqual([]);
+  });
+
+  it('asks for no comments even on a document that changed', async () => {
+    const counted = countingApi();
+
+    await fetchRoot(root, provider, new Map(), { ...at, api: counted.api });
+
+    expect(counted.requests.filter((one) => one.startsWith('comments:'))).toEqual([]);
+  });
+
+  it('costs one comment listing per Doc, and the body of the one with threads, when it is on', async () => {
+    const previous = await indexAfter(on);
+    const counted = countingApi();
+
+    const second = await fetchRoot(on, provider, previous, { ...at, api: counted.api });
+
+    // Three for the walk, one `comments.list` per Doc, and the Elements body,
+    // which the sidecar needs to place its threads (MANUAL §6).
+    expect(counted.requests).toHaveLength(3 + DOC_IDS.length + 1);
+    expect(counted.requests.filter((one) => one.startsWith('comments:'))).toHaveLength(
+      DOC_IDS.length,
+    );
+    expect(sidecars(second.files)).toEqual(['drive/Elements.comments.md']);
+  });
+
+  it('drops the sidecar and the suggested flag when a root turns it off', async () => {
+    const previous = await indexAfter(on);
+    expect(previous.get('drive/Elements.md')?.suggested).toBe(true);
+    const counted = countingApi();
+
+    const second = await fetchRoot(root, provider, previous, { ...at, api: counted.api });
+
+    // Gone from the fetch is gone from the commit, as a resolved thread is.
+    expect(sidecars(second.files)).toEqual([]);
+    expect(second.entries.some((one) => one.suggested === true)).toBe(false);
+    expect(counted.requests.filter((one) => one.startsWith('comments:'))).toEqual([]);
   });
 });
 

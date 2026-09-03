@@ -85,7 +85,9 @@ export async function fetchRoot(
   const fetched = stamp(options.now?.() ?? new Date());
   for (const file of walked.files) {
     refuseSidecar(file.path);
-    files.push(...(await toFiles(file, api, before.get(file.id), fetched)));
+    // Comments are opt-in per root, because reading them costs a request per
+    // document on every fetch (MANUAL §4, §7).
+    files.push(...(await toFiles(file, api, before.get(file.id), fetched, root.comments === true)));
   }
 
   return {
@@ -194,14 +196,16 @@ function extensionOf(mimeType: string, name: string): string {
 }
 
 /**
- * One walked file as the files it becomes: the document itself, and its comment
- * sidecar when it has an open thread or a pending suggestion (MANUAL §6).
+ * One walked file as the files it becomes: the document itself, and, on a root
+ * with `comments: true`, its comment sidecar when it has an open thread or a
+ * pending suggestion (MANUAL §4, §6).
  */
 async function toFiles(
   file: WalkedFile,
   api: GDriveApi,
   previous: IndexEntry | undefined,
   fetched: string,
+  comments: boolean,
 ): Promise<FetchedFile[]> {
   const entry: IndexEntry = {
     path: file.path,
@@ -235,18 +239,33 @@ async function toFiles(
     return [{ ...common, entry, bytes }];
   }
 
+  // With comments off, a Doc costs what it did before ticket 17: its body when
+  // it changed, and not one request more (MANUAL §7).
+  if (!comments) {
+    if (!changed) return [{ ...common, entry }];
+    const body = documentToMarkdown(await api.getDocument(file.id, 'inline'));
+    return [
+      {
+        ...common,
+        entry,
+        text: serializeDocument({ id: file.ref, title: file.title }, body),
+        body,
+      },
+    ];
+  }
+
   // A comment moves nothing the walk can see, so every Doc's threads are read
   // on every fetch (MANUAL §6). The document itself is read when it changed, or
   // when it owes a sidecar: to place a thread the sidecar needs the body.
-  const comments = await api.comments(file.id);
-  const open = comments.filter((one) => one.resolved !== true && one.deleted !== true);
+  const threadList = await api.comments(file.id);
+  const open = threadList.filter((one) => one.resolved !== true && one.deleted !== true);
   if (!changed && open.length === 0 && previous?.suggested !== true) {
     return [{ ...common, entry }];
   }
 
   const document = await api.getDocument(file.id, 'inline');
   const body = documentToMarkdown(document);
-  const threads = threadsOf(document, comments, body);
+  const threads = threadsOf(document, threadList, body);
   const suggested = threads.some((thread) => thread.kind === 'suggestion');
 
   const document_: FetchedFile = {

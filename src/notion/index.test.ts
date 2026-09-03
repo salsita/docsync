@@ -5,7 +5,7 @@ import type { IndexEntry } from '../index-file.js';
 import { resolveAlias } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import type { NotionApi } from './api.js';
-import { fixtureApi, ROOT_ID } from './fixtures.mock.js';
+import { countingApi, fixtureApi, ROOT_ID } from './fixtures.mock.js';
 import { changedSince, describe as describeRef, fetchRoot, notionApi } from './index.js';
 
 const BLOCKS_ID = '3cf715cbeb0881168ea0f3f18715e1a4';
@@ -51,8 +51,9 @@ describe('fetchRoot', () => {
   it('writes an index entry for every file, in the same order', async () => {
     const { files, entries } = await fetch();
 
-    // Every page has an entry; the comment sidecar beside one of them has none.
-    expect(entries).toHaveLength(files.length - 1);
+    // Every file is a page: comments, and the sidecar that has no entry of its
+    // own, are off unless the root asks for them (MANUAL §4).
+    expect(entries).toHaveLength(files.length);
     expect(entries.map((one) => one.path)).toEqual(documents(files).map((file) => file.path));
     expect(entries[0]).toEqual(
       entry('Docsync test.md', ROOT_ID, files[0]?.entry?.lastEditedTime ?? ''),
@@ -256,6 +257,13 @@ describe('describe', () => {
 
 describe('the comment sidecar (MANUAL §6)', () => {
   const at = { now: () => new Date('2026-09-03T16:31:07Z') };
+  // The sidecar exists only on a root that asked for it (MANUAL §4).
+  const root: Root = {
+    src: { source: 'notion', id: ROOT_ID },
+    path: 'Docsync test.md',
+    ignore: [],
+    comments: true,
+  };
 
   it('writes the open discussions of the Blocks page, anchored on their blocks', async () => {
     const { files } = await fetchRoot(root, provider, new Map(), { api: fixtureApi(), ...at });
@@ -293,6 +301,66 @@ describe('the comment sidecar (MANUAL §6)', () => {
     expect(second.files.map((file) => file.path)).toContain('Docsync test/Blocks.comments.md');
     // One request per page plus one per block of it (MANUAL §6).
     expect(asked.length).toBeGreaterThan(second.entries.length);
+  });
+});
+
+describe('the `comments` option (MANUAL §4, §7)', () => {
+  const at = { now: () => new Date('2026-09-03T16:31:07Z') };
+  const on: Root = { ...root, comments: true };
+
+  /** The index a fetch of `of` leaves behind, to fetch against a second time. */
+  const indexAfter = async (of: Root): Promise<Map<string, IndexEntry>> => {
+    const first = await fetchRoot(of, provider, new Map(), { api: fixtureApi(), ...at });
+    return new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+  };
+
+  const sidecars = (files: readonly { path: string }[]): string[] =>
+    files.map((file) => file.path).filter((path) => path.endsWith('.comments.md'));
+
+  it('costs what a fetch cost before comments existed when it is off', async () => {
+    const previous = await indexAfter(root);
+    const counted = countingApi();
+
+    const second = await fetchRoot(root, provider, previous, { api: counted.api, ...at });
+
+    // The walk of the nine recorded pages and nothing else, exactly as before
+    // ticket 17. The two user lookups are cached and counted apart.
+    expect(counted.requests).toHaveLength(19);
+    expect(counted.requests.filter((one) => one.startsWith('comments:'))).toEqual([]);
+    expect(counted.users).toHaveLength(2);
+    expect(sidecars(second.files)).toEqual([]);
+  });
+
+  it('asks for no comments even on a first fetch, where every page changed', async () => {
+    const counted = countingApi();
+
+    await fetchRoot(root, provider, new Map(), { api: counted.api, ...at });
+
+    expect(counted.requests.filter((one) => one.startsWith('comments:'))).toEqual([]);
+  });
+
+  it('costs one request per block of every page when it is on', async () => {
+    const previous = await indexAfter(on);
+    const counted = countingApi();
+
+    const second = await fetchRoot(on, provider, previous, { api: counted.api, ...at });
+
+    // The same walk, plus one `GET /v1/comments` per page and per block of it:
+    // the cost the manual's §7 warning is about.
+    expect(counted.requests.filter((one) => one.startsWith('comments:'))).toHaveLength(66);
+    expect(counted.requests).toHaveLength(19 + 66);
+    expect(sidecars(second.files)).toEqual(['Docsync test/Blocks.comments.md']);
+  });
+
+  it('drops the sidecar when a root turns it off', async () => {
+    const previous = await indexAfter(on);
+    const counted = countingApi();
+
+    const second = await fetchRoot(root, provider, previous, { api: counted.api, ...at });
+
+    // Gone from the fetch is gone from the commit, as a resolved thread is.
+    expect(sidecars(second.files)).toEqual([]);
+    expect(counted.requests).toHaveLength(19);
   });
 });
 

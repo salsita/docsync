@@ -106,6 +106,50 @@ export function fixtureApi(): NotionApi {
   };
 }
 
+/** A fixture-backed API that counts what a fetch would put on the wire. */
+export interface CountedApi {
+  api: NotionApi;
+  /** One entry per request, as `method:id`, in order. */
+  requests: string[];
+  /** The user lookups, which the real API makes once per id and caches. */
+  users: string[];
+}
+
+/**
+ * The fixture API with every read counted, so a test can pin what one fetch
+ * costs (MANUAL §7: the warning is about exactly this number). `requests` is
+ * the page and block traffic, which is what the warning is about; a user
+ * lookup is counted apart, since the real API makes it once per id and caches
+ * it for the rest of the run however many pages that user edited.
+ */
+export function countingApi(backing: NotionApi = fixtureApi()): CountedApi {
+  const requests: string[] = [];
+  const users: string[] = [];
+  const seen = new Set<string>();
+  const count = <T>(name: string, id: string, value: Promise<T>): Promise<T> => {
+    requests.push(`${name}:${id}`);
+    return value;
+  };
+  return {
+    requests,
+    users,
+    api: {
+      ...backing,
+      page: (id) => count('page', id, backing.page(id)),
+      blockTree: (id) => count('blockTree', id, backing.blockTree(id)),
+      children: (id) => count('children', id, backing.children(id)),
+      comments: (id) => count('comments', id, backing.comments(id)),
+      async user(id) {
+        if (id !== undefined && !seen.has(id)) {
+          seen.add(id);
+          users.push(id);
+        }
+        return backing.user(id);
+      },
+    },
+  };
+}
+
 /** The write half, which a fixture-backed API has no business performing. */
 function readOnly(): Pick<
   NotionApi,

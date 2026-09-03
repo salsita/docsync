@@ -88,7 +88,11 @@ async function fetchWith(
   const fetched = `${(options.now?.() ?? new Date()).toISOString().slice(0, 19)}Z`;
   for (const page of walked.pages) {
     refuseSidecar(page.path);
-    files.push(...(await toFiles(page, api, pages, times.get(page.id), fetched)));
+    // Comments are opt-in per root, because reading them costs one request per
+    // block of every page on every fetch (MANUAL §4, §7).
+    files.push(
+      ...(await toFiles(page, api, pages, times.get(page.id), fetched, root.comments === true)),
+    );
   }
 
   return {
@@ -110,13 +114,17 @@ function refuseSidecar(path: string): void {
   );
 }
 
-/** One page as the files it becomes: the page, and its sidecar when it has one. */
+/**
+ * One page as the files it becomes: the page, and, on a root with
+ * `comments: true`, its sidecar when it has a thread (MANUAL §4, §6).
+ */
 async function toFiles(
   page: WalkedPage,
   api: NotionApi,
   pages: ReadonlyMap<string, string>,
   previousTime: string | undefined,
   fetched: string,
+  comments: boolean,
 ): Promise<FetchedFile[]> {
   const body = blocksToMarkdown(page.blocks, { pages, from: page.path });
   const entry: IndexEntry = {
@@ -134,6 +142,10 @@ async function toFiles(
     editor: await editorOf(page, api),
     changed: previousTime !== page.lastEditedTime,
   };
+
+  // With comments off, a page costs what it did before ticket 17: the walk and
+  // nothing more (MANUAL §7).
+  if (!comments) return [file];
 
   // A comment moves nothing the walk can see, so every page's threads are read
   // on every fetch, changed or not (MANUAL §6).

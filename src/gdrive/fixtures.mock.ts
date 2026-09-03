@@ -111,6 +111,37 @@ export function fixtureApi(): GDriveApi {
   };
 }
 
+/** A fixture-backed API that counts what a fetch would put on the wire. */
+export interface CountedApi {
+  api: GDriveApi;
+  /** One entry per request, as `method:id`, in order. */
+  requests: string[];
+}
+
+/**
+ * The fixture API with every read counted, so a test can pin what one fetch
+ * costs (MANUAL §7: the warning is about exactly this number).
+ */
+export function countingApi(backing: GDriveApi = fixtureApi()): CountedApi {
+  const requests: string[] = [];
+  const count = <T>(name: string, id: string, value: Promise<T>): Promise<T> => {
+    requests.push(`${name}:${id}`);
+    return value;
+  };
+  return {
+    requests,
+    api: {
+      ...backing,
+      listFolder: (id) => count('listFolder', id, backing.listFolder(id)),
+      getFile: (id) => count('getFile', id, backing.getFile(id)),
+      getDocument: (id, mode) => count('getDocument', id, backing.getDocument(id, mode)),
+      comments: (id) => count('comments', id, backing.comments(id)),
+      download: (id) => count('download', id, backing.download(id)),
+      export: (id, mimeType) => count('export', id, backing.export(id, mimeType)),
+    },
+  };
+}
+
 /**
  * The write half of the API, refusing. The fixture tree is a recording of the
  * owner's real Drive folder: a test that reaches a write here has a bug, and

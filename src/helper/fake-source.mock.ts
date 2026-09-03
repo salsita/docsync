@@ -55,7 +55,8 @@ export interface FakeObject {
    * The comment sidecar this document owes, as its whole text (MANUAL §6).
    * Absent when it has no open thread, which is when there is no file at all.
    * A comment moves no last-edit time, so this is answered on every fetch
-   * whether the document changed or not.
+   * whether the document changed or not — and only on a root whose `comments`
+   * is on (MANUAL §4).
    */
   comments?: string;
 }
@@ -239,7 +240,8 @@ export function createFakeSource(store: FakeStore): Source {
         }
       }
       files.push(file);
-      if (object.comments !== undefined) {
+      // Sidecars only on a root that asked for them (MANUAL §4).
+      if (object.comments !== undefined && root.comments === true) {
         // A sidecar carries text and no entry: it is a file of the commit and
         // not a document of the checkout (MANUAL §6).
         files.push({

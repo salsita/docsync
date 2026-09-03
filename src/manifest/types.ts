@@ -17,6 +17,13 @@ export interface Root {
   path: string;
   /** gitignore patterns and source refs. Empty when the root has no ignore list. */
   ignore: string[];
+  /**
+   * Whether comment threads and suggestions are pulled into sidecars beside
+   * the documents of this root (MANUAL §4, §6). Absent means off, which is the
+   * default: on Notion the refresh costs one request per block per fetch
+   * (MANUAL §7).
+   */
+  comments?: boolean;
 }
 
 /** A parsed manifest. */

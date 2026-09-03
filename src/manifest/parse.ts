@@ -3,7 +3,7 @@ import { parseSourceRef, type SourceRef } from '../source-ref.js';
 import type { Manifest, ManifestError, ParseResult, Root } from './types.js';
 
 const TOP_LEVEL_KEYS = new Set(['version', 'roots']);
-const ROOT_KEYS = new Set(['src', 'path', 'ignore']);
+const ROOT_KEYS = new Set(['src', 'path', 'ignore', 'comments']);
 
 /**
  * Parses a manifest file (MANUAL §4).
@@ -132,6 +132,20 @@ function parseRoot(node: Node, report: Report): Root | undefined {
     }
   }
 
+  // Absent is off (MANUAL §4); an explicit `false` is kept, so that writing the
+  // manifest back does not silently drop the line the user wrote.
+  let comments: boolean | undefined;
+  const commentsNode = node.get('comments', true);
+  if (commentsNode !== undefined) {
+    const raw = isScalar(commentsNode) ? commentsNode.value : undefined;
+    if (typeof raw !== 'boolean') {
+      report(commentsNode as Node, '"comments" must be true or false');
+      failed = true;
+    } else {
+      comments = raw;
+    }
+  }
+
   if (failed || !src || path === undefined) return undefined;
-  return { src, path, ignore };
+  return { src, path, ignore, ...(comments === undefined ? {} : { comments }) };
 }

@@ -215,6 +215,18 @@ describe('formatStatusLine', () => {
     );
   });
 
+  it('says `comments on` for a root that pulls the sidecars (MANUAL §4)', () => {
+    expect(formatStatusLine({ ...root, comments: true }, '2026-09-03T10:12:00Z', 0)).toBe(
+      'notion:2f3a…  Product Specs/  fetched 2026-09-03 10:12  up to date  comments on',
+    );
+  });
+
+  it('says nothing about comments on a root that leaves them off', () => {
+    expect(formatStatusLine({ ...root, comments: false }, '2026-09-03T10:12:00Z', 0)).not.toContain(
+      'comments',
+    );
+  });
+
   it('says when the source could not be reached', () => {
     expect(formatStatusLine(root, undefined, undefined)).toBe(
       'notion:2f3a…  Product Specs/  fetched unknown  not checked',

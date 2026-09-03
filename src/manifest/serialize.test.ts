@@ -54,6 +54,39 @@ roots:
 `);
   });
 
+  it('writes `comments` after `ignore` on a root that asks for them (MANUAL §4)', () => {
+    const manifest: Manifest = {
+      version: 1,
+      roots: [
+        {
+          src: { source: 'notion', id: '2f3a9c4b1e11eebe560242ac120002ab' },
+          path: 'Product Specs/',
+          ignore: ['Archive/**'],
+          comments: true,
+        },
+      ],
+    };
+    expect(serializeManifest(manifest)).toBe(`version: 1
+roots:
+  - src: notion:2f3a9c4b1e11eebe560242ac120002ab
+    path: Product Specs/
+    ignore:
+      - Archive/**
+    comments: true
+`);
+  });
+
+  it('round-trips a root with `comments: true` and its own comments unchanged', () => {
+    const text = `version: 1
+roots:
+  # Small enough to afford the comment requests.
+  - src: notion:2f3a9c4b1e11eebe560242ac120002ab
+    path: Product Specs/
+    comments: true
+`;
+    expect(serializeManifest(parsed(text))).toBe(text);
+  });
+
   it('writes an empty checkout', () => {
     expect(serializeManifest({ version: 1, roots: [] })).toBe('version: 1\nroots: []\n');
   });

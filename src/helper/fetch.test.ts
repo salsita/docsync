@@ -285,6 +285,20 @@ describe('fetchCommit', () => {
   });
 
   describe('the comment sidecar (MANUAL §6)', () => {
+    /** The same roots, with the Notion one asking for comments (MANUAL §4). */
+    const commented: Manifest = {
+      version: 1,
+      roots: [
+        {
+          src: { source: 'notion', id: NOTION_ROOT },
+          path: 'Specs.md',
+          ignore: [],
+          comments: true,
+        },
+        { src: { source: 'gdocs', id: DRIVE_ROOT }, path: 'Contracts/', ignore: [] },
+      ],
+    };
+
     /** The sidecar of `Specs/Auth.md`, stamped at `fetched`. */
     const sidecar = (fetched: string, thread = 'Is this still true?'): string =>
       [
@@ -313,7 +327,7 @@ describe('fetchCommit', () => {
 
     it('writes it beside the document and keeps it out of the index', async () => {
       reset(withComments(sidecar('2026-04-01T00:00:00Z')));
-      const { commit } = await fetchCommit(deps, manifest, undefined);
+      const { commit } = await fetchCommit(deps, commented, undefined);
 
       const tree = await readTree(repo.git, commit);
       expect([...tree.keys()].sort()).toContain('Specs/Auth.comments.md');
@@ -327,7 +341,7 @@ describe('fetchCommit', () => {
 
     it('has none for a document with no thread', async () => {
       reset();
-      const { commit } = await fetchCommit(deps, manifest, undefined);
+      const { commit } = await fetchCommit(deps, commented, undefined);
 
       expect([...(await readTree(repo.git, commit)).keys()]).not.toContain(
         'Specs/Auth.comments.md',
@@ -336,14 +350,14 @@ describe('fetchCommit', () => {
 
     it('commits nothing when only the time of the fetch moved', async () => {
       reset(withComments(sidecar('2026-04-01T00:00:00Z')));
-      const first = await fetchCommit(deps, manifest, undefined);
+      const first = await fetchCommit(deps, commented, undefined);
 
       const state = store.load();
       const auth = state.objects[fakeId('notion', 2)];
       if (auth !== undefined) auth.comments = sidecar('2026-04-02T10:11:12Z');
       store.save(state);
 
-      expect(await fetchCommit(deps, manifest, first.commit)).toMatchObject({
+      expect(await fetchCommit(deps, commented, first.commit)).toMatchObject({
         commit: first.commit,
         changed: false,
       });
@@ -351,14 +365,14 @@ describe('fetchCommit', () => {
 
     it('commits a new comment as `Update comments on 1 document`', async () => {
       reset(withComments(sidecar('2026-04-01T00:00:00Z')));
-      const first = await fetchCommit(deps, manifest, undefined);
+      const first = await fetchCommit(deps, commented, undefined);
 
       const state = store.load();
       const auth = state.objects[fakeId('notion', 2)];
       if (auth !== undefined) auth.comments = sidecar('2026-04-02T10:11:12Z', 'Answered.');
       store.save(state);
 
-      const second = await fetchCommit(deps, manifest, first.commit);
+      const second = await fetchCommit(deps, commented, first.commit);
 
       expect(second.changed).toBe(true);
       expect(await repo.git.text(['log', '-1', '--format=%B', second.commit])).toBe(
@@ -370,16 +384,33 @@ describe('fetchCommit', () => {
       );
     });
 
+    it('removes the file when the root turns the option off', async () => {
+      reset(withComments(sidecar('2026-04-01T00:00:00Z')));
+      const first = await fetchCommit(deps, commented, undefined);
+      expect([...(await readTree(repo.git, first.commit)).keys()]).toContain(
+        'Specs/Auth.comments.md',
+      );
+
+      // `manifest` is the same two roots without `comments: true`, which is
+      // what a hand edit of the manifest produces.
+      const second = await fetchCommit(deps, manifest, first.commit);
+
+      expect(second.changed).toBe(true);
+      expect([...(await readTree(repo.git, second.commit)).keys()]).not.toContain(
+        'Specs/Auth.comments.md',
+      );
+    });
+
     it('removes the file when the last thread is resolved', async () => {
       reset(withComments(sidecar('2026-04-01T00:00:00Z')));
-      const first = await fetchCommit(deps, manifest, undefined);
+      const first = await fetchCommit(deps, commented, undefined);
 
       const state = store.load();
       const auth = state.objects[fakeId('notion', 2)];
       if (auth !== undefined) auth.comments = undefined;
       store.save(state);
 
-      const second = await fetchCommit(deps, manifest, first.commit);
+      const second = await fetchCommit(deps, commented, first.commit);
 
       expect(second.changed).toBe(true);
       expect([...(await readTree(repo.git, second.commit)).keys()]).not.toContain(
