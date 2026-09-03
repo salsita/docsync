@@ -11,31 +11,25 @@ import type { CredentialProvider } from '../auth/index.js';
 import { serializeDocument } from '../frontmatter.js';
 import type { Editor, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
+import type {
+  FetchedFile as SourceFetchedFile,
+  FetchResult as SourceFetchResult,
+} from '../source.js';
 import { createNotionApi, createNotionClient, type NotionApi } from './api.js';
 import { blocksToMarkdown } from './to-markdown.js';
 import { type SkippedObject, type WalkedPage, walkRoot } from './walk.js';
 
-/** One Markdown file, ready to be written. */
-export interface FetchedFile {
-  /** Repo-relative, `/`-separated. */
-  path: string;
-  /** The whole file: frontmatter and body. */
+/**
+ * One Markdown file, ready to be written. A Notion page is always Markdown, so
+ * the shared shape's optional `text` and `body` are always there.
+ */
+export interface FetchedFile extends SourceFetchedFile {
   text: string;
-  /** The body alone, for a caller that has its own frontmatter to write. */
   body: string;
-  entry: IndexEntry;
-  editor?: Editor;
-  /**
-   * Whether the source's last-edit time differs from the one in the index the
-   * caller passed. A first fetch marks everything changed.
-   */
-  changed: boolean;
 }
 
-export interface FetchResult {
+export interface FetchResult extends SourceFetchResult {
   files: FetchedFile[];
-  /** The index entries for this root, in the same order as `files`. */
-  entries: IndexEntry[];
   /** Databases and ignored pages, so a caller can say what it left out. */
   skipped: SkippedObject[];
 }

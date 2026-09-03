@@ -17,34 +17,22 @@ import type { CredentialProvider } from '../auth/index.js';
 import { serializeDocument } from '../frontmatter.js';
 import type { Editor, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
+import type {
+  FetchedFile as SourceFetchedFile,
+  FetchResult as SourceFetchResult,
+} from '../source.js';
 import { createGDriveApi, type DriveUser, type GDriveApi } from './api.js';
 import { documentToMarkdown } from './to-markdown.js';
 import { type SkippedObject, type WalkedFile, walkRoot } from './walk.js';
 
-/** One file, ready to be written. */
-export interface FetchedFile {
-  /** Repo-relative, `/`-separated. */
-  path: string;
-  /** A Markdown document: frontmatter and body. Absent for other files. */
-  text?: string;
-  /** The body alone, for a caller that has its own frontmatter to write. */
-  body?: string;
-  /** A binary or an export, as bytes. Absent for Markdown documents. */
-  bytes?: Uint8Array;
-  entry: IndexEntry;
-  editor?: Editor;
-  /**
-   * Whether the source's last-edit time — or, for a binary, its checksum —
-   * differs from the one in the index the caller passed. A first fetch marks
-   * everything changed. Content is present exactly when this is true.
-   */
-  changed: boolean;
-}
+/**
+ * One file, ready to be written. A Drive root holds files that are not
+ * Markdown (MANUAL §6), so this is the shared shape as it stands: `text` or
+ * `bytes`, and neither on a file whose `changed` is false.
+ */
+export type FetchedFile = SourceFetchedFile;
 
-export interface FetchResult {
-  files: FetchedFile[];
-  /** The index entries for this root, in the same order as `files`. */
-  entries: IndexEntry[];
+export interface FetchResult extends SourceFetchResult {
   /** Ignored files and Google types with no export, so a caller can say so. */
   skipped: SkippedObject[];
 }
