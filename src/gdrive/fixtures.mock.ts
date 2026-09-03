@@ -71,6 +71,7 @@ export function fixtureBytes(id: string): Uint8Array {
  */
 export function fixtureApi(): GDriveApi {
   return {
+    ...refusesToWrite(),
     async listFolder(id) {
       return fixtureListing(id);
     },
@@ -86,5 +87,25 @@ export function fixtureApi(): GDriveApi {
     async export(id) {
       return fixtureBytes(id);
     },
+  };
+}
+
+/**
+ * The write half of the API, refusing. The fixture tree is a recording of the
+ * owner's real Drive folder: a test that reaches a write here has a bug, and
+ * it should say so rather than pretend the write happened.
+ */
+export function refusesToWrite(): Pick<
+  GDriveApi,
+  'batchUpdate' | 'createFile' | 'updateFile' | 'uploadRevision' | 'uploadFile' | 'copyFile'
+> {
+  const refuse = (name: string) => () => Promise.reject(new Error(`${name} on the fixture tree`));
+  return {
+    batchUpdate: refuse('batchUpdate'),
+    createFile: refuse('createFile'),
+    updateFile: refuse('updateFile'),
+    uploadRevision: refuse('uploadRevision'),
+    uploadFile: refuse('uploadFile'),
+    copyFile: refuse('copyFile'),
   };
 }

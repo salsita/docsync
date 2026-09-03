@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Root } from '../manifest/types.js';
 import type { DriveFile, GDriveApi } from './api.js';
-import { fixtureApi, ROOT_ID } from './fixtures.mock.js';
+import { fixtureApi, ROOT_ID, refusesToWrite } from './fixtures.mock.js';
 import { EXPORTS, walkRoot } from './walk.js';
 
 const FOLDER = 'application/vnd.google-apps.folder';
@@ -20,6 +20,7 @@ function stubApi(
     throw new Error(`the stub API does not ${name}`);
   };
   return {
+    ...refusesToWrite(),
     async listFolder(id) {
       return listings[id] ?? [];
     },

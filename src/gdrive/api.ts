@@ -16,6 +16,17 @@
 
 export const DRIVE_ENDPOINT = 'https://www.googleapis.com/drive/v3';
 export const DOCS_ENDPOINT = 'https://docs.googleapis.com/v1';
+/** Uploads have their own host; the metadata endpoints will not take bytes. */
+export const UPLOAD_ENDPOINT = 'https://www.googleapis.com/upload/drive/v3';
+
+/** A Google Doc's mime type, which is what `files.create` is told to make. */
+export const DOCUMENT_MIME = 'application/vnd.google-apps.document';
+
+/** A Drive folder's mime type. */
+export const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+/** What a binary with no mime type of its own is uploaded as. */
+export const DEFAULT_UPLOAD_MIME = 'application/octet-stream';
 
 /** How many times a throttled or failed request is retried. */
 const MAX_RETRIES = 3;
@@ -164,6 +175,31 @@ export interface DocsDocument {
   inlineObjects?: Record<string, InlineObject>;
 }
 
+/** One `batchUpdate` request. The API's own JSON, not a wrapper. */
+export type DocsWriteRequest = Record<string, unknown>;
+
+/**
+ * One reply to one request, in the same order. Only the one field this adapter
+ * reads is spelled: a footnote's segment id, which nothing else can tell us.
+ */
+export interface DocsWriteReply {
+  createFootnote?: { footnoteId?: string };
+}
+
+/** The metadata half of a create or an update: what Drive calls a File. */
+export interface FileMetadata {
+  name?: string;
+  mimeType?: string;
+  parents?: string[];
+  trashed?: boolean;
+}
+
+/** Where a file moves to, and what it moves out of. */
+export interface MoveOptions {
+  addParents?: string;
+  removeParents?: string;
+}
+
 /** What `createGDriveApi` hands out. */
 export interface GDriveApi {
   /** Every non-trashed child of a folder, across every page of results. */
@@ -176,6 +212,18 @@ export interface GDriveApi {
   download(id: string): Promise<Uint8Array>;
   /** A Google-native file converted to `mimeType` (Sheets, Slides, Drawings). */
   export(id: string, mimeType: string): Promise<Uint8Array>;
+  /** One document, one batch, one reply per request (MANUAL §7). */
+  batchUpdate(documentId: string, requests: readonly DocsWriteRequest[]): Promise<DocsWriteReply[]>;
+  /** A file with metadata and no content: a Doc, a folder. */
+  createFile(metadata: FileMetadata): Promise<DriveFile>;
+  /** A file's metadata, including a move (`addParents`) and the trash flag. */
+  updateFile(id: string, metadata: FileMetadata, move?: MoveOptions): Promise<DriveFile>;
+  /** A new revision of an existing file: same id, same sharing, same comments. */
+  uploadRevision(id: string, bytes: Uint8Array, mimeType?: string): Promise<DriveFile>;
+  /** A new file with content, metadata and bytes in one multipart request. */
+  uploadFile(metadata: FileMetadata, bytes: Uint8Array, mimeType?: string): Promise<DriveFile>;
+  /** A copy of a file. Used by the manual test, which never writes an original. */
+  copyFile(id: string, metadata: FileMetadata): Promise<DriveFile>;
 }
 
 export interface GDriveApiOptions {
@@ -199,10 +247,11 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
   const sleep = options.sleep ?? realSleep;
 
   /** One request, retried for as long as the policy allows. */
-  async function call(url: string): Promise<Response> {
+  async function call(url: string, init: RequestInit = {}): Promise<Response> {
     for (let attempt = 0; ; attempt += 1) {
       const response = await fetchImpl(url, {
-        headers: { authorization: `Bearer ${accessToken}` },
+        ...init,
+        headers: { authorization: `Bearer ${accessToken}`, ...(init.headers ?? {}) },
       });
       if (response.ok) return response;
       if (attempt >= MAX_RETRIES || !isRetryable(response.status))
@@ -211,12 +260,28 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
     }
   }
 
-  async function json<T>(url: string): Promise<T> {
-    return (await (await call(url)).json()) as T;
+  async function json<T>(url: string, init?: RequestInit): Promise<T> {
+    return (await (await call(url, init)).json()) as T;
   }
 
   async function bytes(url: string): Promise<Uint8Array> {
     return new Uint8Array(await (await call(url)).arrayBuffer());
+  }
+
+  /** A request whose body is JSON, which is every write but an upload. */
+  function withJson(method: string, body: unknown): RequestInit {
+    return {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    };
+  }
+
+  /** The query every file write carries: what to answer with, and shared drives. */
+  function fileQuery(extra: Record<string, string> = {}): string {
+    return String(
+      new URLSearchParams({ fields: FILE_FIELDS, supportsAllDrives: 'true', ...extra }),
+    );
   }
 
   return {
@@ -262,7 +327,77 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
     async export(id, mimeType) {
       return bytes(`${DRIVE_ENDPOINT}/files/${id}/export?mimeType=${encodeURIComponent(mimeType)}`);
     },
+
+    async batchUpdate(documentId, requests) {
+      const answer = await json<{ replies?: DocsWriteReply[] }>(
+        `${DOCS_ENDPOINT}/documents/${documentId}:batchUpdate`,
+        withJson('POST', { requests }),
+      );
+      return answer.replies ?? [];
+    },
+
+    async createFile(metadata) {
+      return json<DriveFile>(`${DRIVE_ENDPOINT}/files?${fileQuery()}`, withJson('POST', metadata));
+    },
+
+    async updateFile(id, metadata, move = {}) {
+      const extra: Record<string, string> = {};
+      if (move.addParents !== undefined) extra.addParents = move.addParents;
+      if (move.removeParents !== undefined) extra.removeParents = move.removeParents;
+      return json<DriveFile>(
+        `${DRIVE_ENDPOINT}/files/${id}?${fileQuery(extra)}`,
+        withJson('PATCH', metadata),
+      );
+    },
+
+    async uploadRevision(id, content, mimeType = DEFAULT_UPLOAD_MIME) {
+      return json<DriveFile>(
+        `${UPLOAD_ENDPOINT}/files/${id}?${fileQuery({ uploadType: 'media' })}`,
+        { method: 'PATCH', headers: { 'content-type': mimeType }, body: content },
+      );
+    },
+
+    async uploadFile(metadata, content, mimeType = DEFAULT_UPLOAD_MIME) {
+      const { body, contentType } = multipart(metadata, content, mimeType);
+      return json<DriveFile>(`${UPLOAD_ENDPOINT}/files?${fileQuery({ uploadType: 'multipart' })}`, {
+        method: 'POST',
+        headers: { 'content-type': contentType },
+        body,
+      });
+    },
+
+    async copyFile(id, metadata) {
+      return json<DriveFile>(
+        `${DRIVE_ENDPOINT}/files/${id}/copy?${fileQuery()}`,
+        withJson('POST', metadata),
+      );
+    },
   };
+}
+
+/** The boundary of every multipart upload. Fixed, so a test can name it. */
+export const UPLOAD_BOUNDARY = 'docsync-boundary';
+
+/**
+ * Metadata and bytes in one `multipart/related` body, which is how Drive takes
+ * a new file with content in a single request.
+ */
+function multipart(
+  metadata: FileMetadata,
+  content: Uint8Array,
+  mimeType: string,
+): { body: Uint8Array; contentType: string } {
+  const encoder = new TextEncoder();
+  const head = encoder.encode(
+    `--${UPLOAD_BOUNDARY}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n` +
+      `${JSON.stringify(metadata)}\r\n--${UPLOAD_BOUNDARY}\r\ncontent-type: ${mimeType}\r\n\r\n`,
+  );
+  const tail = encoder.encode(`\r\n--${UPLOAD_BOUNDARY}--\r\n`);
+  const body = new Uint8Array(head.length + content.length + tail.length);
+  body.set(head, 0);
+  body.set(content, head.length);
+  body.set(tail, head.length + content.length);
+  return { body, contentType: `multipart/related; boundary=${UPLOAD_BOUNDARY}` };
 }
 
 /** Throttling and Google's own failures are worth another try; nothing else. */

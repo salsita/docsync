@@ -185,3 +185,14 @@ describe('retry', () => {
     expect(calls).toHaveLength(2);
   });
 });
+
+describe('copyFile', () => {
+  it('copies a file with the metadata the copy is to have', async () => {
+    const { api, calls } = apiWith([{ body: { id: 'copy1', name: 'Elements copy' } }]);
+
+    const copy = await api.copyFile('doc1', { name: 'Elements copy', parents: ['folder1'] });
+
+    expect(copy.id).toBe('copy1');
+    expect(calls[0]?.startsWith(`${DRIVE_ENDPOINT}/files/doc1/copy?`)).toBe(true);
+  });
+});
