@@ -1,0 +1,30 @@
+{
+  "rootId": "13bDdq9dYrAR1E23oS2cLV__S71xIagPt",
+  "rootName": "Docsync test",
+  "folders": ["13bDdq9dYrAR1E23oS2cLV__S71xIagPt", "1RoSAIyz2ktweMqiOBnlnl6AsXClvD3Wo"],
+  "docs": [
+    "1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4",
+    "1bTJ2HHyIP0ZqnRZuOpOo1q3tZLErUtTNIAVAbk05lL8",
+    "1l7guufqbuTp_eztzKAkU-gJGAffYmZWFKB3TQbHkf6g",
+    "1XiXnvbH_m7-Ky59WIji4J84oC5u9b2jT8rPok950poU",
+    "1JpyYD74bPVxNEv-urdbH1E_wIs9Kx4wxBVTM_N2rX2k",
+    "1a-9FG_jwht91hmvglPsRpyi13yr9mlmTiUrXewEVyfI",
+    "12Q7xOSDxkV5zhacq39GLXAON3VhZkbN1rd2gt1hC9FQ"
+  ],
+  "binaries": [
+    {
+      "id": "1jwUlUMVzDrXjzjcIjUnUACFQq094neaW",
+      "file": "binary-1jwUlUMVzDrXjzjcIjUnUACFQq094neaW.pdf"
+    },
+    {
+      "id": "1oiqaDywxRX2qqjSpAlu2gZjS-0BWcqfr",
+      "file": "binary-1oiqaDywxRX2qqjSpAlu2gZjS-0BWcqfr.txt"
+    }
+  ],
+  "exports": [
+    {
+      "id": "1ATMpIGObGedDD6f3yjkGq0jl0SPJ-BDbqpKC85MHg1w",
+      "file": "export-1ATMpIGObGedDD6f3yjkGq0jl0SPJ-BDbqpKC85MHg1w.xlsx"
+    }
+  ]
+}

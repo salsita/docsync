@@ -1,0 +1,153 @@
+[
+  {
+    "mimeType": "application/vnd.google-apps.document",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "25650",
+    "id": "1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4",
+    "name": "Elements",
+    "modifiedTime": "2026-09-03T07:54:46.926Z"
+  },
+  {
+    "md5Checksum": "65e948bea799b9c3a6d7861313eef348",
+    "mimeType": "application/pdf",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "385",
+    "id": "1jwUlUMVzDrXjzjcIjUnUACFQq094neaW",
+    "name": "dummy.pdf",
+    "modifiedTime": "2026-09-02T16:01:11.738Z"
+  },
+  {
+    "md5Checksum": "89ddf8cace5f8557f3d69c1463c7a268",
+    "mimeType": "text/plain",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "34",
+    "id": "1oiqaDywxRX2qqjSpAlu2gZjS-0BWcqfr",
+    "name": "plain.txt",
+    "modifiedTime": "2026-09-02T16:01:09.882Z"
+  },
+  {
+    "mimeType": "application/vnd.google-apps.spreadsheet",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "1024",
+    "id": "1ATMpIGObGedDD6f3yjkGq0jl0SPJ-BDbqpKC85MHg1w",
+    "name": "Numbers",
+    "modifiedTime": "2026-09-02T16:01:08.648Z"
+  },
+  {
+    "mimeType": "application/vnd.google-apps.document",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "1024",
+    "id": "1bTJ2HHyIP0ZqnRZuOpOo1q3tZLErUtTNIAVAbk05lL8",
+    "name": "Notes",
+    "modifiedTime": "2026-09-02T16:01:05.194Z"
+  },
+  {
+    "mimeType": "application/vnd.google-apps.document",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "1024",
+    "id": "1l7guufqbuTp_eztzKAkU-gJGAffYmZWFKB3TQbHkf6g",
+    "name": "Notes",
+    "modifiedTime": "2026-09-02T16:01:01.678Z"
+  },
+  {
+    "mimeType": "application/vnd.google-apps.document",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "1024",
+    "id": "1XiXnvbH_m7-Ky59WIji4J84oC5u9b2jT8rPok950poU",
+    "name": ".Hidden leading dot...",
+    "modifiedTime": "2026-09-02T16:00:58.403Z"
+  },
+  {
+    "mimeType": "application/vnd.google-apps.document",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "1024",
+    "id": "1JpyYD74bPVxNEv-urdbH1E_wIs9Kx4wxBVTM_N2rX2k",
+    "name": "Title/With: Illegal*Chars? \"Quoted\" <Tag> |Pipe|",
+    "modifiedTime": "2026-09-02T16:00:55.120Z"
+  },
+  {
+    "mimeType": "application/vnd.google-apps.document",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "size": "1024",
+    "id": "1a-9FG_jwht91hmvglPsRpyi13yr9mlmTiUrXewEVyfI",
+    "name": "Leaf",
+    "modifiedTime": "2026-09-02T16:00:47.803Z"
+  },
+  {
+    "mimeType": "application/vnd.google-apps.folder",
+    "lastModifyingUser": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "permissionId": "11118091577995849452",
+      "emailAddress": "jirist@salsitasoft.com",
+      "photoLink": "https://lh3.googleusercontent.com/a/ACg8ocLMd6dNVL1Y3rPQyvHX8ZP9Rmg2wtaQJuOJMYhDK3IQwpMKjA=s64"
+    },
+    "id": "1RoSAIyz2ktweMqiOBnlnl6AsXClvD3Wo",
+    "name": "Sub",
+    "modifiedTime": "2026-09-02T16:00:40.387Z"
+  }
+]
