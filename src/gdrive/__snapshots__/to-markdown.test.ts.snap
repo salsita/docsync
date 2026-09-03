@@ -36,7 +36,7 @@ exports[`the recorded documents > converts 1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLV
 
 # Heading one
 
-A plain paragraph with **bold**, *italic*, <u>underline</u>, ~~strikethrough~~, \`code font\`, a [link](https://example.com/), red text and highlighted text.
+A plain paragraph with **bold**, _italic_, <u>underline</u>, ~~strikethrough~~, \`code font\`, a [link](https://example.com/), red text and highlighted text.
 
 ## Heading two
 
@@ -63,7 +63,7 @@ A paragraph in Georgia at 14 points.
    1. Nested numbered
 3. Numbered three
 
-Two lines in one paragraph,  
+Two lines in one paragraph,\\
 separated by a soft line break.
 
 | **Name**  | **Value**  |

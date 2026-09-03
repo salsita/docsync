@@ -175,9 +175,17 @@ describe('inline styles', () => {
   });
 
   it('writes a hard break as the vertical tab Docs stores', () => {
-    expect(requests('one  \ntwo\n')[0]).toEqual({
+    expect(requests('one\\\ntwo\n')[0]).toEqual({
       insertText: { location: { index: 1 }, text: 'onetwo\n' },
     });
+  });
+
+  it('reads either spelling of a hard break, backslash or two trailing spaces', () => {
+    expect(requests('one  \ntwo\n')).toEqual(requests('one\\\ntwo\n'));
+  });
+
+  it('reads either spelling of italic, underscores or asterisks', () => {
+    expect(requests('*c*\n')).toEqual(requests('_c_\n'));
   });
 
   it('drops an image, which a push cannot create', () => {

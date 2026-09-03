@@ -99,14 +99,14 @@ describe('text runs', () => {
 
   it('converts each style on its own', () => {
     expect(styled({ bold: true })).toBe('**x**\n');
-    expect(styled({ italic: true })).toBe('*x*\n');
+    expect(styled({ italic: true })).toBe('_x_\n');
     expect(styled({ strikethrough: true })).toBe('~~x~~\n');
     expect(styled({ underline: true })).toBe('<u>x</u>\n');
   });
 
   it('nests combined styles from the inside out', () => {
     expect(styled({ bold: true, italic: true, strikethrough: true, underline: true })).toBe(
-      '***~~<u>x</u>~~***\n',
+      '**_~~<u>x</u>~~_**\n',
     );
   });
 
@@ -142,7 +142,7 @@ describe('text runs', () => {
 
   it('turns a vertical tab into a hard break', () => {
     const document = doc([para([run('one\u000Btwo\n')])]);
-    expect(documentToMarkdown(document)).toBe('one  \ntwo\n');
+    expect(documentToMarkdown(document)).toBe('one\\\ntwo\n');
   });
 
   it('escapes Markdown punctuation', () => {

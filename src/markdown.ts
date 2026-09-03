@@ -19,23 +19,25 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
 import remarkStringify, { type Options as StringifyOptions } from 'remark-stringify';
+import stringWidth from 'string-width';
 import { unified } from 'unified';
 
 /** Constructs in which a newline cannot appear, so a break becomes a space. */
 const NO_NEWLINE = new Set(['tableCell', 'headingAtx', 'headingSetext']);
 
 /**
- * A line break inside one block is two trailing spaces and a newline (MANUAL
- * §6), not remark's default backslash: it is what Notion's own export writes
- * and what every Markdown editor produces when you press Return inside a
- * paragraph. Both spellings parse back to the same `break` node, so reading is
- * unaffected; only what we write is pinned here.
+ * A line break inside one block is a trailing backslash and a newline (MANUAL
+ * §6). Two trailing spaces is the other spelling, and the one Notion's own
+ * export writes, but it does not survive tooling: Prettier rewrites it to a
+ * backslash, and an editor that trims trailing whitespace deletes it outright.
+ * Both spellings parse back to the same `break` node, so reading is unaffected;
+ * only what we write is pinned here.
  */
 const hardBreak: Handle = (_node, _parent, state, info) => {
   if (state.stack.some((name) => NO_NEWLINE.has(name))) {
     return /[ \t]/.test(info.before) ? '' : ' ';
   }
-  return '  \n';
+  return '\\\n';
 };
 
 /**
@@ -50,7 +52,9 @@ export const MARKDOWN_OPTIONS: Readonly<StringifyOptions> = {
   // Numbers increment, the way a person writing the list would: `1.`, `2.`, …
   incrementListMarker: true,
   listItemIndent: 'one',
-  emphasis: '*',
+  // Underscores, not asterisks: what Prettier writes, so a formatted file and a
+  // fetched one agree (MANUAL §6, "Formatters and editors").
+  emphasis: '_',
   strong: '*',
   fence: '`',
   // Always fence, never indent: an indented code block has no language slot,
@@ -77,9 +81,15 @@ const parser = unified()
   .use(remarkFrontmatter, [...FRONTMATTER])
   .freeze();
 
+/**
+ * Table padding is measured in columns on screen, not in UTF-16 units: an emoji
+ * and a CJK ideograph are two columns wide, so `中文` pads like four characters
+ * and not two. This is what Prettier measures with, and a table is the one
+ * place where disagreeing with it would rewrite the file on save.
+ */
 const stringifier = unified()
   .use(remarkStringify, MARKDOWN_OPTIONS)
-  .use(remarkGfm)
+  .use(remarkGfm, { stringLength: stringWidth })
   .use(remarkMath)
   .use(remarkFrontmatter, [...FRONTMATTER])
   .freeze();

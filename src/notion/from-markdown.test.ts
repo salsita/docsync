@@ -377,6 +377,7 @@ describe('block attributes', () => {
 describe('inline', () => {
   it('each annotation alone', () => {
     expect(richText('**b**\n')).toEqual([text('b', { bold: true })]);
+    expect(richText('_i_\n')).toEqual([text('i', { italic: true })]);
     expect(richText('*i*\n')).toEqual([text('i', { italic: true })]);
     expect(richText('~~s~~\n')).toEqual([text('s', { strikethrough: true })]);
     expect(richText('`c`\n')).toEqual([text('c', { code: true })]);
@@ -413,7 +414,8 @@ describe('inline', () => {
     ]);
   });
 
-  it('a hard break is a newline inside one run', () => {
+  it('a hard break is a newline inside one run, in either spelling', () => {
+    expect(richText('one\\\ntwo\n')).toEqual([text('one\ntwo')]);
     expect(richText('one  \ntwo\n')).toEqual([text('one\ntwo')]);
   });
 

@@ -1,93 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { CANONICAL_DOCUMENT } from './dialect.mock.js';
 import { parseMarkdown, stringifyMarkdown } from './markdown.js';
-
-/**
- * One document holding every construct the dialect uses (MANUAL §6). The
- * canonical form is whatever `stringifyMarkdown` emits, so this text is the
- * fixed point the whole tool is built around: fetch writes it, push parses it.
- */
-const CANONICAL = `---
-id: notion:3cf715cbeb088035b511f0b4f06efbd5
-title: Everything
----
-
-# Heading one
-
-## Heading two
-
-### Heading three
-
-A paragraph with *emphasis*, **strong**, ~~struck~~, \`code\`, a [link](https://example.com), <u>underline</u> and <span data-color="red">colour</span>.
-
-A paragraph whose first line ends in a break${'  '}
-and continues here.
-
-- bullet
-  - nested bullet
-- [ ] unchecked
-- [x] checked
-
-1. first
-2. second
-
-> quoted text
-
-> \\[!CALLOUT] 💡
-> Callout body.
-
-<!--
-The callout marker above is escaped because that is what re-stringifying plain
-*text* produces: \`[\` could open a link reference. What fetch writes is the
-unescaped \`> [!CALLOUT] 💡\` of MANUAL §6 — the converter emits the marker as an
-inline HTML node, which passes through verbatim (see \`to-markdown.test.ts\`).
-Both spellings read back as the same text, so push accepts either.
--->
-
-<details>
-<summary>## Toggle heading</summary>
-
-Paragraph inside the toggle.
-
-</details>
-
-\`\`\`ts
-const x: number = 1;
-\`\`\`
-
-\`\`\`
-plain text, no language
-\`\`\`
-
-$$
-E = mc^2
-$$
-
-Inline math $a^2 + b^2$ in a sentence.
-
-| Name | Value |
-| ---- | ----- |
-| a    | b     |
-
-![caption](https://example.com/i.png)
-
-<!-- docsync: color=green -->
-
-A paragraph in green.
-
-<!-- docsync:block notion:858f37cd0bd94a7e8c5d0e6f7a8b9c0d type=synced_block -->
-
----
-
-Escaping edge cases: a literal \\* star, an \\_underscore\\_, a # hash, a \\[bracket] and a back\\slash.
-`;
 
 describe('the markdown pipeline', () => {
   it('round-trips a canonical document byte for byte', () => {
-    expect(stringifyMarkdown(parseMarkdown(CANONICAL))).toBe(CANONICAL);
+    expect(stringifyMarkdown(parseMarkdown(CANONICAL_DOCUMENT))).toBe(CANONICAL_DOCUMENT);
   });
 
   it('is idempotent on a second pass', () => {
-    const once = stringifyMarkdown(parseMarkdown(CANONICAL));
+    const once = stringifyMarkdown(parseMarkdown(CANONICAL_DOCUMENT));
     expect(stringifyMarkdown(parseMarkdown(once))).toBe(once);
   });
 
@@ -116,11 +37,37 @@ describe('the markdown pipeline', () => {
       '',
       '___',
       '',
-      '__bold__ and _italic_',
+      '__bold__ and *italic*',
       '',
     ].join('\n');
     expect(stringifyMarkdown(parseMarkdown(messy))).toBe(
-      '# Setext\n\n- star bullet\n- another\n\n---\n\n**bold** and *italic*\n',
+      '# Setext\n\n- star bullet\n- another\n\n---\n\n**bold** and _italic_\n',
+    );
+  });
+
+  it('writes italic with underscores, the way Prettier does', () => {
+    expect(stringifyMarkdown(parseMarkdown('_i_\n'))).toBe('_i_\n');
+    expect(stringifyMarkdown(parseMarkdown('***x***\n'))).toBe('_**x**_\n');
+  });
+
+  it('still accepts the asterisk spelling of italic on input', () => {
+    expect(stringifyMarkdown(parseMarkdown('*i*\n'))).toBe('_i_\n');
+  });
+
+  it('writes a line break inside a block as a trailing backslash', () => {
+    expect(stringifyMarkdown(parseMarkdown('a\\\nb\n'))).toBe('a\\\nb\n');
+  });
+
+  it('still accepts the two-trailing-spaces spelling of a line break on input', () => {
+    expect(stringifyMarkdown(parseMarkdown('a  \nb\n'))).toBe('a\\\nb\n');
+  });
+
+  it('pads table cells by display width, so emoji and CJK land where Prettier puts them', () => {
+    const table = ['| Emoji | 中文 |', '| - | - |', '| 💡 ok | 漢字 |', '| a | 中 |', ''];
+    expect(stringifyMarkdown(parseMarkdown(table.join('\n')))).toBe(
+      ['| Emoji | 中文 |', '| ----- | ---- |', '| 💡 ok | 漢字 |', '| a     | 中   |', ''].join(
+        '\n',
+      ),
     );
   });
 

@@ -97,7 +97,7 @@ describe('blocks', () => {
   });
 
   it('quote with a line break inside it', () => {
-    expect(one('quote', { rich_text: [text('One\nTwo')] })).toBe('> One  \n> Two\n');
+    expect(one('quote', { rich_text: [text('One\nTwo')] })).toBe('> One\\\n> Two\n');
   });
 
   it('callout, with its emoji and its body under the marker', () => {
@@ -107,12 +107,12 @@ describe('blocks', () => {
         icon: { type: 'emoji', emoji: '💡' },
         color: 'gray_background',
       }),
-    ).toBe('<!-- docsync: color=gray_background -->\n\n> [!CALLOUT] 💡  \n> Body.\n');
+    ).toBe('<!-- docsync: color=gray_background -->\n\n> [!CALLOUT] 💡\\\n> Body.\n');
   });
 
   it('callout without an icon', () => {
     expect(one('callout', { rich_text: [text('Body.')], icon: null, color: 'default' })).toBe(
-      '> [!CALLOUT]  \n> Body.\n',
+      '> [!CALLOUT]\\\n> Body.\n',
     );
   });
 
@@ -298,7 +298,7 @@ describe('blocks', () => {
 describe('rich text', () => {
   it('each annotation on its own', () => {
     expect(inlineMarkdown([text('bold', { bold: true })])).toBe('**bold**');
-    expect(inlineMarkdown([text('italic', { italic: true })])).toBe('*italic*');
+    expect(inlineMarkdown([text('italic', { italic: true })])).toBe('_italic_');
     expect(inlineMarkdown([text('struck', { strikethrough: true })])).toBe('~~struck~~');
     expect(inlineMarkdown([text('code', { code: true })])).toBe('`code`');
     expect(inlineMarkdown([text('under', { underline: true })])).toBe('<u>under</u>');
@@ -321,7 +321,7 @@ describe('rich text', () => {
           color: 'blue',
         }),
       ]),
-    ).toBe('***~~<u><span data-color="blue">all</span></u>~~***');
+    ).toBe('**_~~<u><span data-color="blue">all</span></u>~~_**');
   });
 
   it('a link, with annotations inside it', () => {
@@ -432,8 +432,8 @@ describe('rich text', () => {
     expect(inlineMarkdown([odd])).toBe('@Today');
   });
 
-  it('a line break inside one block is two trailing spaces', () => {
-    expect(inlineMarkdown([text('one\ntwo')])).toBe('one  \ntwo');
+  it('a line break inside one block is a trailing backslash', () => {
+    expect(inlineMarkdown([text('one\ntwo')])).toBe('one\\\ntwo');
   });
 
   it('escapes what Markdown would otherwise read as syntax', () => {

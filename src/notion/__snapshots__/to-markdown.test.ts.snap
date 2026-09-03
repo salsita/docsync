@@ -6,7 +6,7 @@ exports[`every fixture page > converts .Hidden leading dot... 1`] = `
 `;
 
 exports[`every fixture page > converts Blocks 1`] = `
-"A plain paragraph with **bold**, *italic*, ~~strikethrough~~, \`inline code\`, a [link](https://example.com/), <u>underline</u>, <span data-color="red">red text</span> and <span data-color="yellow_background">yellow background</span>.
+"A plain paragraph with **bold**, _italic_, ~~strikethrough~~, \`inline code\`, a [link](https://example.com/), <u>underline</u>, <span data-color="red">red text</span> and <span data-color="yellow_background">yellow background</span>.
 
 # Heading one
 
@@ -33,12 +33,12 @@ A paragraph with an inline equation $E = mc^2$ and a mention of a page: [Leaf](L
 
 > A quote block
 
-> A multi-line quote  
+> A multi-line quote\\
 > second line of the same quote
 
 <!-- docsync: color=gray_background -->
 
-> [!CALLOUT] 💡  
+> [!CALLOUT] 💡\\
 > A callout with **bold** inside
 >
 > A second paragraph inside the callout
