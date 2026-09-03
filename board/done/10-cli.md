@@ -56,3 +56,47 @@ CLI adds nothing to what plain git can do, it only prints better.
 
 `pnpm check` green, and the quick start test passes on macOS and Linux in
 CI.
+
+## Outcome
+
+Landed 2026-09-03 in four agent commits (`6ffa27d`, `1f071a0`, `95cec05`,
+`c8c27a5`) plus the landing commit. `pnpm check` green, 1002 tests.
+
+Deviations from the ticket:
+
+- Two more modules than planned: `src/cli/context.ts` (the injected
+  `Context` and `openRepo`) and `src/cli/program.ts` (the Commander program,
+  importable by tests; `src/cli.ts` is the four-line binary). Test helpers
+  `src/cli/harness.mock.ts` and `src/helper/fake-bin.mock.ts`, the latter
+  shared with the helper's e2e test.
+- `src/cli/git.ts` shares nothing with `src/helper/git.ts`: the helper's
+  runner pins `GIT_DIR` and drops `GIT_WORK_TREE`, the CLI needs porcelain in
+  the working tree.
+- Top-level `--help` is manual §13 verbatim through a `formatHelp` override;
+  per-command help is Commander's, with §5's wording.
+- `init` resolves every ref before creating the directory (the manual's prose
+  promised that; its step list did not). Manual step list rewritten.
+- `push` ends with `git pull --ff-only`, not a bare merge: after `git push`,
+  `origin/main` points at what was pushed and the §7 follow-up commit needs
+  another fetch. Manual §5 says so now.
+- `remove` then `push` is refused with "the source changed" until a
+  `docsync pull`, because the helper's pre-flight fetch turns the manifest
+  change into a commit. Documented in §5 as it is.
+- Time is printed in local time; the tests pin `TZ=UTC`.
+
+Manual changes made at landing: §3 listing corrected (a directory root holds
+the page as `Product Specs/Product Specs.md` and its children beside it, per
+§4 and §6); §5 `init` steps reordered and the two formatter files added; §5
+`remove` and `push` as above; §13 `auth` shows `[--logout]`.
+
+Follow-ups:
+
+- `docsync remove` could run the pull itself, as `add` runs the fetch, so
+  that the next push is not refused. Worth doing with ticket 11 or 13.
+- The fake `Source` lays a Notion root's children out flat
+  (`Specs/Auth.md`) while the real adapter nests them
+  (`Specs/Specs/Auth.md`); the CLI layout assertions are weaker than they
+  look. Align the fake in ticket 11, which touches the same harness.
+- Two heavy real-git test files each build the helper with `tsc`; under load
+  they hit the timeout once. Watch in CI (ticket 13).
+- `src/cli.ts` is uncovered, like `src/remote-helper.ts`.

@@ -112,15 +112,16 @@ ls
 
 ```
 .agents/  .claude/  .cursor/   # skill file for agents (§10)
-Product Specs/          # the Notion page's sub-pages
-Product Specs.md        # the Notion page
-Contracts/              # the Drive folder, recursively
+Product Specs/                    # the Notion page tree
+Product Specs/Product Specs.md    # the page itself
+Product Specs/Product Specs/      # its sub-pages (§6)
+Contracts/                        # the Drive folder, recursively
 ```
 
 Edit, review, push:
 
 ```bash
-$EDITOR "Product Specs/Auth.md"
+$EDITOR "Product Specs/Product Specs/Auth.md"
 git diff
 git commit -am "Clarify session expiry"
 git push
@@ -218,19 +219,21 @@ That is an unsubscribe. The source is not touched.
 
 Creates a checkout.
 
-1. Creates `<dir>` (default: current directory, which must be empty).
-2. Writes an empty manifest to `.docsync.yaml`.
-3. `git init -b main`, with `core.autocrlf=false` so line endings are LF
+1. Resolves each `<src>` given at the source. This is where a missing or
+   invalid credential, or a page not shared with the integration, fails,
+   before anything is written.
+2. Creates `<dir>` (default: current directory, which must be empty or an
+   empty git repository).
+3. Writes an empty manifest to `.docsync.yaml`.
+4. `git init -b main`, with `core.autocrlf=false` so line endings are LF
    everywhere.
-4. Adds `.docsync.yaml` and the skill file paths to `.git/info/exclude`.
-5. Writes the skill file (§10).
-6. For each `<src>` given, resolves it at the source and appends a root
-   (same code path as `docsync add`).
-7. `git remote add origin docsync::.docsync.yaml`.
-8. `git fetch origin` and `git checkout --track origin/main`.
-
-Resolving a source ref is where a missing or invalid credential, or a page not
-shared with the integration, fails. That happens before the repo is built.
+5. Adds `.docsync.yaml`, the skill file paths, `.prettierrc` and
+   `.editorconfig` to `.git/info/exclude`.
+6. Writes the skill file (§10), `.prettierrc` and `.editorconfig` (§6
+   "Formatters and editors").
+7. Appends a root per resolved `<src>` (same code path as `docsync add`).
+8. `git remote add origin docsync::.docsync.yaml`.
+9. `git fetch origin` and `git checkout --track origin/main`.
 
 With no sources, the result is a repo with one empty commit. Add roots later.
 
@@ -258,9 +261,11 @@ file path; the children go in a sibling directory with the same stem
 ### `docsync remove <path>...`
 
 Removes the roots whose `path` matches, deletes the local files, commits the
-deletion locally. The source is not touched. The next push carries the deletion
-commit, and the helper recognises it as an unsubscribe because the root is gone
-from the manifest.
+deletion locally. The source is not touched, now or later: the helper reads a
+root that is gone from the manifest as an unsubscribe. Run `docsync pull`
+before the next push. The pull's pre-flight fetch (§7) records the unsubscribe
+as a commit at the remote, which merges cleanly with your local deletion; a
+push without that pull is refused as "the source changed".
 
 ### `docsync status`
 
@@ -272,8 +277,10 @@ whether the source has moved since (a cheap metadata check, no download).
 Thin wrappers over the git commands with docsync-specific output:
 
 - `push` prints, per document, what it did (created, updated, trashed), then
-  runs the post-push fetch (§7) and fast-forwards the current branch when the
-  working tree is clean.
+  fetches and fast-forwards the current branch onto the follow-up commit (§7)
+  when the working tree is clean. It is a fetch and a merge, not a merge
+  alone: after `git push`, `origin/main` still points at what was pushed, and
+  the follow-up commit only arrives with another fetch.
 - `pull` and `fetch` print which documents changed and who changed them.
 
 You can always use plain `git pull` and `git push` instead.
@@ -746,7 +753,7 @@ docsync fetch
 docsync pull
 docsync push
 docsync resolve <src>
-docsync auth    <source>
+docsync auth    <source> [--logout]
 docsync --version
 ```
 

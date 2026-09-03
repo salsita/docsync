@@ -21,7 +21,7 @@ export const COMMAND_REFERENCE = [
   'docsync pull',
   'docsync push',
   'docsync resolve <src>',
-  'docsync auth    <source>',
+  'docsync auth    <source> [--logout]',
   'docsync --version',
 ].join('\n');
 
