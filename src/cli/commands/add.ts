@@ -15,7 +15,7 @@ import { resolveAlias, serializeManifest, validateRoots } from '../../manifest/i
 import type { Manifest, Root } from '../../manifest/types.js';
 import type { SourceDescription } from '../../source.js';
 import { isSourceRefError, parseSourceRefOrUrl, type SourceRef } from '../../source-ref.js';
-import { CliError, type Context, openRepo, type Repo, say } from '../context.js';
+import { CliError, type Context, openRepo, type Repo, say, sayBlock } from '../context.js';
 import { formatFetchReport } from '../print.js';
 
 /** One `<src>[=<path>]` argument, split but not yet resolved. */
@@ -107,7 +107,7 @@ export async function fetchAndFastForward(context: Context, repo: Repo): Promise
   } else {
     say(context, 'Your working tree has changes, so nothing was merged. Run: docsync pull');
   }
-  say(context, formatFetchReport(await readFetchReport(repo.gitDir)));
+  sayBlock(context, formatFetchReport(await readFetchReport(repo.gitDir)));
   return 0;
 }
 

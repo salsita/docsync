@@ -7,7 +7,7 @@
  * `git pull`, which is why the two share this function.
  */
 import { readFetchReport } from '../../helper/report.js';
-import { type Context, openRepo, say } from '../context.js';
+import { type Context, openRepo, sayBlock } from '../context.js';
 import { formatFetchReport } from '../print.js';
 
 /** Runs one git command that fetches, then prints what the fetch found. */
@@ -15,7 +15,7 @@ export async function runFetching(context: Context, args: readonly string[]): Pr
   const repo = await openRepo(context);
   const result = await repo.git.run(args, { relay: true });
   if (result.status !== 0) return result.status;
-  say(context, formatFetchReport(await readFetchReport(repo.gitDir)));
+  sayBlock(context, formatFetchReport(await readFetchReport(repo.gitDir)));
   return 0;
 }
 

@@ -12,7 +12,7 @@ import { join, resolve as resolvePath } from 'node:path';
 import { readFetchReport } from '../../helper/report.js';
 import { serializeManifest } from '../../manifest/index.js';
 import type { Manifest } from '../../manifest/types.js';
-import { CliError, type Context, inDirectory, say } from '../context.js';
+import { CliError, type Context, inDirectory, say, sayBlock } from '../context.js';
 import { formatFetchReport } from '../print.js';
 import { appendRoots, looksLikeSource, parseSpec } from './add.js';
 
@@ -129,6 +129,6 @@ export async function init(context: Context, args: readonly string[]): Promise<n
   if (checkedOut.status !== 0) return checkedOut.status;
 
   // The fetch above already ran the helper; its report is what to print.
-  say(context, formatFetchReport(await readFetchReport(gitDir)));
+  sayBlock(context, formatFetchReport(await readFetchReport(gitDir)));
   return 0;
 }

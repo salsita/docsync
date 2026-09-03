@@ -9,7 +9,7 @@
  * clean.
  */
 import { readPushReport } from '../../helper/report.js';
-import { type Context, openRepo, say } from '../context.js';
+import { type Context, openRepo, say, sayBlock } from '../context.js';
 import { formatPushReport } from '../print.js';
 
 export async function push(context: Context): Promise<number> {
@@ -17,7 +17,7 @@ export async function push(context: Context): Promise<number> {
   const pushed = await repo.git.run(['push'], { relay: true });
   if (pushed.status !== 0) return pushed.status;
 
-  say(context, formatPushReport(await readPushReport(repo.gitDir)));
+  sayBlock(context, formatPushReport(await readPushReport(repo.gitDir)));
 
   if (!(await repo.git.isClean())) {
     say(context);

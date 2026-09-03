@@ -121,6 +121,11 @@ export function say(context: Context, text = ''): void {
   context.out(`${text}\n`);
 }
 
+/** A block of report text, when there is any. An absent report says nothing. */
+export function sayBlock(context: Context, text: string): void {
+  if (text !== '') say(context, text);
+}
+
 /** One line to stderr. */
 export function warn(context: Context, text: string): void {
   context.err(`${text}\n`);
