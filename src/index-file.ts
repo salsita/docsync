@@ -22,6 +22,27 @@ export interface IndexEntry {
   type: DocumentType;
   /** The source's last-edit time, ISO 8601, as the source reported it. */
   lastEditedTime: string;
+  /**
+   * A push may not change this file: a Sheet, Slides or Drawing export, which
+   * is a rendering of something the dialect cannot carry back (MANUAL §7).
+   */
+  readOnly?: boolean;
+  /**
+   * Drive's MD5 of a binary file's bytes. The second half of change detection
+   * for files whose modified time can move without the content moving.
+   */
+  md5?: string;
+}
+
+/**
+ * Who last edited a document, for the commit a fetch writes (MANUAL §7). Both
+ * adapters answer this shape, so a caller credits a commit the same way
+ * whether the document came from Notion or from Drive.
+ */
+export interface Editor {
+  id: string;
+  name?: string;
+  email?: string;
 }
 
 /** The index as the helper holds it while it works: entries by path. */

@@ -9,18 +9,11 @@
  */
 import type { CredentialProvider } from '../auth/index.js';
 import { serializeDocument } from '../frontmatter.js';
-import type { IndexEntry } from '../index-file.js';
+import type { Editor, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { createNotionApi, createNotionClient, type NotionApi } from './api.js';
 import { blocksToMarkdown } from './to-markdown.js';
 import { type SkippedObject, type WalkedPage, walkRoot } from './walk.js';
-
-/** Who last edited a document, for the commit a fetch writes (MANUAL §7). */
-export interface Editor {
-  id: string;
-  name?: string;
-  email?: string;
-}
 
 /** One Markdown file, ready to be written. */
 export interface FetchedFile {
@@ -148,3 +141,4 @@ export type { SkippedObject, WalkedPage } from './walk.js';
 export { walkRoot } from './walk.js';
 export type { NotionWriter } from './write.js';
 export { createNotionWriter } from './write.js';
+export type { Editor };
