@@ -167,6 +167,7 @@ Fields per root:
 | `src`    | yes      | Source ref.                                                  |
 | `path`   | yes      | Local path, relative to the repo root. See path rules below. |
 | `ignore` | no       | List of patterns. Matching documents are not checked out.    |
+| `comments` | no     | `true` to pull comment threads and suggestions into sidecars (§6). Default `false`. |
 
 ### Path rules
 
@@ -516,9 +517,10 @@ survives a push that does not touch it, and cannot be created by one.
 
 ### Comments and suggestions
 
-Open comment threads and pending suggestions are pulled into a sidecar file
-beside the document, `<title>.comments.md`, which exists only while the
-document has at least one. It is **read-only**: a push that changes, adds or
+With `comments: true` on a root (§4), open comment threads and pending
+suggestions are pulled into a sidecar file beside each document,
+`<title>.comments.md`, which exists only while the document has at least
+one. Turning the option off removes the sidecars on the next fetch. It is **read-only**: a push that changes, adds or
 removes one is refused before any source is touched, with the `git checkout`
 command that restores it. Replying, resolving, accepting and rejecting stay
 in the source's own UI (§12). The body file never carries a comment.
@@ -597,12 +599,20 @@ If anything changed, it writes one commit to `origin/main`:
 - date: the source's last-edit time
 - message: `Update <n> documents` and the list
 
-A comment moves no last-edit time at either source, so comments are re-read
-for every document on every fetch: one comment listing per Google Doc, plus
-the document itself when it changed or had a thread, and on Notion one
-request per block of every page. A fetch whose only changes are sidecars
-commits as `Update comments on <n> documents`; the `fetched:` line alone
-never makes a commit.
+A comment moves no last-edit time at either source, so on a root with
+`comments: true` comments are re-read for every document on every fetch:
+one comment listing per Google Doc, plus the document itself when it
+changed or had a thread, and on Notion one request per block of every page.
+
+> **Warning.** Notion's API lists comments per block, so a root with
+> `comments: true` costs one request per block of every page on every
+> fetch, under a rate limit of about three requests a second. A root of a
+> hundred pages with fifty blocks each spends half an hour per fetch on
+> comments alone. Turn it on for small Notion roots only; on Google Docs the
+> cost is one request per document.
+
+A fetch whose only changes are sidecars commits as `Update comments on <n>
+documents`; the `fetched:` line alone never makes a commit.
 
 Fetch never modifies your working tree. That is what `pull` and merge are for.
 
