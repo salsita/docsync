@@ -14,6 +14,10 @@ import {
 } from './api.js';
 import { createGDriveWriter } from './write.js';
 
+/** The run styling every plain run carries, and the mask it always sets. */
+const PLAIN = { bold: false, italic: false, underline: false, strikethrough: false };
+const FIELDS = 'bold,italic,underline,strikethrough,weightedFontFamily,link';
+
 interface Call {
   url: string;
   method: string;
@@ -104,15 +108,36 @@ describe('replaceBody', () => {
       existing(2),
       // One reply per request; the last one is the `createFootnote`.
       { replies: [{}, {}, {}, {}, { createFootnote: { footnoteId: 'kix.fn7' } }] },
+      // The document as it stands between the batches: the new footnote holds
+      // the space Docs seeds it with.
+      { footnotes: { 'kix.fn7': { content: [{ endIndex: 2 }] } } },
       { replies: [] },
     ]);
 
     const result = await write.replaceBody('doc1', parseMarkdown('A[^1]\n\n[^1]: Note\n'));
 
     expect(result.batches).toBe(2);
-    expect(batch(calls[2])[0]).toEqual({
-      insertText: { location: { index: 0, segmentId: 'kix.fn7' }, text: 'Note\n' },
-    });
+    expect(batch(calls[3])).toEqual([
+      { deleteContentRange: { range: { segmentId: 'kix.fn7', startIndex: 0, endIndex: 1 } } },
+      { insertText: { location: { index: 0, segmentId: 'kix.fn7' }, text: 'Note\n' } },
+      {
+        updateParagraphStyle: {
+          range: { startIndex: 0, endIndex: 5, segmentId: 'kix.fn7' },
+          paragraphStyle: { namedStyleType: 'NORMAL_TEXT' },
+          fields: 'namedStyleType',
+        },
+      },
+      {
+        deleteParagraphBullets: { range: { startIndex: 0, endIndex: 5, segmentId: 'kix.fn7' } },
+      },
+      {
+        updateTextStyle: {
+          range: { startIndex: 0, endIndex: 4, segmentId: 'kix.fn7' },
+          textStyle: PLAIN,
+          fields: FIELDS,
+        },
+      },
+    ]);
   });
 
   it('says what it could not write back', async () => {

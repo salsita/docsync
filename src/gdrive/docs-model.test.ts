@@ -66,7 +66,12 @@ describe('insertText', () => {
     const model = createDocsModel();
     const [reply] = model.apply([{ createFootnote: { location: { index: 1 } } }]);
     const segmentId = reply?.createFootnote?.footnoteId ?? '';
-    model.apply([{ insertText: { location: { index: 0, segmentId }, text: 'A note\n' } }]);
+    // Docs seeds a new footnote with a space, so a body replaces the segment.
+    expect(model.document().footnotes?.[segmentId]?.content?.at(-1)?.endIndex).toBe(2);
+    model.apply([
+      { deleteContentRange: { range: { segmentId, startIndex: 0, endIndex: 1 } } },
+      { insertText: { location: { index: 0, segmentId }, text: 'A note\n' } },
+    ]);
     expect(documentToMarkdown(model.document())).toBe('[^1]\n\n[^1]: A note\n');
   });
 });

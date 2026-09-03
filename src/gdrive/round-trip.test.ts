@@ -29,6 +29,7 @@ import { createDocsModel } from './docs-model.mock.js';
 import { DOC_IDS, fixtureDocument } from './fixtures.mock.js';
 import { markdownToRequests } from './from-markdown.js';
 import { documentToMarkdown } from './to-markdown.js';
+import { footnoteRequests } from './write.js';
 
 const PLACEHOLDER = /^<!--\s*docsync:(block|object)\b/;
 
@@ -72,10 +73,8 @@ function pushed(markdown: string, documentId = 'model'): string {
   const plan = markdownToRequests(markdown);
   const model = createDocsModel(documentId);
   const replies = model.apply(plan.requests);
-  for (const footnote of plan.footnotes) {
-    const id = replies[footnote.requestIndex]?.createFootnote?.footnoteId;
-    if (id !== undefined) model.apply(footnote.requests(id));
-  }
+  // The same second batch `write.ts` sends, over the same replies.
+  model.apply(footnoteRequests(plan.footnotes, replies, 0, model.document()));
   return documentToMarkdown(model.document());
 }
 

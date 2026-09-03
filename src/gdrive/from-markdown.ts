@@ -388,11 +388,12 @@ function textSegment(
       fields: 'namedStyleType',
     },
   });
-  if (options.bullets === undefined) {
-    // Text inserted at index 1 lands inside whatever paragraph is there, so a
-    // block before a list would join the list if this did not say otherwise.
-    requests.push({ deleteParagraphBullets: { range: range(base, base + text.length) } });
-  }
+  // Text inserted at index 1 lands inside whatever paragraph is there, and
+  // inherits its bullet: a block before a list would join the list. A list
+  // clears them too, and must — `createParagraphBullets` only reads the
+  // leading tabs of a paragraph that is not already a list item, which is what
+  // the manual test caught (ticket 08 Outcome).
+  requests.push({ deleteParagraphBullets: { range: range(base, base + text.length) } });
   requests.push(...styles);
 
   const footnotes: SegmentFootnote[] = [];

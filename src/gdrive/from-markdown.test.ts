@@ -196,6 +196,9 @@ describe('a list', () => {
           fields: 'namedStyleType',
         },
       },
+      // A list clears its bullets first: `createParagraphBullets` only reads
+      // the leading tabs of a paragraph that is not already a list item.
+      { deleteParagraphBullets: { range: { startIndex: 1, endIndex: 16 } } },
       {
         updateTextStyle: {
           range: { startIndex: 1, endIndex: 4 },

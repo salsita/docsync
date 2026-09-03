@@ -18,12 +18,13 @@ import {
   DEFAULT_UPLOAD_MIME,
   DOCUMENT_MIME,
   type DocsDocument,
+  type DocsWriteReply,
   type DocsWriteRequest,
   type DriveFile,
   FOLDER_MIME,
   type GDriveApi,
 } from './api.js';
-import { mdastToRequests } from './from-markdown.js';
+import { mdastToRequests, type PlannedFootnote } from './from-markdown.js';
 
 /** What writing one body did, for the push report. */
 export interface BodyResult {
@@ -85,11 +86,16 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
     }
 
     const replies = await api.batchUpdate(documentId, [...head, ...plan.requests]);
-    const second: DocsWriteRequest[] = [];
-    for (const footnote of plan.footnotes) {
-      const id = replies[footnote.requestIndex + head.length]?.createFootnote?.footnoteId;
-      if (id !== undefined) second.push(...footnote.requests(id));
-    }
+    if (plan.footnotes.length === 0) return { dropped: plan.dropped, batches: 1 };
+
+    // The segments exist now, and only the document can say how long each one
+    // is, which the bodies need: Docs seeds a new footnote with a space.
+    const second = footnoteRequests(
+      plan.footnotes,
+      replies,
+      head.length,
+      await api.getDocument(documentId),
+    );
     if (second.length === 0) return { dropped: plan.dropped, batches: 1 };
 
     await api.batchUpdate(documentId, second);
@@ -138,4 +144,35 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
 /** One past the last index of a body, which is what a full delete stops at. */
 export function endIndexOf(document: DocsDocument): number {
   return document.body?.content?.at(-1)?.endIndex ?? 2;
+}
+
+/**
+ * The second batch: each footnote's body, in the segment the first batch made.
+ *
+ * `createFootnote` seeds the new segment with a space — which is what the
+ * fixture's own footnote shows, and what the manual test found coming back as
+ * a stray second paragraph — so the body replaces the segment rather than
+ * being pushed in front of it. Shared with the round-trip test, which applies
+ * the same two batches to a model.
+ */
+export function footnoteRequests(
+  footnotes: readonly PlannedFootnote[],
+  replies: readonly DocsWriteReply[],
+  offset: number,
+  document: DocsDocument,
+): DocsWriteRequest[] {
+  const out: DocsWriteRequest[] = [];
+  for (const footnote of footnotes) {
+    const id = replies[footnote.requestIndex + offset]?.createFootnote?.footnoteId;
+    if (id === undefined) continue;
+    // The segment's own last paragraph keeps its newline, as a body does.
+    const end = document.footnotes?.[id]?.content?.at(-1)?.endIndex ?? 1;
+    if (end > 1) {
+      out.push({
+        deleteContentRange: { range: { segmentId: id, startIndex: 0, endIndex: end - 1 } },
+      });
+    }
+    out.push(...footnote.requests(id));
+  }
+  return out;
 }

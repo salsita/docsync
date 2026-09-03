@@ -368,7 +368,9 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
     const location = request.location as { index: number };
     footnoteCount += 1;
     const id = `kix.fn${footnoteCount}`;
-    footnotes.set(id, [emptyPara()]);
+    // Docs seeds a new footnote with a space, which is why a body replaces the
+    // segment rather than being inserted in front of it (ticket 08 Outcome).
+    footnotes.set(id, [{ items: [{ kind: 'text', text: ' ', style: {} }], named: NORMAL }]);
 
     const { slot, offset } = locate(location.index);
     const [head, tail] = split(slot.para, offset);
@@ -378,7 +380,11 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
 
   /** Removes a range, merging the paragraphs whose newline it took. */
   function deleteContentRange(request: Record<string, unknown>): void {
-    const range = request.range as { startIndex: number; endIndex: number };
+    const range = request.range as { startIndex: number; endIndex: number; segmentId?: string };
+    if (range.segmentId !== undefined && range.segmentId !== '') {
+      deleteFromSegment(range.segmentId, range.startIndex, range.endIndex);
+      return;
+    }
     const kept: Node[] = [];
     let index = 1;
     let merging: Para | undefined;
@@ -417,6 +423,42 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
 
     body.length = 0;
     body.push(...(kept.length === 0 ? [{ kind: 'para' as const, para: emptyPara() }] : kept));
+  }
+
+  /**
+   * The same, for a footnote segment, which holds paragraphs and nothing else.
+   * Kept apart from the body's version because the body also holds tables.
+   */
+  function deleteFromSegment(segmentId: string, startIndex: number, endIndex: number): void {
+    const content = footnotes.get(segmentId);
+    if (content === undefined) return;
+    const kept: Para[] = [];
+    let index = 0;
+    let merging: Para | undefined;
+
+    for (const para of content) {
+      const start = index;
+      const end = index + paraLength(para);
+      index = end;
+      if (endIndex <= start || startIndex >= end) {
+        if (merging === undefined) kept.push(para);
+        else {
+          merging.items.push(...para.items);
+          merging = undefined;
+        }
+        continue;
+      }
+      trim(para, startIndex - start, endIndex - start);
+      const newlineGone = startIndex <= end - 1 && endIndex > end - 1;
+      let target = para;
+      if (merging === undefined) kept.push(para);
+      else {
+        merging.items.push(...para.items);
+        target = merging;
+      }
+      merging = newlineGone ? target : undefined;
+    }
+    footnotes.set(segmentId, kept.length === 0 ? [emptyPara()] : kept);
   }
 
   /** Removes the items, and the parts of items, that a range covers. */
