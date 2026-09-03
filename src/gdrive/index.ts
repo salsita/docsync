@@ -147,12 +147,43 @@ function editorOf(user: DriveUser | undefined): Editor | undefined {
 
 export type {
   DocsDocument,
+  DocsWriteReply,
+  DocsWriteRequest,
   DriveFile,
   DriveUser,
+  FileMetadata,
   GDriveApi,
   GDriveApiOptions,
+  MoveOptions,
 } from './api.js';
-export { createGDriveApi, DOCS_ENDPOINT, DRIVE_ENDPOINT } from './api.js';
+export {
+  createGDriveApi,
+  DEFAULT_UPLOAD_MIME,
+  DOCS_ENDPOINT,
+  DOCUMENT_MIME,
+  DRIVE_ENDPOINT,
+  FOLDER_MIME,
+  UPLOAD_ENDPOINT,
+} from './api.js';
+export type {
+  DocsRequest,
+  PlannedFootnote,
+  RequestPlan,
+  Segment,
+  SegmentFootnote,
+} from './from-markdown.js';
+export {
+  BULLET_PRESETS,
+  CODE_FONT,
+  markdownToRequests,
+  mdastToRequests,
+  mdastToSegments,
+  segmentsToRequests,
+} from './from-markdown.js';
+export type { PushOptions } from './push.js';
+export { pushRoot } from './push.js';
 export { CODE_FONTS, documentToMarkdown, documentToMdast } from './to-markdown.js';
 export type { DriveKind, SkippedObject, WalkedFile, WalkResult } from './walk.js';
 export { EXPORTS, walkRoot } from './walk.js';
+export type { BodyResult, CreatedDoc, GDriveWriter } from './write.js';
+export { createGDriveWriter, endIndexOf } from './write.js';
