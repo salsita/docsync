@@ -74,10 +74,13 @@ async function pushWith(
   }
 
   // A Sheet, Slides or Drawing is a rendering of something the dialect cannot
-  // carry back, so a change to one is refused by name (MANUAL §7).
+  // carry back, so a change to its content is refused by name (MANUAL §7).
+  // Renaming or trashing one touches the file, not the rendering, and goes
+  // through (MANUAL §8).
   for (const change of changes) {
     const entry = known.get(change.previousPath ?? change.path);
-    if (entry?.readOnly === true) {
+    const content = change.text !== undefined || change.bytes !== undefined;
+    if (entry?.readOnly === true && content) {
       throw new PushError('Read-only export; edit it at the source', change.path);
     }
   }
@@ -122,7 +125,7 @@ async function pushWith(
     const parent = await folderFor(change.path);
     const name = nameOf(change.path);
 
-    if (isDocument(change)) {
+    if (isDocument(change, undefined)) {
       const document = parseDocument(change.text ?? '');
       const title = document.frontmatter?.title ?? stem(name);
       const made = await writer.createDoc(parent, title, document.body);
@@ -157,7 +160,8 @@ async function pushWith(
     }
 
     const name = nameOf(change.path);
-    const wanted = isDocument(change) ? (document.frontmatter?.title ?? stem(name)) : name;
+    const isDoc = isDocument(change, previous);
+    const wanted = isDoc ? (document.frontmatter?.title ?? stem(name)) : name;
     let renamed = false;
 
     if (change.kind === 'renamed' && change.previousPath !== undefined) {
@@ -172,12 +176,12 @@ async function pushWith(
     // A rename is told by the change itself, which is what keeps a rename with
     // no body change to one API call; a title edited in the frontmatter of a
     // file that only changed has to be asked about at the source.
-    if (await shouldRename(api, id, change, wanted, document.frontmatter?.title)) {
+    if (await shouldRename(api, id, change, wanted, document.frontmatter?.title, isDoc)) {
       await writer.rename(id, wanted);
       renamed = true;
     }
 
-    if (isDocument(change) && change.text !== undefined) {
+    if (isDoc && change.text !== undefined) {
       await writer.replaceBody(id, document.body);
     } else if (change.bytes !== undefined) {
       await writer.uploadRevision(id, change.bytes, mimeOf(name));
@@ -204,18 +208,25 @@ async function shouldRename(
   change: FileChange,
   wanted: string,
   title: string | undefined,
+  isDoc: boolean,
 ): Promise<boolean> {
   if (change.kind === 'renamed' && change.previousPath !== undefined) {
     const before = nameOf(change.previousPath);
-    return (isDocument(change) ? stem(before) : before) !== wanted;
+    return (isDoc ? stem(before) : before) !== wanted;
   }
   if (title === undefined) return false;
   return (await api.getFile(id)).name !== wanted;
 }
 
-/** A Markdown document is a Google Doc; everything else in a root is bytes. */
-function isDocument(change: FileChange): boolean {
-  return change.path.endsWith('.md');
+/**
+ * Whether a change is about a Google Doc. A file the index knows is what the
+ * index says — a Markdown file stored in Drive is bytes, not a Doc. A new file
+ * is a Doc when the helper handed it over as text, which it does for a file
+ * that starts with frontmatter; one without is bytes (MANUAL §6).
+ */
+function isDocument(change: FileChange, known: IndexEntry | undefined): boolean {
+  if (known !== undefined) return known.type === 'gdoc';
+  return change.text !== undefined;
 }
 
 /** The last component of a path, which is the file's name in Drive. */

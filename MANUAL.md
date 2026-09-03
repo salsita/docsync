@@ -336,13 +336,31 @@ title: Auth
 - `id` is the identity. Renaming the file does not change which document it is.
 - `title` is what the source shows. Changing it and pushing renames the document
   at the source. The filename follows on the next fetch.
-- A new `.md` file inside a root **without** frontmatter is a new document. On
-  push it is created at the source, under the folder or parent page its path
-  implies, titled from its filename without the extension. The id arrives with
-  the post-push fetch (§7).
+- A new `.md` file inside a root is a new document **when it starts with
+  frontmatter**. The minimum is the two fences with nothing between them;
+  `title` is optional and defaults to the filename without the extension:
+
+  ```yaml
+  ---
+  title: Auth
+  ---
+  ```
+
+  On push it is created at the source, under the folder or parent page its
+  path implies. The id arrives with the post-push fetch (§7).
+- A new `.md` file **without** frontmatter under a Drive root is a plain
+  file and is uploaded as one. Under a Notion root it is refused, since Notion
+  holds no files; add the frontmatter to create a page.
+- Adding frontmatter to a plain file, or removing it from a document, changes
+  what the path is. Push treats it as a delete and a create: the old object is
+  trashed and a new one is made, with a new id.
+- A new file whose frontmatter carries an `id` the checkout already has, which
+  is what copying a fetched document produces, is refused. Remove the `id`
+  line to create a copy.
 - Do not add your own keys to the frontmatter. They will be dropped.
 
-**Binary files** have no frontmatter. Their ids live in `.docsync/index.yaml`,
+**Binary files**, a Markdown file stored in Drive included, have no
+frontmatter and are checked out verbatim. Their ids live in `.docsync/index.yaml`,
 a tracked file the helper writes on every fetch. It maps every checked-out path
 to its source ref and type. Do not edit it. A new binary file inside a Drive
 root is uploaded on push and appears in the index after the post-push fetch.
@@ -426,9 +444,9 @@ roman numerals are not represented either.
 | Heading 1–6                                   | `#` … `######`                                                                                        |
 | paragraph                                     | paragraph                                                                                             |
 | bulleted / numbered list, nested              | `-` / `1.`, nested by indentation                                                                     |
-| checklist                                     | `- [ ]` / `- [x]`. The Docs API does not report which box is ticked, so every item is fetched as `- [ ]`, and a pushed `- [x]` does not survive the next fetch                                                                                     |
+| checklist                                     | `- [ ]` / `- [x]`. The Docs API does not report which box is ticked, so every item is fetched as `- [ ]`, and a pushed `- [x]` does not survive the next fetch. A pushed checklist is created as one                                                                                     |
 | table                                         | GFM table. Merged cells are not supported and make the table a placeholder.                           |
-| horizontal rule                               | `---`                                                                                                 |
+| horizontal rule                               | `---`. The Docs API cannot create one, so a rule is dropped on push and does not survive                                                                                                 |
 | page break                                    | `<!-- docsync:pagebreak -->` on its own line. Docs keeps a page break inside a paragraph, so a paragraph containing one is fetched as two paragraphs around the comment                                                                          |
 | footnote                                      | `[^n]` with the definition at the end                                                                 |
 | image | `<!-- docsync:object gdocs:<objectId> type=image -->` in the first version; downloaded into `<title>.assets/` and linked relatively **later** |
@@ -491,10 +509,12 @@ Git sends the commits between `origin/main` and your branch. The helper:
    Deleted files under no root are ignored: that is what `docsync remove`
    produces, and it means unsubscribe, not trash. Changes to
    `.docsync/index.yaml` are refused.
-4. Refuses changes to read-only exports (Sheets, Slides, Drawings).
+4. Refuses content changes to read-only exports (Sheets, Slides, Drawings).
+   Renaming or deleting one renames or trashes the source file.
 5. Diffs the tree per root and applies:
    - **modified** → update the document (see Write-back below)
-   - **added** → create the document, or upload the binary
+   - **added** → create the document, or upload the binary. Folders the
+     path implies are created on Drive and listed in the report
    - **deleted** → trash the document (Notion archive, Drive trash). Never
      permanent. Printed prominently.
    - **renamed** → same document (by id), possibly a title change and, for
@@ -525,7 +545,10 @@ The first version replaces the document body.
   survive.
 - **Google Docs:** the body text is replaced. Text colour, highlight, fonts,
   sizes and alignment **inside the body are lost on every push**, because the
-  dialect cannot carry them. Document-level defaults, named styles, sharing,
+  dialect cannot carry them. Horizontal rules and image placeholders are
+  dropped, since the API cannot create the one and phase 1 does not upload
+  the other. A fenced code block is written as Courier New paragraphs and a
+  blockquote as plain paragraphs, since Docs has neither. Document-level defaults, named styles, sharing,
   comments and the file id survive, but comment anchors may detach. In practice
   this makes the first version suitable for Docs that are plain prose, and
   unsuitable for heavily formatted ones.

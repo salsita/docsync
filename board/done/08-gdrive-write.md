@@ -72,3 +72,47 @@ comment anchors).
 
 `pnpm check` green, the round-trip test passes for every fixture Doc, and
 the manual test matches the manual's description of phase-1 write-back.
+
+## Outcome
+
+Landed 2026-09-03. Seven agent commits plus the landing commit.
+
+- **Modules as planned** in `src/gdrive/`: `from-markdown.ts` (segments and
+  reverse-order `batchUpdate` requests), `write.ts` (`createGDriveWriter`:
+  `replaceBody`, `createDoc`, `createFolder`, `uploadRevision`, `createFile`,
+  `rename`, `move`, `trash`), `push.ts` (`pushRoot`, Notion's shape),
+  `api.ts` extended with `batchUpdate`, `createFile`, `updateFile`,
+  `uploadRevision`, `uploadFile`, `copyFile`. The push types (`FileChange`
+  with a new optional `bytes`, `PushReport`, `PushError`) moved to
+  `src/push-types.ts`, re-exported by the Notion module.
+- **Round trip** passes for all seven fixture Docs through an in-memory
+  Docs model (`docs-model.mock.ts`, tested on its own). Known losses,
+  projected out and asserted as a list: the horizontal rule (no request can
+  create one) and the image placeholder (phase 2). The checklist tick is the
+  third loss, unit-tested since no fixture holds one.
+- **Checklists can be created** (`createParagraphBullets` with
+  `BULLET_CHECKBOX`) and read back with the signature ticket 07 recorded, so
+  `- [ ]` round-trips; the tick still cannot be written or read.
+- **Two API behaviours the model had wrong**, found in the smoke test and
+  fixed: `createParagraphBullets` reads leading tabs only on a paragraph
+  that is not already a list item, so a list clears bullets before creating
+  them; `createFootnote` seeds the segment with a space, so the footnote body
+  deletes the segment first (one `documents.get` between the two batches).
+- **Manual test** in Drive folder `1mRuyVt6yzvcFAddjCn7hEytMjJPScv9G`
+  ("Docsync write test"): copies of Elements and plain.txt, body replaced,
+  Doc created, renamed, moved into a new `Sub`, plain.txt revised, the
+  created Doc trashed. After the fixes the Elements copy loses exactly the
+  rule and the image. The folder also holds throwaway `nesting A…L` and
+  `Elements copy 2/3` Docs from the diagnosis. A re-run left a second folder
+  `1Q-f89BGY5UFoqyHn5sBgl-oJyfvs9YmZ` with two copies only; the owner trashes
+  both folders. The original fixture folder was only read.
+- **Changed at landing:** a read-only export refuses content changes only;
+  renaming or trashing one goes through (manual §7, §8). Whether a known
+  path is a Doc comes from the index type, so a Markdown file stored in Drive
+  is revised as bytes. A new file is a Doc when the helper hands it over as
+  text, which per the new manual §6 rule means it starts with frontmatter.
+- **Manual changes at landing:** §6 rule and checklist rows, the frontmatter
+  rules for new files (frontmatter required for a document, a plain `.md`
+  is a file on Drive and refused on Notion, duplicate ids refused,
+  frontmatter added or removed is a delete plus create at the source); §7
+  Docs write-back losses, folders created on push, read-only wording.

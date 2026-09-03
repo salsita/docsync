@@ -16,6 +16,7 @@ const ELEMENTS_ID = 'doc-elements';
 const NESTED_ID = 'doc-nested';
 const PLAIN_ID = 'file-plain';
 const SHEET_ID = 'file-sheet';
+const README_ID = 'file-readme';
 
 const root: Root = { path: 'drive/', src: { source: 'gdocs', id: ROOT_ID }, ignore: [] };
 
@@ -37,6 +38,7 @@ const index: DocumentIndex = new Map(
     entry('drive/Sub/Nested.md', NESTED_ID),
     entry('drive/plain.txt', PLAIN_ID),
     entry('drive/Numbers.xlsx', SHEET_ID, { readOnly: true }),
+    entry('drive/README.md', README_ID, { type: 'drive-file' }),
   ].map((one) => [one.path, one]),
 );
 
@@ -51,6 +53,19 @@ function drive(): FakeDrive {
     },
     { id: ELEMENTS_ID, name: 'Elements', parents: [ROOT_ID] },
     { id: NESTED_ID, name: 'Nested', parents: [SUB_ID] },
+    {
+      id: SHEET_ID,
+      name: 'Numbers',
+      mimeType: 'application/vnd.google-apps.spreadsheet',
+      parents: [ROOT_ID],
+    },
+    {
+      id: README_ID,
+      name: 'README.md',
+      mimeType: 'text/markdown',
+      parents: [ROOT_ID],
+      bytes: new TextEncoder().encode('# old'),
+    },
     {
       id: PLAIN_ID,
       name: 'plain.txt',
@@ -212,8 +227,31 @@ describe('a deleted file', () => {
   });
 });
 
+describe('a Markdown file stored in Drive', () => {
+  it('is bytes, not a Doc: a change uploads a revision', async () => {
+    const api = drive();
+    const bytes = new TextEncoder().encode('# new');
+
+    const report = await push(api, [{ kind: 'modified', path: 'drive/README.md', bytes }]);
+
+    expect(report).toEqual([{ path: 'drive/README.md', title: 'README.md', action: 'updated' }]);
+    expect(api.calls).toEqual([`upload ${README_ID} text/markdown`]);
+  });
+});
+
 describe('a read-only export', () => {
-  it('is refused by name, before anything else is written', async () => {
+  it('can be trashed, since that touches the file and not the rendering', async () => {
+    const api = drive();
+
+    const report = await push(api, [{ kind: 'deleted', path: 'drive/Numbers.xlsx' }]);
+
+    expect(report).toEqual([
+      { path: 'drive/Numbers.xlsx', title: 'Numbers.xlsx', action: 'trashed' },
+    ]);
+    expect(api.calls).toEqual([`trash ${SHEET_ID}`]);
+  });
+
+  it('is refused by name when its content changes, before anything else is written', async () => {
     const api = drive();
 
     await expect(

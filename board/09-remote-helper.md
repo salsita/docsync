@@ -23,7 +23,7 @@ talks to Notion or Drive itself.
 | Synthesized commit | Tree = every file every root produced + `.docsync/index.yaml` (all entries, sorted by path, stable YAML). Parent = the previously served commit, none for the first. Author = the editor of the most recently edited changed document (name and email when the source gave them, else `<name> <id@source>`), author date = that document's last-edit time. Committer = `docsync <docsync@salsita.com>`, now. Message: `Update <n> documents` (or `Add …` on the first commit) and one line per changed path | Manual §7 fetch. |
 | Unchanged files | Kept from the previous tree by blob sha, so an unchanged document is never re-downloaded | Manual §7: only changed documents are downloaded; both adapters return no content for them. |
 | Removed root | Its files are simply absent from the next tree; the source is untouched | Manual §8: unsubscribe. |
-| `push` | 1. Forced push (`+` in the refspec) → `error … force push is not supported`. 2. Pre-flight fetch as in `list`; if it produced a new commit → `error … the source changed, fetch and merge first`. 3. `git merge-base --is-ancestor <served> <pushed>` else → `error … non-fast-forward`. 4. `git diff-tree -r -M --name-status <served> <pushed>`: any A or M outside every root or touching `.docsync/index.yaml` or a read-only entry → `error` naming the path; D outside roots ignored. 5. Per root, build `FileChange[]` (text via `cat-file`, `previousPath` for R) and call the adapter's `pushRoot`. 6. Post-push fetch: `fetchRoot` on every root, parent = the pushed commit, private ref advanced, `ok refs/heads/main` printed | Manual §7 push, §8. A pushed commit whose net diff is empty is accepted and answered with a plain `ok`. |
+| `push` | 1. Forced push (`+` in the refspec) → `error … force push is not supported`. 2. Pre-flight fetch as in `list`; if it produced a new commit → `error … the source changed, fetch and merge first`. 3. `git merge-base --is-ancestor <served> <pushed>` else → `error … non-fast-forward`. 4. `git diff-tree -r -M --name-status <served> <pushed>`: any A or M outside every root or touching `.docsync/index.yaml` or a read-only entry → `error` naming the path; D outside roots ignored. 5. Per root, build `FileChange[]` (`previousPath` for R). An added `.md` file that starts with frontmatter is `text`; one without is `bytes` under a Drive root and an `error` naming the path under a Notion root; an added file whose frontmatter `id` is already in the index is an `error` ("remove the id line to create a copy"). A known path is `text` when the index says `gdoc` or `notion-page`, else `bytes`; a known `.md` whose frontmatter presence no longer matches the index type becomes a `deleted` change for the old object plus an `added` change under the same rules as a new file. Then call the adapter's `pushRoot`. Manual §6 Identity has the rules. 6. Post-push fetch: `fetchRoot` on every root, parent = the pushed commit, private ref advanced, `ok refs/heads/main` printed | Manual §7 push, §8. A pushed commit whose net diff is empty is accepted and answered with a plain `ok`. |
 | Adapter interface | `src/source.ts`: `interface Source { fetchRoot(root, provider, previous): Promise<FetchResult>; pushRoot(root, changes, provider, index): Promise<PushReport> }`, one object per source name, the Notion and Drive modules registered by name; the shared `FetchResult`, `FetchedFile`, `FileChange`, `PushReport` types move here from the adapters | The helper is tested against an in-memory fake `Source`; ticket 10 reuses the same table. |
 | Credentials | `createCredentialProvider()`; a missing credential ends the run with `error` and the line `run: docsync auth <source>` | Manual §2. |
 | Skill file | `refreshSkillFiles(worktree)` from `src/skill.ts` is called at the start of every run. In this ticket it is a stub that ticket 11 fills | Manual §10. |
@@ -71,11 +71,15 @@ talks to Notion or Drive itself.
   11. A file added outside every root → rejected naming the path; an edit to
       `.docsync/index.yaml` → rejected; an edit to a read-only export →
       rejected.
+  13. A new `.md` without frontmatter under a Drive root is uploaded as a
+      file; under a Notion root it is rejected; a new file carrying an
+      existing id is rejected; frontmatter added to a plain file trashes the
+      file and creates a document.
   12. A rename with an unchanged body → one `renamed` change reaches the
       adapter, with `previousPath`.
 
 ## Done when
 
-`pnpm check` green with the twelve end-to-end cases passing on macOS and
+`pnpm check` green with the thirteen end-to-end cases passing on macOS and
 Linux in CI (Windows is ticket 12), and manual §7 says what the push
 pre-flight does.
