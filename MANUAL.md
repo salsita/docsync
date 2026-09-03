@@ -366,11 +366,15 @@ title: Auth
   is what copying a fetched document produces, is refused. Remove the `id`
   line to create a copy.
 - Do not add your own keys to the frontmatter. They will be dropped.
+- The `.comments.md` suffix is docsync's own, for the comment sidecar. A
+  source document whose title derives to it is refused on fetch: rename it
+  at the source.
 
 **Binary files**, a Markdown file stored in Drive included, have no
 frontmatter and are checked out verbatim. Their ids live in `.docsync/index.yaml`,
 a tracked file the helper writes on every fetch. It maps every checked-out path
-to its source ref and type. Do not edit it. A new binary file inside a Drive
+to its source ref and type, and marks a Google Doc that had a pending
+suggestion at the last fetch (`suggested: true`). Do not edit it. A new binary file inside a Drive
 root is uploaded on push and appears in the index after the post-push fetch.
 
 Renames of either kind are detected by git's rename detection and resolved to
@@ -551,17 +555,21 @@ in: Heading six
 ```
 
 - **Anchor.** The paragraph, list item, heading or table cell that contains
-  the commented text, quoted, with the commented words marked `==like
-  this==`; then `in:` and the nearest heading above it. On Notion a comment
-  belongs to a whole block, so the block is quoted without marks. When the
-  quoted text is found nowhere in the body, the bare text is quoted and
-  `in:` says `(not found)`. When it is found in two places, the first wins.
+  the commented text, quoted as it is written in the body, with the
+  commented words marked `==like this==`; then `in:` and the nearest heading
+  above it, `(top)` when there is none. On Notion a comment belongs to a
+  whole block, so the block is quoted without marks; a comment on the page
+  itself has no quote and comes first. When the quoted text is found nowhere
+  in the body, the bare text is quoted and `in:` says `(not found)`. When it
+  is found in two places, the first wins.
 - **Suggestion** (Google Docs only): the paragraph as it stands and as it
   would read with the suggestion accepted, as a diff. Two suggestions in one
-  paragraph are two threads. A pure formatting suggestion is quoted with
-  `formatting only`.
-- **Entries** are author, time and text, in creation order. Deleted entries
-  are omitted.
+  paragraph are two threads. A pure formatting suggestion has the quote,
+  the `in:` line, then `formatting only` in place of the diff.
+- **Entries** are author, time (UTC, to the minute) and text, in creation
+  order. Deleted entries are omitted. The thread id is the source's: the
+  Drive comment id, or the Notion discussion id in the bare form the
+  frontmatter uses.
 - **Resolved threads are not in the file.** A thread disappears from the
   sidecar when it is resolved or deleted at the source, which the next pull
   shows as a diff.
@@ -570,8 +578,8 @@ in: Heading six
 
 Notion's API reports a comment on a text selection as a comment on the
 block, and gives no time finer than the minute. A Notion integration needs
-the "read comments" capability; `docsync auth notion` says so when it is
-missing.
+the "read comments" capability, listed in the grant hint of `docsync auth
+notion`; the API gives no way to check it before the first fetch.
 
 ---
 
@@ -588,6 +596,13 @@ If anything changed, it writes one commit to `origin/main`:
 - author: the source's last editor, with their source email if available
 - date: the source's last-edit time
 - message: `Update <n> documents` and the list
+
+A comment moves no last-edit time at either source, so comments are re-read
+for every document on every fetch: one comment listing per Google Doc, plus
+the document itself when it changed or had a thread, and on Notion one
+request per block of every page. A fetch whose only changes are sidecars
+commits as `Update comments on <n> documents`; the `fetched:` line alone
+never makes a commit.
 
 Fetch never modifies your working tree. That is what `pull` and merge are for.
 
@@ -606,7 +621,9 @@ Git sends the commits between `origin/main` and your branch. The helper:
 3. Reads the manifest. Added or modified files under no root are refused.
    Deleted files under no root are ignored: that is what `docsync remove`
    produces, and it means unsubscribe, not trash. Changes to
-   `.docsync/index.yaml` are refused.
+   `.docsync/index.yaml` are refused, and so is any change to a comment
+   sidecar under a root: "`<path>` is read-only; comments are only pulled in
+   this version. Restore it with `git checkout -- <path>`".
 4. Refuses content changes to read-only exports (Sheets, Slides, Drawings).
    Renaming or deleting one renames or trashes the source file.
 5. Diffs the tree per root and applies:
@@ -670,7 +687,9 @@ what to do with each:
 What is lost, per source:
 
 - **Notion:** formatting on the characters you rewrote; the id and comments
-  of a moved block or a block whose type changed. An edit writes the block's
+  of a moved block or a block whose type changed. Notion splits a block's
+  rich text where a comment starts and ends; an edit to that block rejoins
+  the runs, which is invisible in the text. An edit writes the block's
   merged runs together with the attributes the dialect owns (colour, checked
   state, code language, callout icon, table header flags). A block the API
   cannot create (bookmark, embed, synced block, column list, …) survives

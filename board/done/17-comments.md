@@ -60,3 +60,30 @@ green, and the manual section matches what is produced.
 - Accepting and rejecting suggestions, and **push as suggestions** (writing
   a push in suggesting mode so the client reviews it in Docs). Both need
   the Google Workspace Developer Preview Program.
+
+## Outcome
+
+Landed 2026-09-03 in one agent commit (`42a4747`) plus the landing commit.
+`pnpm check` green, 1233 tests. Both fixture sidecars match manual §6.
+
+Findings and deviations:
+
+- **Cost.** A comment bumps no last-edit time (verified: the Blocks page's
+  `last_edited_time` predates its comments by two hours), so comments are
+  re-read for every document on every fetch. Docs: one `comments.list` per
+  Doc, plus `documents.get` for a Doc that changed or owes a sidecar.
+  Notion: one request per block. Fixture tree, per fetch: Drive 3 → 11
+  requests when nothing changed; Notion 19 → 85 (66 for comments). Open
+  decision for the owner: a per-root `comments: false`, refreshing Notion
+  block comments only on changed pages, or an explicit `--comments` refresh.
+- `IndexEntry.suggested: true` marks a Doc with a pending suggestion, so an
+  unchanged Doc whose only threads are suggestions keeps its sidecar.
+- `fetched:` alone never makes a commit (`sameButForFetched`).
+- `in: (top)` above the first heading; Notion ids in bare 32-hex form; a
+  page-level Notion comment has no quote and sorts first.
+- Notion splits rich-text runs at comment edges; a push rejoins them. The
+  round-trip test now joins such runs; documented in §7.
+- Re-recording pulled in real drift: the Elements Doc's suggestion
+  paragraph, its modified time, the Sheet export bytes.
+- Not done: a capability check in `docsync auth notion`. The API exposes no
+  capability list and `auth` has no page to probe. Manual reworded.
