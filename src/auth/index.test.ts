@@ -99,6 +99,8 @@ describe('signIn to Notion', () => {
     });
 
     expect(lines[0]).toContain('teamspaces');
+    // The comment sidecar needs it, and Notion grants it per integration.
+    expect(lines[0]).toContain('read comments');
     expect(grantHint('gdocs')).toContain('Drive and Docs');
   });
 

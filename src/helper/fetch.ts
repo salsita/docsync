@@ -11,6 +11,7 @@
  * caller's.
  */
 import type { CredentialProvider } from '../auth/index.js';
+import { isSidecarPath, sameButForFetched } from '../comments/format.js';
 import type { Editor, IndexEntry } from '../index-file.js';
 import type { Manifest } from '../manifest/types.js';
 import type { FetchedFile, SkippedObject, SourceRegistry } from '../source.js';
@@ -46,6 +47,12 @@ export interface FetchOutcome {
 export const COMMITTER = { name: 'docsync', email: 'docsync@salsita.com' } as const;
 
 /**
+ * A fetched file that is a document of the checkout, so it has a last-edit time
+ * and an editor to credit. A comment sidecar has neither (MANUAL §6).
+ */
+type Dated = FetchedFile & { entry: IndexEntry };
+
+/**
  * Fetches every root of `manifest` on top of `parent`, the last served
  * commit, or from nothing when there is none yet.
  */
@@ -62,24 +69,29 @@ export async function fetchCommit(
   const entries: IndexEntry[] = [];
   const changedDocuments: FetchReport['changed'] = [];
   const skipped: SkippedObject[] = [];
-  let latest: FetchedFile | undefined;
+  /** The changed document the fetch commit is authored by, once it is found. */
+  let latest: Dated | undefined;
 
   for (const root of manifest.roots) {
     const source = deps.sources[root.src.source];
     const result = await source.fetchRoot(root, deps.provider, previousIndex);
-    const changed = result.files.filter((file) => file.changed).length;
+    const changed = result.files.filter((file) => file.changed && file.entry !== undefined).length;
     deps.log(`${root.src.source}: ${changed === 0 ? 'unchanged' : `${changed} changed`}`);
 
     for (const file of result.files) {
       files.set(file.path, { sha: await blobFor(git, file, previousTree) });
-      if (!file.changed) continue;
+      // A comment sidecar is a file of the commit and not a document of the
+      // checkout: it has no entry, no editor and no last-edit time (MANUAL §6).
+      const entry = file.entry;
+      if (!file.changed || entry === undefined) continue;
       changedDocuments.push({
         path: file.path,
-        lastEditedTime: file.entry.lastEditedTime,
+        lastEditedTime: entry.lastEditedTime,
         ...(file.editor === undefined ? {} : { editor: file.editor }),
       });
-      if (file.editor !== undefined && (latest === undefined || after(file, latest))) {
-        latest = file;
+      const dated = { ...file, entry };
+      if (file.editor !== undefined && (latest === undefined || after(dated, latest))) {
+        latest = dated;
       }
     }
     entries.push(...result.entries);
@@ -116,8 +128,15 @@ async function readIndex(git: Git, tree: FileTree) {
 
 /** A changed file's new blob; an unchanged one's blob from the last commit. */
 async function blobFor(git: Git, file: FetchedFile, previous: FileTree): Promise<string> {
+  const kept = previous.get(file.path);
+  // A sidecar is rebuilt on every fetch, because a comment moves no last-edit
+  // time to compare (MANUAL §6). When only its `fetched:` line moved, the blob
+  // the last commit has is kept, so a fetch that found nothing commits nothing.
+  if (file.entry === undefined && kept !== undefined && file.text !== undefined) {
+    const before = (await git.catBlob(kept.sha)).toString('utf8');
+    if (sameButForFetched(before, file.text)) return kept.sha;
+  }
   if (!file.changed) {
-    const kept = previous.get(file.path);
     if (kept === undefined) {
       throw new Error(
         `${file.path}: the source reports it unchanged, but the last fetch did not write it`,
@@ -133,7 +152,7 @@ async function blobFor(git: Git, file: FetchedFile, previous: FileTree): Promise
 }
 
 /** Whether `a` was edited after `b`. Ties go to the one seen first. */
-function after(a: FetchedFile, b: FetchedFile): boolean {
+function after(a: Dated, b: Dated): boolean {
   return a.entry.lastEditedTime > b.entry.lastEditedTime;
 }
 
@@ -150,8 +169,12 @@ function message(first: boolean, paths: string[]): string {
   // A source can move a last-edit time without moving the content, which
   // changes the index and nothing else.
   if (paths.length === 0) return 'Update the index\n';
-  const verb = first ? 'Add' : 'Update';
   const noun = paths.length === 1 ? 'document' : 'documents';
+  // Nothing was edited: someone commented, or answered a comment (MANUAL §6).
+  if (!first && paths.every((path) => isSidecarPath(path))) {
+    return `Update comments on ${paths.length} ${noun}\n\n${paths.join('\n')}\n`;
+  }
+  const verb = first ? 'Add' : 'Update';
   return `${verb} ${paths.length} ${noun}\n\n${paths.join('\n')}\n`;
 }
 
@@ -159,7 +182,7 @@ function message(first: boolean, paths: string[]): string {
  * The last editor of the most recently edited changed document that names
  * one, at their edit time; docsync itself when no changed document does.
  */
-function authorOf(latest: FetchedFile | undefined, now: string): Identity {
+function authorOf(latest: Dated | undefined, now: string): Identity {
   const editor = latest?.editor;
   if (latest === undefined || editor === undefined) return { ...COMMITTER, date: now };
   return {

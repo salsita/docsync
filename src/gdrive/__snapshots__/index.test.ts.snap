@@ -1,0 +1,48 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the comment sidecar (MANUAL §6) > writes the open threads and the pending suggestions of the Elements doc 1`] = `
+"---
+document: gdocs:1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4
+fetched: 2026-09-03T16:31:07Z
+---
+
+## AAACGgFBsWQ — comment
+
+> ###### Heading ==six==
+
+in: Heading five
+
+**Jiří Staniševský** · 2026-09-03 16:20
+seven?
+
+**Jiří Staniševský** · 2026-09-03 16:20
+How childish...
+
+## AAACFLfYEtk — comment
+
+> Paragraph before a ==page break==.
+
+in: Heading six
+
+**Jiří Staniševský** · 2026-09-03 07:55
+Makes the page break.
+
+## suggest.4kz5rsdhutcs — suggestion
+
+in: Heading six
+
+\`\`\`diff
+- Let's us collaborate on this text.
++ Let's collaborate on this text.
+\`\`\`
+
+## suggest.r73ve12ed25a — suggestion
+
+in: Heading six
+
+\`\`\`diff
+- Let's us collaborate on this text.
++ Let's us collaborate on the paragraph.
+\`\`\`
+"
+`;

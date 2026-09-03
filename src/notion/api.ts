@@ -42,6 +42,24 @@ export interface ChildrenPage {
 }
 
 /**
+ * One comment, as `GET /v1/comments` answers it. A thread is every comment
+ * sharing a `discussion_id`; Notion has no object for the thread itself, and
+ * no way to ask for a resolved one, which is why the sidecar never holds one
+ * (MANUAL §6).
+ */
+export interface NotionComment extends RawObject {
+  id: string;
+  discussion_id: string;
+  /** ISO 8601, to the minute: Notion reports no finer time for a comment. */
+  created_time: string;
+  parent?: { type?: string; block_id?: string; page_id?: string };
+  created_by?: { id?: string };
+  rich_text?: { plain_text?: string }[];
+  /** Who Notion says wrote it, resolved for us so no user lookup is needed. */
+  display_name?: { type?: string; resolved_name?: string };
+}
+
+/**
  * The slice of the SDK this adapter uses. Narrow on purpose: a test passes a
  * plain object, and the real `Client` satisfies it structurally.
  */
@@ -56,6 +74,9 @@ export interface NotionClient {
     update(args: { page_id: string; properties?: RawObject; archived?: boolean }): Promise<unknown>;
   };
   users: { retrieve(args: { user_id: string }): Promise<unknown> };
+  comments: {
+    list(args: { block_id: string; start_cursor?: string; page_size?: number }): Promise<unknown>;
+  };
   blocks: {
     delete(args: { block_id: string }): Promise<unknown>;
     /**
@@ -80,6 +101,12 @@ export interface NotionApi {
   blockTree(id: string): Promise<NotionBlock[]>;
   /** A user, cached for the run. `undefined` when the token cannot read them. */
   user(id: string | undefined): Promise<RawObject | undefined>;
+  /**
+   * The comments on one block. Asking a page answers only the page-level ones,
+   * so a block comment needs a request of its own — which is why a fetch makes
+   * one per block (MANUAL §6, ticket 17).
+   */
+  comments(blockId: string): Promise<NotionComment[]>;
   /** The direct children of a block, paginated, without recursing. */
   children(id: string): Promise<NotionBlock[]>;
   /** Archives one block. Deleting a `child_page` block archives the page. */
@@ -209,6 +236,19 @@ export function createNotionApi(client: NotionClient, options: NotionApiOptions 
         }),
       )) as RawObject;
     },
+    async comments(blockId) {
+      const results: NotionComment[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = (await call(() =>
+          client.comments.list({ block_id: blockId, start_cursor: cursor, page_size: 100 }),
+        )) as { results: NotionComment[]; has_more: boolean; next_cursor: string | null };
+        results.push(...page.results);
+        cursor = page.has_more ? (page.next_cursor ?? undefined) : undefined;
+      } while (cursor !== undefined);
+      return results;
+    },
+
     async user(id) {
       if (id === undefined) return undefined;
       if (users.has(id)) return users.get(id);

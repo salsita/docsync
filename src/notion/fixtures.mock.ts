@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { NotionApi, NotionBlock, RawObject } from './api.js';
+import type { NotionApi, NotionBlock, NotionComment, RawObject } from './api.js';
 
 const HERE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 
@@ -41,6 +41,16 @@ export function fixtureBlocks(id: string): NotionBlock[] {
   return load<NotionBlock[]>(`blocks-${id}`);
 }
 
+/**
+ * One page's recorded comments: the page's own block id, then every block of
+ * it, each mapped to what `GET /v1/comments` answered for it. A block with no
+ * comment is recorded with an empty list, so a lookup that misses is a test
+ * walking off the fixture tree.
+ */
+export function fixtureComments(pageId: string): Record<string, NotionComment[]> {
+  return load<Record<string, NotionComment[]>>(`comments-${pageId}`);
+}
+
 /** Every user the recorded tree refers to, by id. */
 export function fixtureUsers(): Record<string, RawObject> {
   return load<Record<string, RawObject>>('users');
@@ -66,7 +76,20 @@ export function fixtureTitle(id: string): string {
  */
 export function fixtureApi(): NotionApi {
   const users = fixtureUsers();
+  // Every page's recorded comment map, flattened: one lookup by block id, which
+  // is what the real API takes.
+  const comments = new Map<string, NotionComment[]>();
+  for (const pageId of PAGE_IDS) {
+    for (const [blockId, on] of Object.entries(fixtureComments(pageId))) {
+      comments.set(bare(blockId), on);
+    }
+  }
   return {
+    async comments(blockId) {
+      const found = comments.get(bare(blockId));
+      if (found === undefined) throw new Error(`no recorded comments for ${blockId}`);
+      return found;
+    },
     async page(id) {
       return fixturePage(bare(id));
     },

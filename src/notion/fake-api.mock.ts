@@ -146,6 +146,11 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
       return undefined;
     },
 
+    async comments(blockId) {
+      calls.push(`comments:${blockId}`);
+      return [];
+    },
+
     async children(id) {
       calls.push(`children:${id}`);
       return (listOf(id) ?? []).map((block) => ({ ...block, children: undefined }));

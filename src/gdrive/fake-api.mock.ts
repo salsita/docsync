@@ -110,6 +110,11 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       return model.document();
     },
 
+    async comments() {
+      // The fake Drive holds no comments; a push never reads one.
+      return [];
+    },
+
     async download(id) {
       return get(id).bytes ?? new Uint8Array();
     },

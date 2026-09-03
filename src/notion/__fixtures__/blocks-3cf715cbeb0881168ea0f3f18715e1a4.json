@@ -478,7 +478,7 @@
         {
           "type": "text",
           "text": {
-            "content": "A paragraph with an inline equation ",
+            "content": "A paragraph with an inline ",
             "link": null
           },
           "annotations": {
@@ -489,7 +489,41 @@
             "code": false,
             "color": "default"
           },
-          "plain_text": "A paragraph with an inline equation ",
+          "plain_text": "A paragraph with an inline ",
+          "href": null
+        },
+        {
+          "type": "text",
+          "text": {
+            "content": "equation",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "equation",
+          "href": null
+        },
+        {
+          "type": "text",
+          "text": {
+            "content": " ",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": " ",
           "href": null
         },
         {

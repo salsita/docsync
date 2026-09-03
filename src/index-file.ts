@@ -32,6 +32,13 @@ export interface IndexEntry {
    * for files whose modified time can move without the content moving.
    */
   md5?: string;
+  /**
+   * Whether the document carried a pending suggestion at the last fetch (MANUAL
+   * §6). A suggestion moves the document's last-edit time and a comment does
+   * not, so this is what lets the next fetch know that an unchanged document
+   * still owes a sidecar without downloading it to find out.
+   */
+  suggested?: boolean;
 }
 
 /**

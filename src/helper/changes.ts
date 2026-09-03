@@ -10,6 +10,7 @@
  * index, an edit to a read-only export, a copy of a document, a plain file
  * under Notion. Pure over an injected blob reader.
  */
+import { isSidecarPath } from '../comments/format.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
@@ -62,6 +63,15 @@ export async function planChanges(
     }
     const kind = entry.status[0];
     const root = rootOf(entry.path);
+
+    // The sidecar is read-only: comments are only pulled in this version
+    // (MANUAL §6). Refused before any source is touched, changed, added or
+    // removed. Outside every root it is not ours, and a deletion there is
+    // `docsync remove` taking the document and its sidecar with it (MANUAL §8).
+    // The path it came from first: that is the one `git checkout` restores.
+    for (const path of [entry.previousPath, entry.path]) {
+      if (isSidecarPath(path) && rootOf(path ?? '') !== undefined) refuseSidecar(path ?? '');
+    }
 
     if (kind === 'D') {
       // Deleted under no root is `docsync remove`: unsubscribe, not trash (MANUAL §8).
@@ -134,6 +144,14 @@ export async function planChanges(
     const changes = planned.get(root);
     return changes === undefined ? [] : [{ root, changes }];
   });
+}
+
+/** What a push says about a `*.comments.md` somebody edited (MANUAL §6). */
+function refuseSidecar(path: string): never {
+  throw new Error(
+    `${path} is read-only; comments are only pulled in this version. ` +
+      `Restore it with git checkout -- ${path}`,
+  );
 }
 
 function isDocument(entry: IndexEntry): boolean {

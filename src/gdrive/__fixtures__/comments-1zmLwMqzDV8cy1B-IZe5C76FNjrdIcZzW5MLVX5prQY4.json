@@ -1,0 +1,101 @@
+[
+  {
+    "replies": [
+      {
+        "author": {
+          "displayName": "Jiří Staniševský",
+          "kind": "drive#user",
+          "me": true,
+          "photoLink": "//lh3.googleusercontent.com/a/ACg8ocLUfGXI-VyKyN6ZfZYhwj87n6ieT17O9CiPh64YuTULMvs56g=s50-c-k-no"
+        },
+        "kind": "drive#reply",
+        "id": "AAACGgFBsWU",
+        "createdTime": "2026-09-03T16:20:07.440Z",
+        "modifiedTime": "2026-09-03T16:20:07.440Z",
+        "htmlContent": "How childish...",
+        "content": "How childish...",
+        "deleted": false
+      }
+    ],
+    "author": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "photoLink": "//lh3.googleusercontent.com/a/ACg8ocLUfGXI-VyKyN6ZfZYhwj87n6ieT17O9CiPh64YuTULMvs56g=s50-c-k-no"
+    },
+    "quotedFileContent": {
+      "mimeType": "text/html",
+      "value": "six"
+    },
+    "kind": "drive#comment",
+    "id": "AAACGgFBsWQ",
+    "createdTime": "2026-09-03T16:20:01.600Z",
+    "modifiedTime": "2026-09-03T16:20:07.440Z",
+    "htmlContent": "seven?",
+    "content": "seven?",
+    "deleted": false,
+    "resolved": false,
+    "anchor": "kix.d7ihhknigq74"
+  },
+  {
+    "replies": [
+      {
+        "author": {
+          "displayName": "Jiří Staniševský",
+          "kind": "drive#user",
+          "me": true,
+          "photoLink": "//lh3.googleusercontent.com/a/ACg8ocLUfGXI-VyKyN6ZfZYhwj87n6ieT17O9CiPh64YuTULMvs56g=s50-c-k-no"
+        },
+        "kind": "drive#reply",
+        "id": "AAACGgFBsWM",
+        "createdTime": "2026-09-03T16:19:36.465Z",
+        "modifiedTime": "2026-09-03T16:19:36.465Z",
+        "htmlContent": "",
+        "content": "",
+        "deleted": false,
+        "action": "resolve"
+      }
+    ],
+    "author": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "photoLink": "//lh3.googleusercontent.com/a/ACg8ocLUfGXI-VyKyN6ZfZYhwj87n6ieT17O9CiPh64YuTULMvs56g=s50-c-k-no"
+    },
+    "quotedFileContent": {
+      "mimeType": "text/html",
+      "value": "A centred paragraph."
+    },
+    "kind": "drive#comment",
+    "id": "AAACGgFBsWI",
+    "createdTime": "2026-09-03T16:19:35.497Z",
+    "modifiedTime": "2026-09-03T16:19:36.465Z",
+    "htmlContent": "Is at the center.",
+    "content": "Is at the center.",
+    "deleted": false,
+    "resolved": true,
+    "anchor": "kix.oc2au0wpp93u"
+  },
+  {
+    "replies": [],
+    "author": {
+      "displayName": "Jiří Staniševský",
+      "kind": "drive#user",
+      "me": true,
+      "photoLink": "//lh3.googleusercontent.com/a/ACg8ocLUfGXI-VyKyN6ZfZYhwj87n6ieT17O9CiPh64YuTULMvs56g=s50-c-k-no"
+    },
+    "quotedFileContent": {
+      "mimeType": "text/html",
+      "value": "page break"
+    },
+    "kind": "drive#comment",
+    "id": "AAACFLfYEtk",
+    "createdTime": "2026-09-03T07:55:12.165Z",
+    "modifiedTime": "2026-09-03T07:55:12.165Z",
+    "htmlContent": "Makes the page break.",
+    "content": "Makes the page break.",
+    "deleted": false,
+    "resolved": false,
+    "anchor": "kix.fxk3udhbpykv"
+  }
+]

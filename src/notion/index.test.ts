@@ -23,6 +23,13 @@ function entry(path: string, id: string, lastEditedTime: string): IndexEntry {
   return { path, src: { source: 'notion', id }, type: 'notion-page', lastEditedTime };
 }
 
+/** The files that are pages: everything but a comment sidecar (MANUAL §6). */
+function documents<T extends { entry?: IndexEntry }>(
+  files: readonly T[],
+): (T & { entry: IndexEntry })[] {
+  return files.filter((file): file is T & { entry: IndexEntry } => file.entry !== undefined);
+}
+
 async function fetch(previous?: Map<string, IndexEntry>, api: NotionApi = fixtureApi()) {
   return fetchRoot(root, provider, previous, { api });
 }
@@ -44,10 +51,11 @@ describe('fetchRoot', () => {
   it('writes an index entry for every file, in the same order', async () => {
     const { files, entries } = await fetch();
 
-    expect(entries).toHaveLength(files.length);
-    expect(entries.map((one) => one.path)).toEqual(files.map((file) => file.path));
+    // Every page has an entry; the comment sidecar beside one of them has none.
+    expect(entries).toHaveLength(files.length - 1);
+    expect(entries.map((one) => one.path)).toEqual(documents(files).map((file) => file.path));
     expect(entries[0]).toEqual(
-      entry('Docsync test.md', ROOT_ID, files[0]?.entry.lastEditedTime ?? ''),
+      entry('Docsync test.md', ROOT_ID, files[0]?.entry?.lastEditedTime ?? ''),
     );
     expect(entries.every((one) => one.type === 'notion-page')).toBe(true);
   });
@@ -148,9 +156,11 @@ describe('fetchRoot', () => {
 
     const { files } = await fetch(previous);
 
-    expect(files.filter((file) => file.changed).map((file) => file.path)).toEqual([
-      'Docsync test/Leaf.md',
-    ]);
+    expect(
+      documents(files)
+        .filter((file) => file.changed)
+        .map((file) => file.path),
+    ).toEqual(['Docsync test/Leaf.md']);
   });
 
   it('reports what it left out', async () => {
@@ -244,6 +254,48 @@ describe('describe', () => {
   });
 });
 
+describe('the comment sidecar (MANUAL §6)', () => {
+  const at = { now: () => new Date('2026-09-03T16:31:07Z') };
+
+  it('writes the open discussions of the Blocks page, anchored on their blocks', async () => {
+    const { files } = await fetchRoot(root, provider, new Map(), { api: fixtureApi(), ...at });
+    const sidecar = files.find((file) => file.path.endsWith('.comments.md'));
+
+    expect(sidecar?.path).toBe('Docsync test/Blocks.comments.md');
+    expect(sidecar?.text).toMatchSnapshot();
+  });
+
+  it('carries no index entry of its own, and is the only sidecar in the tree', async () => {
+    const { files } = await fetchRoot(root, provider, new Map(), { api: fixtureApi(), ...at });
+    const sidecars = files.filter((file) => file.path.endsWith('.comments.md'));
+
+    expect(sidecars).toHaveLength(1);
+    expect(sidecars[0]?.entry).toBeUndefined();
+    expect(sidecars[0]?.changed).toBe(true);
+  });
+
+  it('is read on every fetch, changed page or not', async () => {
+    const first = await fetchRoot(root, provider, new Map(), { api: fixtureApi(), ...at });
+    const previous = new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+    const backing = fixtureApi();
+    const asked: string[] = [];
+    const api: NotionApi = {
+      ...backing,
+      async comments(id) {
+        asked.push(id);
+        return backing.comments(id);
+      },
+    };
+
+    const second = await fetchRoot(root, provider, previous, { api, ...at });
+
+    expect(documents(second.files).some((file) => file.changed)).toBe(false);
+    expect(second.files.map((file) => file.path)).toContain('Docsync test/Blocks.comments.md');
+    // One request per page plus one per block of it (MANUAL §6).
+    expect(asked.length).toBeGreaterThan(second.entries.length);
+  });
+});
+
 describe('changedSince', () => {
   const api = fixtureApi();
 
@@ -251,7 +303,9 @@ describe('changedSince', () => {
     const { files } = await fetch();
 
     expect(await changedSince(root, provider, new Map(), { api })).toEqual(
-      files.map((file) => file.path).sort(),
+      documents(files)
+        .map((file) => file.path)
+        .sort(),
     );
   });
 

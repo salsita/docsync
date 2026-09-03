@@ -32,6 +32,8 @@ export function grantHint(source: Source): string {
       'Notion will ask which pages docsync may access. Grant the teamspaces you',
       'work in: everything under a granted page is included. You can change the',
       'selection later under Notion Settings → Connections.',
+      'The integration also needs the "read comments" capability, or the comment',
+      'sidecar beside each page will be empty.',
     ].join('\n');
   }
   return 'Google will ask for access to Drive and Docs. Approve both; docsync needs them to read and update your documents.';

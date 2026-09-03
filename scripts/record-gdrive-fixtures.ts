@@ -9,8 +9,15 @@
  * on: one listing per folder, the Docs API document JSON per Google Doc, the
  * small binaries as bytes, and the Sheet's `.xlsx` export.
  *
- * Strictly read-only: `files.list`, `files.get`, `files.export` and
- * `documents.get`. It cannot create, move or trash anything in Drive.
+ * Strictly read-only: `files.list`, `files.get`, `files.export`,
+ * `documents.get` and `comments.list`. It cannot create, move or trash
+ * anything in Drive.
+ *
+ * Per Google Doc it records the document twice — without suggestions, which is
+ * what a fetch reads, and with them inline, which is what a push and the
+ * comment sidecar read (ticket 16, ticket 17) — and the open comment threads.
+ * The inline copy is written only when it differs from the plain one, so a
+ * document with no pending suggestion costs no second fixture.
  *
  * Re-run only deliberately.
  */
@@ -93,8 +100,40 @@ async function listFolder(id: string): Promise<DriveFile[]> {
   return files;
 }
 
+/** One comment thread, as `comments.list` answers it with `fields=*`. */
+interface DriveComment {
+  id: string;
+}
+
+/**
+ * Every open comment thread on one file, replies included, across every page.
+ * `includeDeleted=false` leaves out the tombstones (MANUAL §6); `fields=*` is
+ * what makes Drive answer `quotedFileContent`, `resolved` and `replies` at all.
+ */
+async function listComments(id: string): Promise<DriveComment[]> {
+  const comments: DriveComment[] = [];
+  let pageToken: string | undefined;
+  do {
+    const query = new URLSearchParams({
+      fields: '*',
+      includeDeleted: 'false',
+      pageSize: '100',
+    });
+    if (pageToken !== undefined) query.set('pageToken', pageToken);
+    const page = await json<{ comments?: DriveComment[]; nextPageToken?: string }>(
+      `https://www.googleapis.com/drive/v3/files/${id}/comments?${query}`,
+    );
+    comments.push(...(page.comments ?? []));
+    pageToken = page.nextPageToken;
+  } while (pageToken !== undefined);
+  return comments;
+}
+
 const folders: string[] = [];
 const docs: string[] = [];
+const inlineDocs: string[] = [];
+const commented: string[] = [];
+let requests = 0;
 const binaries: { id: string; file: string }[] = [];
 const exports: { id: string; file: string }[] = [];
 
@@ -113,8 +152,25 @@ async function record(folderId: string, path: string): Promise<void> {
       const document = await json(
         `https://docs.googleapis.com/v1/documents/${file.id}?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS`,
       );
+      const inline = await json(
+        `https://docs.googleapis.com/v1/documents/${file.id}?suggestionsViewMode=SUGGESTIONS_INLINE`,
+      );
+      const comments = await listComments(file.id);
+      requests += 3;
       docs.push(file.id);
       await write(`doc-${file.id}`, document);
+      // Every response echoes the view it was asked for, which is the one
+      // difference a document with no pending suggestion has.
+      const same = (value: unknown): string =>
+        JSON.stringify({ ...(value as object), suggestionsViewMode: undefined });
+      if (same(inline) !== same(document)) {
+        inlineDocs.push(file.id);
+        await write(`doc-inline-${file.id}`, inline);
+      }
+      if (comments.length > 0) {
+        commented.push(file.id);
+        await write(`comments-${file.id}`, comments);
+      }
       continue;
     }
     const exported = EXPORTS[file.mimeType as keyof typeof EXPORTS];
@@ -144,4 +200,14 @@ const root = await json<DriveFile>(
 );
 await write(`file-${ROOT_ID}`, root);
 await record(ROOT_ID, '');
-await write('index', { rootId: ROOT_ID, rootName: root.name, folders, docs, binaries, exports });
+await write('index', {
+  rootId: ROOT_ID,
+  rootName: root.name,
+  folders,
+  docs,
+  inlineDocs,
+  commented,
+  binaries,
+  exports,
+});
+console.log(`${requests} document and comment requests for ${docs.length} Docs`);

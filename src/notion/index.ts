@@ -8,6 +8,7 @@
  * git, no commit.
  */
 import type { CredentialProvider } from '../auth/index.js';
+import { formatSidecar, isSidecarPath, sidecarPathOf } from '../comments/format.js';
 import { serializeDocument } from '../frontmatter.js';
 import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
 import { isUnderRoot } from '../manifest/index.js';
@@ -19,16 +20,17 @@ import type {
 } from '../source.js';
 import type { SourceRef } from '../source-ref.js';
 import { createNotionApi, createNotionClient, type NotionApi, type RawObject } from './api.js';
+import { pageThreads } from './comments.js';
 import { bareId, blocksToMarkdown } from './to-markdown.js';
 import { type SkippedObject, titleOf, type WalkedPage, walkRoot } from './walk.js';
 
 /**
- * One Markdown file, ready to be written. A Notion page is always Markdown, so
- * the shared shape's optional `text` and `body` are always there.
+ * One Markdown file, ready to be written. A Notion root holds nothing but
+ * Markdown, so the shared shape's optional `text` is always there. `body` is
+ * the page without its frontmatter, and a comment sidecar has none.
  */
 export interface FetchedFile extends SourceFetchedFile {
   text: string;
-  body: string;
 }
 
 export interface FetchResult extends SourceFetchResult {
@@ -40,6 +42,8 @@ export interface FetchResult extends SourceFetchResult {
 export interface FetchOptions {
   /** The API to use. Tests pass a fixture-backed one; a fetch passes nothing. */
   api?: NotionApi;
+  /** What a comment sidecar's `fetched:` is stamped with. Default: now. */
+  now?: () => Date;
 }
 
 /** The API a real fetch talks to, built from the stored credential. */
@@ -60,13 +64,14 @@ export async function fetchRoot(
   previous: ReadonlyMap<string, IndexEntry> = new Map(),
   options: FetchOptions = {},
 ): Promise<FetchResult> {
-  return fetchWith(options.api ?? (await notionApi(provider)), root, previous);
+  return fetchWith(options.api ?? (await notionApi(provider)), root, previous, options);
 }
 
 async function fetchWith(
   api: NotionApi,
   root: Root,
   previous: ReadonlyMap<string, IndexEntry>,
+  options: FetchOptions = {},
 ): Promise<FetchResult> {
   // What the index remembers about Notion pages anywhere in the checkout: their
   // paths, so a mention of a page in another root still resolves, and their
@@ -80,19 +85,39 @@ async function fetchWith(
   for (const page of walked.pages) pages.set(page.id, page.path);
 
   const files: FetchedFile[] = [];
+  const fetched = `${(options.now?.() ?? new Date()).toISOString().slice(0, 19)}Z`;
   for (const page of walked.pages) {
-    files.push(await toFile(page, api, pages, times.get(page.id)));
+    refuseSidecar(page.path);
+    files.push(...(await toFiles(page, api, pages, times.get(page.id), fetched)));
   }
 
-  return { files, entries: files.map((file) => file.entry), skipped: walked.skipped };
+  return {
+    files,
+    // A sidecar is nobody's identity, so it has no entry of its own (MANUAL §6).
+    entries: files.flatMap((file) => (file.entry === undefined ? [] : [file.entry])),
+    skipped: walked.skipped,
+  };
 }
 
-async function toFile(
+/**
+ * A page whose title would give it the sidecar suffix. The suffix has to mean
+ * one thing (MANUAL §6), so this is refused rather than checked out.
+ */
+function refuseSidecar(path: string): void {
+  if (!isSidecarPath(path)) return;
+  throw new Error(
+    `${path}: the .comments.md suffix is docsync's own, for the comment sidecar; rename the page at the source`,
+  );
+}
+
+/** One page as the files it becomes: the page, and its sidecar when it has one. */
+async function toFiles(
   page: WalkedPage,
   api: NotionApi,
   pages: ReadonlyMap<string, string>,
   previousTime: string | undefined,
-): Promise<FetchedFile> {
+  fetched: string,
+): Promise<FetchedFile[]> {
   const body = blocksToMarkdown(page.blocks, { pages, from: page.path });
   const entry: IndexEntry = {
     path: page.path,
@@ -101,7 +126,7 @@ async function toFile(
     lastEditedTime: page.lastEditedTime,
   };
 
-  return {
+  const file: FetchedFile = {
     path: page.path,
     text: serializeDocument({ id: page.ref, title: page.title }, body),
     body,
@@ -109,6 +134,19 @@ async function toFile(
     editor: await editorOf(page, api),
     changed: previousTime !== page.lastEditedTime,
   };
+
+  // A comment moves nothing the walk can see, so every page's threads are read
+  // on every fetch, changed or not (MANUAL §6).
+  const threads = await pageThreads(api, page.id, page.blocks, body);
+  if (threads.length === 0) return [file];
+  return [
+    file,
+    {
+      path: sidecarPathOf(page.path),
+      text: formatSidecar({ document: page.ref, fetched, threads }),
+      changed: true,
+    },
+  ];
 }
 
 /**

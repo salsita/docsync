@@ -106,8 +106,30 @@ function shapeBody(body: RawObject): RawObject {
   return shaped;
 }
 
-function shapeRichText(value: unknown): unknown[] {
-  return (Array.isArray(value) ? value : []).map((raw) => {
+interface ShapedRun {
+  annotations: RawObject;
+  text?: RawObject;
+  equation?: unknown;
+  mention?: RawObject;
+}
+
+/**
+ * Two runs that differ in nothing but where one ends and the next begins.
+ * Notion cuts a text run at the edges of a comment, and the dialect cannot say
+ * where a comment is (MANUAL §6) — so a push writes one run where Notion held
+ * two, which is a documented loss and not a difference.
+ */
+function joinable(a: ShapedRun, b: ShapedRun): boolean {
+  if (a.text === undefined || b.text === undefined) return false;
+  if (a.equation !== undefined || b.equation !== undefined) return false;
+  if (a.mention !== undefined || b.mention !== undefined) return false;
+  return (
+    JSON.stringify(a.annotations) === JSON.stringify(b.annotations) && a.text.link === b.text.link
+  );
+}
+
+function shapeRichText(value: unknown): ShapedRun[] {
+  const runs = (Array.isArray(value) ? value : []).map((raw): ShapedRun => {
     const run = raw as RawObject;
     const annotations = (run.annotations ?? {}) as RawObject;
     const mention = run.mention as RawObject | undefined;
@@ -118,6 +140,25 @@ function shapeRichText(value: unknown): unknown[] {
       mention: mention === undefined ? undefined : shapeMention(mention),
     };
   });
+
+  const joined: ShapedRun[] = [];
+  for (const run of runs) {
+    const last = joined.at(-1);
+    if (last !== undefined && last.text !== undefined && run.text !== undefined) {
+      if (joinable(last, run)) {
+        joined[joined.length - 1] = {
+          ...last,
+          text: {
+            ...last.text,
+            content: `${String(last.text.content)}${String(run.text.content)}`,
+          },
+        };
+        continue;
+      }
+    }
+    joined.push(run);
+  }
+  return joined;
 }
 
 function shapeText(text: RawObject): RawObject {
@@ -151,10 +192,15 @@ const root: Root = { path: 'notion/', src: { source: 'notion', id: ROOT_ID }, ig
 
 /** Every fixture page, with the maps both directions need. */
 async function fixtures() {
-  const { files } = await fetchRoot(root, createFakeCredentialProvider(), new Map(), {
+  const fetched = await fetchRoot(root, createFakeCredentialProvider(), new Map(), {
     api: fixtureApi(),
   });
-  const entries = files.map((file) => file.entry) as IndexEntry[];
+  // A comment sidecar is not a document and does not round-trip (MANUAL §6).
+  const files = fetched.files.filter(
+    (file): file is (typeof fetched.files)[number] & { entry: IndexEntry; body: string } =>
+      file.entry !== undefined && file.body !== undefined,
+  );
+  const entries = files.map((file) => file.entry);
   const pages = new Map(entries.map((entry): [string, string] => [entry.src.id, entry.path]));
   const ids = new Map(entries.map((entry): [string, string] => [entry.path, entry.src.id]));
   return { files, pages, ids };
@@ -168,9 +214,7 @@ function file(id: string, body: string): string {
 describe('the 15 patch, over the whole fixture tree', () => {
   it('edits one paragraph of every fixture page and touches nothing else', async () => {
     const { files, pages } = await fixtures();
-    const index: DocumentIndex = new Map(
-      files.map((one) => [one.path, one.entry as IndexEntry] as const),
-    );
+    const index: DocumentIndex = new Map(files.map((one) => [one.path, one.entry] as const));
     let edited = 0;
 
     for (const one of files) {
@@ -216,9 +260,7 @@ describe('the 15 patch, over the whole fixture tree', () => {
 
   it('inserts a block at the end of every fixture page and keeps the rest', async () => {
     const { files, pages } = await fixtures();
-    const index: DocumentIndex = new Map(
-      files.map((one) => [one.path, one.entry as IndexEntry] as const),
-    );
+    const index: DocumentIndex = new Map(files.map((one) => [one.path, one.entry] as const));
 
     for (const one of files) {
       const id = one.entry.src.id;

@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DocsDocument, DriveFile, GDriveApi } from './api.js';
+import type { DocsDocument, DriveComment, DriveFile, GDriveApi } from './api.js';
 
 const HERE = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 
@@ -22,6 +22,10 @@ interface Index {
   rootName: string;
   folders: string[];
   docs: string[];
+  /** Docs whose suggestions view differs from the plain one, i.e. has any. */
+  inlineDocs: string[];
+  /** Docs with at least one comment thread, resolved ones included. */
+  commented: string[];
   binaries: { id: string; file: string }[];
   exports: { id: string; file: string }[];
 }
@@ -40,6 +44,20 @@ export const FOLDER_IDS = index.folders;
 /** One recorded Doc, as `documents.get` answered it. */
 export function fixtureDocument(id: string): DocsDocument {
   return load<DocsDocument>(`doc-${id}`);
+}
+
+/**
+ * One recorded Doc as the suggestions view answers it. Identical to the plain
+ * recording, apart from the view it echoes, for a document with none — which is
+ * why only the documents that have one were recorded twice.
+ */
+export function fixtureInlineDocument(id: string): DocsDocument {
+  return load<DocsDocument>(index.inlineDocs.includes(id) ? `doc-inline-${id}` : `doc-${id}`);
+}
+
+/** The recorded comment threads of one Doc, or none when it has no comments. */
+export function fixtureComments(id: string): DriveComment[] {
+  return index.commented.includes(id) ? load<DriveComment[]>(`comments-${id}`) : [];
 }
 
 /** One recorded folder listing, as `files.list` answered it. */
@@ -78,8 +96,11 @@ export function fixtureApi(): GDriveApi {
     async getFile(id) {
       return fixtureFile(id);
     },
-    async getDocument(id) {
-      return fixtureDocument(id);
+    async getDocument(id, mode) {
+      return mode === 'inline' ? fixtureInlineDocument(id) : fixtureDocument(id);
+    },
+    async comments(id) {
+      return fixtureComments(id);
     },
     async download(id) {
       return fixtureBytes(id);

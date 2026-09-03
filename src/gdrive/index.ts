@@ -14,6 +14,7 @@
  * on a file whose `changed` is false.
  */
 import type { CredentialProvider } from '../auth/index.js';
+import { formatSidecar, isSidecarPath, sidecarPathOf } from '../comments/format.js';
 import { serializeDocument } from '../frontmatter.js';
 import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
 import { isUnderRoot } from '../manifest/index.js';
@@ -25,6 +26,7 @@ import type {
 } from '../source.js';
 import type { SourceRef } from '../source-ref.js';
 import { createGDriveApi, type DriveUser, type GDriveApi } from './api.js';
+import { threadsOf } from './comments.js';
 import { documentToMarkdown } from './to-markdown.js';
 import { EXPORTS, FOLDER_MIME, type SkippedObject, type WalkedFile, walkRoot } from './walk.js';
 
@@ -45,6 +47,8 @@ export interface FetchOptions {
   api?: GDriveApi;
   /** Handed to the real API when one is built. Tests of that path pass it. */
   fetch?: typeof fetch;
+  /** What a comment sidecar's `fetched:` is stamped with. Default: now. */
+  now?: () => Date;
 }
 
 /** The API a real fetch talks to, built from the stored credential. */
@@ -78,9 +82,35 @@ export async function fetchRoot(
 
   const walked = await walkRoot(api, root, paths);
   const files: FetchedFile[] = [];
-  for (const file of walked.files) files.push(await toFile(file, api, before.get(file.id)));
+  const fetched = stamp(options.now?.() ?? new Date());
+  for (const file of walked.files) {
+    refuseSidecar(file.path);
+    files.push(...(await toFiles(file, api, before.get(file.id), fetched)));
+  }
 
-  return { files, entries: files.map((file) => file.entry), skipped: walked.skipped };
+  return {
+    files,
+    // A sidecar is written into the commit like any file and is nobody's
+    // identity, so it has no entry of its own (MANUAL §6).
+    entries: files.flatMap((file) => (file.entry === undefined ? [] : [file.entry])),
+    skipped: walked.skipped,
+  };
+}
+
+/** `2026-09-03T16:31:07Z`: to the second, which is all a sidecar prints. */
+function stamp(at: Date): string {
+  return `${at.toISOString().slice(0, 19)}Z`;
+}
+
+/**
+ * A file at the source whose name would collide with a sidecar. The suffix has
+ * to mean one thing (MANUAL §6), so this is refused rather than checked out.
+ */
+function refuseSidecar(path: string): void {
+  if (!isSidecarPath(path)) return;
+  throw new Error(
+    `${path}: the .comments.md suffix is docsync's own, for the comment sidecar; rename the document at the source`,
+  );
 }
 
 /**
@@ -163,11 +193,16 @@ function extensionOf(mimeType: string, name: string): string {
   return dot > 0 ? name.slice(dot) : '';
 }
 
-async function toFile(
+/**
+ * One walked file as the files it becomes: the document itself, and its comment
+ * sidecar when it has an open thread or a pending suggestion (MANUAL §6).
+ */
+async function toFiles(
   file: WalkedFile,
   api: GDriveApi,
   previous: IndexEntry | undefined,
-): Promise<FetchedFile> {
+  fetched: string,
+): Promise<FetchedFile[]> {
   const entry: IndexEntry = {
     path: file.path,
     src: file.ref,
@@ -184,26 +219,54 @@ async function toFile(
 
   const common = {
     path: file.path,
-    entry,
     changed,
     ...(editorOf(file.lastModifyingUser) === undefined
       ? {}
       : { editor: editorOf(file.lastModifyingUser) }),
   };
-  // Only changed documents are downloaded (MANUAL §7).
-  if (!changed) return common;
 
-  if (file.kind === 'doc') {
-    const body = documentToMarkdown(await api.getDocument(file.id));
+  if (file.kind !== 'doc') {
+    // Only changed files are downloaded (MANUAL §7).
+    if (!changed) return [{ ...common, entry }];
+    const bytes =
+      file.kind === 'export'
+        ? await api.export(file.id, file.exportMimeType ?? '')
+        : await api.download(file.id);
+    return [{ ...common, entry, bytes }];
+  }
+
+  // A comment moves nothing the walk can see, so every Doc's threads are read
+  // on every fetch (MANUAL §6). The document itself is read when it changed, or
+  // when it owes a sidecar: to place a thread the sidecar needs the body.
+  const comments = await api.comments(file.id);
+  const open = comments.filter((one) => one.resolved !== true && one.deleted !== true);
+  if (!changed && open.length === 0 && previous?.suggested !== true) {
+    return [{ ...common, entry }];
+  }
+
+  const document = await api.getDocument(file.id, 'inline');
+  const body = documentToMarkdown(document);
+  const threads = threadsOf(document, comments, body);
+  const suggested = threads.some((thread) => thread.kind === 'suggestion');
+
+  const document_: FetchedFile = {
+    ...common,
+    entry: { ...entry, ...(suggested ? { suggested: true } : {}) },
     // The title is the Drive file name, which is what Drive shows and what a
     // push renames (MANUAL §6).
-    return { ...common, text: serializeDocument({ id: file.ref, title: file.title }, body), body };
-  }
-  const bytes =
-    file.kind === 'export'
-      ? await api.export(file.id, file.exportMimeType ?? '')
-      : await api.download(file.id);
-  return { ...common, bytes };
+    ...(changed
+      ? { text: serializeDocument({ id: file.ref, title: file.title }, body), body }
+      : {}),
+  };
+  if (threads.length === 0) return [document_];
+  return [
+    document_,
+    {
+      path: sidecarPathOf(file.path),
+      text: formatSidecar({ document: file.ref, fetched, threads }),
+      changed: true,
+    },
+  ];
 }
 
 /** Drive's last modifying user as the editor of the commit a fetch writes. */

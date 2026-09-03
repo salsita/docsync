@@ -40,7 +40,12 @@ export interface FetchedFile {
   body?: string;
   /** A binary or an export, as bytes. Absent for a Markdown document. */
   bytes?: Uint8Array;
-  entry: IndexEntry;
+  /**
+   * What the index records about this path. Absent for a file that is not a
+   * document of its own: the comment sidecar (MANUAL §6), which is written into
+   * the commit like any other file but has no identity to record.
+   */
+  entry?: IndexEntry;
   editor?: Editor;
   /**
    * Whether the source's last-edit time — or, for a binary, its checksum —

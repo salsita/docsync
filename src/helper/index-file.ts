@@ -36,6 +36,7 @@ export function serializeIndex(entries: Iterable<IndexEntry>): string {
     // Quoted: an MD5 that happens to be all digits would otherwise read back
     // as a number.
     ...(entry.md5 === undefined ? {} : { md5: quoted(entry.md5) }),
+    ...(entry.suggested === undefined ? {} : { suggested: entry.suggested }),
   }));
   // `lineWidth: 0` so that a long path is never folded onto a second line.
   return stringifyYaml(rows, { lineWidth: 0 });
@@ -73,6 +74,9 @@ export function parseIndex(text: string): DocumentIndex {
     if (fields.md5 !== undefined && typeof fields.md5 !== 'string') {
       fail(`${where}: md5 must be a string`);
     }
+    if (fields.suggested !== undefined && typeof fields.suggested !== 'boolean') {
+      fail(`${where}: suggested must be true or false`);
+    }
     entries.set(path, {
       path,
       src,
@@ -80,6 +84,7 @@ export function parseIndex(text: string): DocumentIndex {
       lastEditedTime: fields.lastEditedTime,
       ...(fields.readOnly === undefined ? {} : { readOnly: fields.readOnly }),
       ...(fields.md5 === undefined ? {} : { md5: fields.md5 }),
+      ...(fields.suggested === undefined ? {} : { suggested: fields.suggested }),
     });
   }
   return entries;

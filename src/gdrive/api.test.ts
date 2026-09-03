@@ -107,6 +107,27 @@ describe('getDocument', () => {
   });
 });
 
+describe('comments', () => {
+  it('asks for every field, leaves the deleted out, and pages', async () => {
+    const { api, calls } = apiWith([
+      { body: { comments: [{ id: 'c1' }], nextPageToken: 'p2' } },
+      { body: { comments: [{ id: 'c2' }] } },
+    ]);
+
+    expect((await api.comments('d')).map((comment) => comment.id)).toEqual(['c1', 'c2']);
+    expect(calls[0]).toContain(`${DRIVE_ENDPOINT}/files/d/comments?`);
+    const query = new URL(calls[0] ?? '').searchParams;
+    expect(query.get('fields')).toBe('*');
+    expect(query.get('includeDeleted')).toBe('false');
+    expect(calls[1]).toContain('pageToken=p2');
+  });
+
+  it('answers an empty list for a file with no comments', async () => {
+    const { api } = apiWith([{ body: {} }]);
+    expect(await api.comments('d')).toEqual([]);
+  });
+});
+
 describe('download and export', () => {
   it('downloads bytes as they are', async () => {
     const bytes = new Uint8Array([1, 2, 3, 255]);

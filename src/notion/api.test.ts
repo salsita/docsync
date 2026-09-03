@@ -21,6 +21,11 @@ interface FakeOptions {
   children?: Record<string, Array<Record<string, unknown>[]>>;
   pages?: Record<string, Record<string, unknown>>;
   users?: Record<string, Record<string, unknown>>;
+  /** Comment pages by block id; each entry is one page of results. */
+  comments?: Record<
+    string,
+    { results: Record<string, unknown>[]; has_more: boolean; next_cursor: string | null }[]
+  >;
   /** Errors to throw before the next successful call, per method. */
   failures?: unknown[];
 }
@@ -50,6 +55,19 @@ function fakeClient(options: FakeOptions = {}) {
         calls.push(`update:${JSON.stringify(args)}`);
         maybeFail();
         return { object: 'page', ...args };
+      },
+    },
+    comments: {
+      async list({ block_id, start_cursor }) {
+        calls.push(`comments:${block_id}${start_cursor === undefined ? '' : `:${start_cursor}`}`);
+        maybeFail();
+        return (
+          options.comments?.[block_id]?.shift() ?? {
+            results: [],
+            has_more: false,
+            next_cursor: null,
+          }
+        );
       },
     },
     users: {
@@ -218,6 +236,27 @@ describe('createNotionApi', () => {
   it('retrieves a page', async () => {
     const { client } = fakeClient({ pages: { p: { id: 'p', object: 'page' } } });
     expect(await createNotionApi(client, noSleep).page('p')).toEqual({ id: 'p', object: 'page' });
+  });
+
+  it('pages through the comments on one block', async () => {
+    const { client, calls } = fakeClient({
+      comments: {
+        b: [
+          { results: [{ id: 'c1' }], has_more: true, next_cursor: 'p2' },
+          { results: [{ id: 'c2' }], has_more: false, next_cursor: null },
+        ],
+      },
+    });
+
+    const found = await createNotionApi(client, noSleep).comments('b');
+
+    expect(found.map((comment) => comment.id)).toEqual(['c1', 'c2']);
+    expect(calls).toEqual(['comments:b', 'comments:b:p2']);
+  });
+
+  it('answers an empty list for a block nobody commented on', async () => {
+    const { client } = fakeClient();
+    expect(await createNotionApi(client, noSleep).comments('b')).toEqual([]);
   });
 
   it('caches users for the run, including a failed lookup', async () => {

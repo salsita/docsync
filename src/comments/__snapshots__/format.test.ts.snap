@@ -1,0 +1,65 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`formatSidecar > sorts by anchor, then by creation time, and puts the unlocatable last 1`] = `
+"---
+document: gdocs:1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4
+fetched: 2026-09-03T16:31:07Z
+---
+
+## AAACGgFBsWQ — comment
+
+> ###### Heading ==six==
+
+in: Heading five
+
+**Jiří Staniševský** · 2026-09-03 16:20
+seven?
+
+## AAACFLfYEtk — comment
+
+> Paragraph before a ==page break==.
+
+in: Heading six
+
+**Jiří Staniševský** · 2026-09-03 07:55
+Makes the page break.
+
+**Jane Client** · 2026-09-03 09:12
+Agreed, leave it.
+
+## suggest.4kz5rsdhutcs — suggestion
+
+in: Heading six
+
+\`\`\`diff
+- Let's us collaborate on this text.
++ Let's collaborate on this text.
+\`\`\`
+
+## suggest.r73ve12ed25a — suggestion
+
+in: Heading six
+
+\`\`\`diff
+- Let's us collaborate on this text.
++ Let's us collaborate on the paragraph.
+\`\`\`
+
+## suggest.formatting — suggestion
+
+> Final paragraph.
+
+in: Heading six
+
+formatting only
+
+## AAAClost — comment
+
+> text that used to be there
+
+in: (not found)
+
+**Jane Client** · 2026-09-01 08:00
+Still relevant?
+"
+`;

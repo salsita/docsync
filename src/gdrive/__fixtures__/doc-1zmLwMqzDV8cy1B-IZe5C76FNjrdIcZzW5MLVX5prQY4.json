@@ -3202,12 +3202,85 @@
       },
       {
         "startIndex": 682,
-        "endIndex": 796,
+        "endIndex": 717,
         "paragraph": {
           "elements": [
             {
               "startIndex": 682,
-              "endIndex": 796,
+              "endIndex": 717,
+              "textRun": {
+                "content": "Let's us collaborate on this text.\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "borderBetween": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderTop": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderBottom": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderLeft": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderRight": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "shading": {
+              "backgroundColor": {}
+            }
+          }
+        }
+      },
+      {
+        "startIndex": 717,
+        "endIndex": 831,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 717,
+              "endIndex": 831,
               "textRun": {
                 "content": "Characters that need escaping in Markdown: * _ ` # [brackets] <angle> {braces} | ^ ~ \\ and a trailing backslash \\\n",
                 "textStyle": {}
@@ -3274,13 +3347,13 @@
         }
       },
       {
-        "startIndex": 796,
-        "endIndex": 813,
+        "startIndex": 831,
+        "endIndex": 848,
         "paragraph": {
           "elements": [
             {
-              "startIndex": 796,
-              "endIndex": 813,
+              "startIndex": 831,
+              "endIndex": 848,
               "textRun": {
                 "content": "Final paragraph.\n",
                 "textStyle": {}
@@ -5952,7 +6025,7 @@
       }
     }
   },
-  "revisionId": "ANLCKQnyOjJ4-SM1UhBHWu8oX6ZX80Qqp1E8ERZxZuMgpusei31Gfzu3XCFwfaEaD3IJ4pmSxuLK2XwAVyEI3XAMxD9reOY4k0Jm1z_B3g",
+  "revisionId": "ANLCKQkZsAmnkVRAUDCWPaGMuGLHqYqDk3ZIN5M83oaAhmcFYOCLZvUuBHDLQMJLu8hPwE1DF6SuuO3xJqcWYigh6UgPyotLIE_otShAyg",
   "suggestionsViewMode": "PREVIEW_WITHOUT_SUGGESTIONS",
   "inlineObjects": {
     "kix.655cbf6q1wjw": {
@@ -5960,7 +6033,7 @@
       "inlineObjectProperties": {
         "embeddedObject": {
           "imageProperties": {
-            "contentUri": "https://lh7-rt.googleusercontent.com/docsz/AD_4nXfT8EHlZEr43MrcyocxCtR_BrvKE-lAHB0udQJHhOB4PnB1uX8yp_wmjVgxEyV-rhw_W2-bmpCdLxjev8_5HiA2kkCNzFmjmDa8csxtDIxQp7mzYfRbaJNbDGdq8OGse6nRHqo5E_UKGhndYkeNDMY7uNlAkqZiUtgNrGnoDBMKQy240Q=s2048?key=inYg-OPdxQ0aQkJepuaB5A",
+            "contentUri": "https://lh7-rt.googleusercontent.com/docsz/AD_4nXf5IQP9bQeGp5MGuxkhgf3He_iIXQGi4rQGLVQdEhNRKbQSGlPVYzWdHhfL3U0uyR2W-q-YR7rU5tzMGjJCdC8IRDiPR97JJLSB1Ct7bvznqiaGUxk3HQbO0R1rX8SxCKHWvMvjrUf2hr-wPuhrEPMKULAs8YVh-evBO1SBYvQtdduwWA=s2048?key=inYg-OPdxQ0aQkJepuaB5A",
             "cropProperties": {}
           },
           "embeddedObjectBorder": {

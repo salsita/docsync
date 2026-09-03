@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the comment sidecar (MANUAL §6) > writes the open discussions of the Blocks page, anchored on their blocks 1`] = `
+"---
+document: notion:3cf715cbeb0881168ea0f3f18715e1a4
+fetched: 2026-09-03T16:31:07Z
+---
+
+## 3d0715cbeb0880e8a289001cb897f5e5 — comment
+
+> A paragraph with an inline equation $E = mc^2$ and a mention of a page: [Leaf](Leaf.md). And a link to a page outside any checkout: [Untitled](https://www.notion.so/38349858129f4c39a1210129743b666e).
+
+in: Heading three
+
+**Jiří Staniševský** · 2026-09-03 16:22
+This is an inline comment.
+
+## 3d0715cbeb08806ca6ed001cd2698a03 — comment
+
+> - Bullet one
+
+in: Heading three
+
+**Jiří Staniševský** · 2026-09-03 16:22
+Comment on the whole block.
+
+**Jiří Staniševský** · 2026-09-03 16:22
+Not sure it’s any different from an inline block.
+"
+`;

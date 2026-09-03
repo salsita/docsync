@@ -15,6 +15,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { CredentialProvider } from '../auth/index.js';
+import { sidecarPathOf } from '../comments/format.js';
 import { parseDocument, serializeDocument } from '../frontmatter.js';
 import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
 import { isUnderRoot } from '../manifest/index.js';
@@ -50,6 +51,13 @@ export interface FakeObject {
   lastEditedTime: string;
   editor?: Editor;
   trashed?: boolean;
+  /**
+   * The comment sidecar this document owes, as its whole text (MANUAL §6).
+   * Absent when it has no open thread, which is when there is no file at all.
+   * A comment moves no last-edit time, so this is answered on every fetch
+   * whether the document changed or not.
+   */
+  comments?: string;
 }
 
 /** One `pushRoot` call, as the fake received it. Bytes are base64. */
@@ -231,8 +239,21 @@ export function createFakeSource(store: FakeStore): Source {
         }
       }
       files.push(file);
+      if (object.comments !== undefined) {
+        // A sidecar carries text and no entry: it is a file of the commit and
+        // not a document of the checkout (MANUAL §6).
+        files.push({
+          path: sidecarPathOf(path),
+          text: object.comments,
+          changed: true,
+        });
+      }
     }
-    return { files, entries: files.map((file) => file.entry), skipped: [] };
+    return {
+      files,
+      entries: files.flatMap((file) => (file.entry === undefined ? [] : [file.entry])),
+      skipped: [],
+    };
   }
 
   async function pushRoot(

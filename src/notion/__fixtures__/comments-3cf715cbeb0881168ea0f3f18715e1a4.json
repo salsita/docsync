@@ -1,0 +1,171 @@
+{
+  "3cf715cbeb0881168ea0f3f18715e1a4": [],
+  "060dd363-72fc-469e-bb0c-18a4a7e00fc7": [],
+  "c5199d81-bffa-4acf-ac08-4c0f4ace1213": [],
+  "5f7f1317-2eee-49aa-a494-6a61d87e1329": [],
+  "e6de045b-f8ff-4698-a6bb-7672ae6668aa": [],
+  "31318d87-e5ec-4585-9a25-176d9125ae33": [
+    {
+      "object": "comment",
+      "id": "3d0715cb-eb08-802e-ba89-001d2b81c132",
+      "parent": {
+        "type": "block_id",
+        "block_id": "31318d87-e5ec-4585-9a25-176d9125ae33"
+      },
+      "discussion_id": "3d0715cb-eb08-80e8-a289-001cb897f5e5",
+      "created_time": "2026-09-03T16:22:00.000Z",
+      "last_edited_time": "2026-09-03T16:22:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "2e924337-300b-4281-b820-a7ff207370b1"
+      },
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "This is an inline comment.",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "This is an inline comment.",
+          "href": null
+        }
+      ],
+      "display_name": {
+        "type": "user",
+        "resolved_name": "Jiří Staniševský"
+      },
+      "original_content_deleted": false
+    }
+  ],
+  "ba451a5a-6dc5-4be6-992e-06ddd44a443a": [
+    {
+      "object": "comment",
+      "id": "3d0715cb-eb08-8002-a2ce-001dc4fc6342",
+      "parent": {
+        "type": "block_id",
+        "block_id": "ba451a5a-6dc5-4be6-992e-06ddd44a443a"
+      },
+      "discussion_id": "3d0715cb-eb08-806c-a6ed-001cd2698a03",
+      "created_time": "2026-09-03T16:22:00.000Z",
+      "last_edited_time": "2026-09-03T16:22:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "2e924337-300b-4281-b820-a7ff207370b1"
+      },
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "Comment on the whole block.",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "Comment on the whole block.",
+          "href": null
+        }
+      ],
+      "display_name": {
+        "type": "user",
+        "resolved_name": "Jiří Staniševský"
+      },
+      "original_content_deleted": false
+    },
+    {
+      "object": "comment",
+      "id": "3d0715cb-eb08-8029-b4de-001da47aa2a7",
+      "parent": {
+        "type": "block_id",
+        "block_id": "ba451a5a-6dc5-4be6-992e-06ddd44a443a"
+      },
+      "discussion_id": "3d0715cb-eb08-806c-a6ed-001cd2698a03",
+      "created_time": "2026-09-03T16:22:00.000Z",
+      "last_edited_time": "2026-09-03T16:22:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "2e924337-300b-4281-b820-a7ff207370b1"
+      },
+      "rich_text": [
+        {
+          "type": "text",
+          "text": {
+            "content": "Not sure it’s any different from an inline block.",
+            "link": null
+          },
+          "annotations": {
+            "bold": false,
+            "italic": false,
+            "strikethrough": false,
+            "underline": false,
+            "code": false,
+            "color": "default"
+          },
+          "plain_text": "Not sure it’s any different from an inline block.",
+          "href": null
+        }
+      ],
+      "display_name": {
+        "type": "user",
+        "resolved_name": "Jiří Staniševský"
+      },
+      "original_content_deleted": false
+    }
+  ],
+  "479ab7bc-c859-46c0-bc2a-1f40fd9cbcc7": [],
+  "941960ec-3e24-416b-9bcb-5438ae99fb03": [],
+  "2c43edd2-d4df-41d4-bc70-615732d8cb43": [],
+  "66ff5c04-caec-4922-b6e7-79d2bfeda0b3": [],
+  "8bef0aba-92e9-4276-8a0a-fc1769670b53": [],
+  "8fc9ec27-0382-4358-ba1f-563add6b522e": [],
+  "81db8109-913f-4265-a500-13f6636bda44": [],
+  "9e37cfdd-4035-4239-a809-1db41512802c": [],
+  "80804450-1c8a-46d1-bd5b-97ab0e55313d": [],
+  "812ec5bc-02e8-4972-b0c5-5bf5a2c81c3a": [],
+  "57934903-6910-44c5-8d9d-74151e74ebe5": [],
+  "fcf3ee01-baa5-40b3-8f37-66012a392791": [],
+  "c6f71527-8314-4741-892a-19a4e814694f": [],
+  "701c250f-60cb-4a11-9219-dc157ac584fc": [],
+  "bc1a726e-838c-44ff-ab29-a2e6c7c7abf1": [],
+  "58b3cd65-f271-463e-8058-118a669773fd": [],
+  "62cc5e96-5796-4858-b44a-ecef7da59c59": [],
+  "743a5f00-213d-4b14-ba7d-f1539af2690c": [],
+  "65178b41-b5e1-4a2b-a50c-8631d85fca36": [],
+  "33185786-b150-49de-901f-e21bde72d24f": [],
+  "3bb45884-c9aa-4996-ac6f-2a3b461e9afd": [],
+  "87229b00-30df-4d4a-95b7-af2cbece6d5a": [],
+  "73e6a059-118e-44c1-b863-2ce5271649d8": [],
+  "8fad94da-6cb4-4e39-a40c-ae082c82c36e": [],
+  "7543adb6-ddb9-4d5f-a49d-8bf88f66dff1": [],
+  "355f6e68-847d-4743-87c1-3a073ed1b877": [],
+  "99bfb4a4-ec56-48c2-a715-472d6643f57a": [],
+  "b0149f6a-86c9-4239-8c49-f6a47d789dfc": [],
+  "b232f281-26b8-4f2e-b34d-973b121b0dc8": [],
+  "989da9bc-f265-4ea9-8f9a-9c58d4d172ca": [],
+  "95a5c9fb-ab58-4426-8e29-4f43e5968dec": [],
+  "34af1ed5-bb35-4e91-a22c-3ebc49764320": [],
+  "8c7f56fe-2129-4283-8859-ec1ead8062ea": [],
+  "aa120b01-2c4c-425f-bced-6dec9e7b8d21": [],
+  "60d96e63-07a4-47d8-947e-8cbac7c3b17e": [],
+  "b2b67fc6-1e84-4e3c-96d8-5c4f5502095d": [],
+  "9fd26c38-5169-44c4-aa88-cc9e7569e33b": [],
+  "400344e4-a5b7-4392-a3d1-62909d51958c": [],
+  "858f37cd-4481-4dba-9528-c8e77418648a": [],
+  "f68c1ae3-6a41-42f5-8348-ce31a66934c0": [],
+  "5aa5ec35-fb73-4a3c-923e-0505fdac64a2": [],
+  "0169965a-4bb4-454e-9bab-b809f7acb4f3": [],
+  "f63f60c4-ea04-45b6-adea-b366026fc1fe": []
+}

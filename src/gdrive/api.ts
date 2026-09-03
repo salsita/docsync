@@ -198,6 +198,37 @@ export interface DocsWriteReply {
   createFootnote?: { footnoteId?: string };
 }
 
+/** Whoever wrote a comment, as Drive reports them. */
+export interface DriveCommentAuthor {
+  displayName?: string;
+  emailAddress?: string;
+}
+
+/** One reply inside a thread. `action` is set on a reply that only resolved it. */
+export interface DriveReply {
+  id?: string;
+  createdTime?: string;
+  author?: DriveCommentAuthor;
+  content?: string;
+  deleted?: boolean;
+  action?: string;
+}
+
+/** One comment thread, as `comments.list` answers it with `fields=*`. */
+export interface DriveComment {
+  id?: string;
+  createdTime?: string;
+  author?: DriveCommentAuthor;
+  content?: string;
+  deleted?: boolean;
+  resolved?: boolean;
+  /** The text the comment is attached to. Absent on a whole-file comment. */
+  quotedFileContent?: { mimeType?: string; value?: string };
+  /** Drive's own anchor id, which the Docs document model does not spell. */
+  anchor?: string;
+  replies?: DriveReply[];
+}
+
 /** What `documents.get` does with pending suggestions. */
 export type SuggestionsMode = 'preview' | 'inline';
 
@@ -228,6 +259,12 @@ export interface GDriveApi {
    * (MANUAL §7, ticket 16).
    */
   getDocument(id: string, mode?: SuggestionsMode): Promise<DocsDocument>;
+  /**
+   * Every comment thread on a file, replies included, deleted ones left out
+   * (MANUAL §6). One request per document per fetch: a comment does not move
+   * the document's last-edit time, so there is nothing cheaper to compare.
+   */
+  comments(id: string): Promise<DriveComment[]>;
   /** A binary file's bytes, as stored. */
   download(id: string): Promise<Uint8Array>;
   /** A Google-native file converted to `mimeType` (Sheets, Slides, Drawings). */
@@ -339,6 +376,27 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
       // to see the document as it is to address it (ticket 16).
       const view = mode === 'inline' ? 'SUGGESTIONS_INLINE' : 'PREVIEW_WITHOUT_SUGGESTIONS';
       return json<DocsDocument>(`${DOCS_ENDPOINT}/documents/${id}?suggestionsViewMode=${view}`);
+    },
+
+    async comments(id) {
+      const found: DriveComment[] = [];
+      let pageToken: string | undefined;
+      do {
+        // `fields=*` is what makes Drive answer `quotedFileContent`, `resolved`
+        // and `replies` at all; the default mask carries none of them.
+        const query = new URLSearchParams({
+          fields: '*',
+          includeDeleted: 'false',
+          pageSize: '100',
+        });
+        if (pageToken !== undefined) query.set('pageToken', pageToken);
+        const page = await json<{ comments?: DriveComment[]; nextPageToken?: string }>(
+          `${DRIVE_ENDPOINT}/files/${id}/comments?${query}`,
+        );
+        found.push(...(page.comments ?? []));
+        pageToken = page.nextPageToken;
+      } while (pageToken !== undefined);
+      return found;
     },
 
     async download(id) {

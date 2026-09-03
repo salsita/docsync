@@ -284,6 +284,110 @@ describe('fetchCommit', () => {
     expect(reports).toEqual([{ at: '2026-04-01T00:00:00.000Z', changed: [], skipped: [] }]);
   });
 
+  describe('the comment sidecar (MANUAL §6)', () => {
+    /** The sidecar of `Specs/Auth.md`, stamped at `fetched`. */
+    const sidecar = (fetched: string, thread = 'Is this still true?'): string =>
+      [
+        '---',
+        `document: notion:${fakeId('notion', 2)}`,
+        `fetched: ${fetched}`,
+        '---',
+        '',
+        '## d1 — comment',
+        '',
+        '> Log in first.',
+        '',
+        'in: (top)',
+        '',
+        `**Jane Client** · 2026-04-01 09:00`,
+        thread,
+        '',
+      ].join('\n');
+
+    const withComments = (text?: string): FakeState => {
+      const state = seed();
+      const auth = state.objects[fakeId('notion', 2)];
+      if (auth !== undefined && text !== undefined) auth.comments = text;
+      return state;
+    };
+
+    it('writes it beside the document and keeps it out of the index', async () => {
+      reset(withComments(sidecar('2026-04-01T00:00:00Z')));
+      const { commit } = await fetchCommit(deps, manifest, undefined);
+
+      const tree = await readTree(repo.git, commit);
+      expect([...tree.keys()].sort()).toContain('Specs/Auth.comments.md');
+      const index = parseIndex(
+        (await repo.git.catBlob(tree.get(INDEX_PATH)?.sha ?? '')).toString(),
+      );
+      expect([...index.keys()]).not.toContain('Specs/Auth.comments.md');
+      // It is nobody's edit, so it is not a changed document of the report.
+      expect(logged).toEqual(['notion: 2 changed', 'gdocs: 1 changed']);
+    });
+
+    it('has none for a document with no thread', async () => {
+      reset();
+      const { commit } = await fetchCommit(deps, manifest, undefined);
+
+      expect([...(await readTree(repo.git, commit)).keys()]).not.toContain(
+        'Specs/Auth.comments.md',
+      );
+    });
+
+    it('commits nothing when only the time of the fetch moved', async () => {
+      reset(withComments(sidecar('2026-04-01T00:00:00Z')));
+      const first = await fetchCommit(deps, manifest, undefined);
+
+      const state = store.load();
+      const auth = state.objects[fakeId('notion', 2)];
+      if (auth !== undefined) auth.comments = sidecar('2026-04-02T10:11:12Z');
+      store.save(state);
+
+      expect(await fetchCommit(deps, manifest, first.commit)).toMatchObject({
+        commit: first.commit,
+        changed: false,
+      });
+    });
+
+    it('commits a new comment as `Update comments on 1 document`', async () => {
+      reset(withComments(sidecar('2026-04-01T00:00:00Z')));
+      const first = await fetchCommit(deps, manifest, undefined);
+
+      const state = store.load();
+      const auth = state.objects[fakeId('notion', 2)];
+      if (auth !== undefined) auth.comments = sidecar('2026-04-02T10:11:12Z', 'Answered.');
+      store.save(state);
+
+      const second = await fetchCommit(deps, manifest, first.commit);
+
+      expect(second.changed).toBe(true);
+      expect(await repo.git.text(['log', '-1', '--format=%B', second.commit])).toBe(
+        'Update comments on 1 document\n\nSpecs/Auth.comments.md\n',
+      );
+      // Nobody edited a document, so the commit is docsync's own.
+      expect(await repo.git.text(['log', '-1', '--format=%an', second.commit])).toBe(
+        COMMITTER.name,
+      );
+    });
+
+    it('removes the file when the last thread is resolved', async () => {
+      reset(withComments(sidecar('2026-04-01T00:00:00Z')));
+      const first = await fetchCommit(deps, manifest, undefined);
+
+      const state = store.load();
+      const auth = state.objects[fakeId('notion', 2)];
+      if (auth !== undefined) auth.comments = undefined;
+      store.save(state);
+
+      const second = await fetchCommit(deps, manifest, first.commit);
+
+      expect(second.changed).toBe(true);
+      expect([...(await readTree(repo.git, second.commit)).keys()]).not.toContain(
+        'Specs/Auth.comments.md',
+      );
+    });
+  });
+
   it('reports what the source left out', async () => {
     reset();
     const skipped = { id: 'db', title: 'Tasks', path: 'Specs/Tasks', reason: 'database' };

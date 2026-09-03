@@ -60,6 +60,7 @@ const blobs: Record<string, string> = {
   'notes/roadmap.md': '---\nid: gdocs:1Id\n---\n\nRoad.\n',
   'notes/roadmap/Child.md': FRONT,
   'README.md': 'outside\n',
+  'Specs/comments.md': FRONT,
 };
 const read = async (path: string): Promise<Uint8Array> => {
   const text = blobs[path];
@@ -269,6 +270,43 @@ describe('planChanges', () => {
     const [notion] = await plan(M('Specs/Auth.md'));
     expect(notion?.changes[0]?.previousText).toBeUndefined();
     baseBlobs['Specs/Auth.md'] = BASE_AUTH;
+  });
+
+  describe('the comment sidecar is read-only (MANUAL §6)', () => {
+    const refusal =
+      'Specs/Auth.comments.md is read-only; comments are only pulled in this version. ' +
+      'Restore it with git checkout -- Specs/Auth.comments.md';
+
+    it('refuses one that was modified', async () => {
+      await expect(plan(M('Specs/Auth.comments.md'))).rejects.toThrow(refusal);
+    });
+
+    it('refuses one that was added', async () => {
+      await expect(plan(A('Specs/Auth.comments.md'))).rejects.toThrow(refusal);
+    });
+
+    it('refuses one that was deleted', async () => {
+      await expect(plan(D('Specs/Auth.comments.md'))).rejects.toThrow(refusal);
+    });
+
+    it('refuses one that was renamed, naming the path it came from', async () => {
+      await expect(plan(R('Specs/Auth.comments.md', 'Specs/Notes.comments.md'))).rejects.toThrow(
+        'Specs/Auth.comments.md is read-only',
+      );
+    });
+
+    it('refuses before any source is touched, whatever else the push holds', async () => {
+      await expect(plan(M('Specs/Auth.md'), D('Specs/Auth.comments.md'))).rejects.toThrow(refusal);
+    });
+
+    it('lets a document simply named `comments.md` through', async () => {
+      const [notion] = await plan(A('Specs/comments.md'));
+      expect(notion?.changes[0]?.path).toBe('Specs/comments.md');
+    });
+
+    it('ignores one deleted outside every root, which is `docsync remove`', async () => {
+      expect(await plan(D('gone/Auth.comments.md'))).toEqual([]);
+    });
   });
 
   it('treats a modified path the index does not know as an addition', async () => {
