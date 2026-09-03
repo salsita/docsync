@@ -14,6 +14,13 @@ Phase 1.
 - ai-starter setup step that installs docsync and can drop a pre-filled
   `oauth-apps.yaml` from the team's secret store.
 
+## Known flake to fix here
+
+`src/cli/commands.test.ts` "init builds the checkout of the quick start"
+failed once with git exit 128 during a full `pnpm check` under load and
+passed alone and on rerun (2026-09-03). Two real-git test files each build the
+helper with `tsc`; serialise them or share one build in CI.
+
 ## Done when
 
 A fresh machine can go from zero to a working checkout following only the
