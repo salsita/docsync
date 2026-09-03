@@ -426,10 +426,10 @@ roman numerals are not represented either.
 | Heading 1–6                                   | `#` … `######`                                                                                        |
 | paragraph                                     | paragraph                                                                                             |
 | bulleted / numbered list, nested              | `-` / `1.`, nested by indentation                                                                     |
-| checklist                                     | `- [ ]` / `- [x]`                                                                                     |
+| checklist                                     | `- [ ]` / `- [x]`. The Docs API does not report which box is ticked, so every item is fetched as `- [ ]`, and a pushed `- [x]` does not survive the next fetch                                                                                     |
 | table                                         | GFM table. Merged cells are not supported and make the table a placeholder.                           |
 | horizontal rule                               | `---`                                                                                                 |
-| page break                                    | `<!-- docsync:pagebreak -->`                                                                          |
+| page break                                    | `<!-- docsync:pagebreak -->` on its own line. Docs keeps a page break inside a paragraph, so a paragraph containing one is fetched as two paragraphs around the comment                                                                          |
 | footnote                                      | `[^n]` with the definition at the end                                                                 |
 | image | `<!-- docsync:object gdocs:<objectId> type=image -->` in the first version; downloaded into `<title>.assets/` and linked relatively **later** |
 | link                                          | `[text](url)`                                                                                         |
@@ -444,7 +444,13 @@ Anything the dialect cannot represent becomes:
 
 ```
 <!-- docsync:block notion:8f2e… type=embed -->
+<!-- docsync:block gdocs:<documentId>#<startIndex> type=table -->
+<!-- docsync:object gdocs:<objectId> type=drawing -->
 ```
+
+A Notion block has an id. A Google Docs structural element does not, so it
+is addressed by its document and the index it starts at; an inline object
+(image, drawing) has an id of its own and uses the `docsync:object` form.
 
 Placeholders round-trip. Moving or deleting one moves or deletes the block.
 Editing inside one is not possible.
@@ -459,6 +465,8 @@ An empty paragraph has no Markdown form, so a push removes it.
 
 For each root, the helper lists documents at the source and compares last-edit
 metadata with what it recorded last time. Only changed documents are downloaded.
+For a binary file on Drive the checksum is compared too, since its modified
+time can move without the content moving.
 If anything changed, it writes one commit to `origin/main`:
 
 - author: the source's last editor, with their source email if available

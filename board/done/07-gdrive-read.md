@@ -99,3 +99,40 @@ Shared with Notion and reused, not duplicated: `src/markdown.ts`,
 `pnpm check` green, every fixture Doc converts, the manual's Google Docs table
 matches the tests, and the Outcome records the checklist representation and
 anything else the Docs API did that the manual did not anticipate.
+
+## Outcome
+
+Landed 2026-09-03. Five agent commits plus the landing commit.
+
+- **Modules as planned** in `src/gdrive/`: `api.ts` (`createGDriveApi` with
+  `listFolder`, `getFile`, `getDocument`, `download`, `export`; retries with
+  `Retry-After`), `to-markdown.ts` (`documentToMarkdown`, `documentToMdast`,
+  `CODE_FONTS`), `walk.ts` (`walkRoot`, `EXPORTS`), `index.ts` (`fetchRoot`
+  with the Notion adapter's shape). `Editor` moved to `src/index-file.ts`;
+  `IndexEntry` gained `readOnly` (exports) and `md5` (binaries). A fetched
+  file carries `text` or `bytes` only when `changed` is true.
+- **Fixtures recorded** in `src/gdrive/__fixtures__/` (listings, seven Doc
+  JSONs, the Sheet export, the binaries). Drive was never written to.
+- **How the hand-added elements arrive:** Title/Subtitle are
+  `namedStyleType` TITLE/SUBTITLE; a page break, a rule, an image and a
+  footnote marker are all *inline* paragraph elements (a page break splits
+  its paragraph); a footnote is `footnoteReference` with the body under the
+  document's `footnotes`; an image is an `inlineObjectElement` resolved via
+  `inlineObjects`; a comment does not appear in `documents.get` at all.
+- **Checklist representation:** a list whose nesting level has
+  `glyphType: GLYPH_TYPE_UNSPECIFIED`, `glyphFormat: "%0"` (`%1`, `%2`
+  deeper) and no `glyphSymbol`. The API does not say which box is ticked:
+  the two fixture items are byte-identical in every view mode. Every item is
+  fetched as `- [ ]`. Manual §6 updated.
+- **Surprises:** HTML-imported lists carry no glyph data at all, so a
+  numbered list from the creation script is indistinguishable from a bullet
+  list (the Elements snapshot shows it as bullets); the imported `<br>`
+  became two paragraphs, so no vertical tab exists in the recording (the rule
+  is unit-tested only); code fonts arrive lower-cased; a structural element
+  has no id, so placeholders address it as `gdocs:<documentId>#<startIndex>`.
+- **Follow-up for the owner:** retype the numbered list and the soft line
+  break in the Elements Doc by hand, then re-run
+  `scripts/record-gdrive-fixtures.ts` and update the snapshot.
+- **Manual changes at landing:** §6 checklist ticked state, page break
+  inside a paragraph, Google placeholder spellings; §7 checksum comparison
+  for binaries.
