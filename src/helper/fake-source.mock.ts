@@ -156,19 +156,21 @@ function typeOf(object: FakeObject): IndexEntry['type'] {
   return 'drive-file';
 }
 
-/** Every object laid out under a root: path → object. */
+/**
+ * Every object laid out under a root: path → object.
+ *
+ * The rule is the adapters' own (MANUAL §6), at every level including the top:
+ * a document is a file, and whatever sits inside it goes in the sibling
+ * directory of the same stem. So a directory root holds the root document as
+ * `<dir>/<title>.md` with its children in `<dir>/<title>/`, and a file root
+ * holds it at the path itself with the children in `<stem>/` beside it. Only a
+ * folder root puts its contents directly in the root's directory.
+ */
 function layout(state: FakeState, root: Root): Map<string, FakeObject> {
   const out = new Map<string, FakeObject>();
   const rootObject = state.objects[root.src.id];
   if (rootObject === undefined || rootObject.trashed === true) return out;
 
-  const directory = root.path.endsWith('/') ? root.path : `${root.path.slice(0, -3)}/`;
-  if (rootObject.kind !== 'folder') {
-    out.set(
-      root.path.endsWith('/') ? `${directory}${fileName(rootObject)}` : root.path,
-      rootObject,
-    );
-  }
   const children = (parent: string, under: string): void => {
     for (const object of Object.values(state.objects)) {
       if (object.parent !== parent || object.trashed === true) continue;
@@ -176,7 +178,15 @@ function layout(state: FakeState, root: Root): Map<string, FakeObject> {
       children(object.id, `${under}${stem(fileName(object))}/`);
     }
   };
-  children(rootObject.id, directory);
+
+  if (rootObject.kind === 'folder') {
+    children(rootObject.id, root.path);
+    return out;
+  }
+
+  const path = root.path.endsWith('/') ? `${root.path}${fileName(rootObject)}` : root.path;
+  out.set(path, rootObject);
+  children(rootObject.id, `${stem(path)}/`);
   return out;
 }
 

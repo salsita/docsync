@@ -27,7 +27,7 @@ const BRANCH = 'refs/heads/main';
 const manifest: Manifest = {
   version: 1,
   roots: [
-    { src: { source: 'notion', id: NOTION_ROOT }, path: 'Specs/', ignore: [] },
+    { src: { source: 'notion', id: NOTION_ROOT }, path: 'Specs.md', ignore: [] },
     { src: { source: 'gdocs', id: DRIVE_ROOT }, path: 'Files/', ignore: [] },
   ],
 };
@@ -114,7 +114,7 @@ describe('pushRef', () => {
     expect(store.load().objects[AUTH]?.body).toBe('Log in, then out.\n');
     expect(store.load().pushes).toEqual([
       {
-        root: 'Specs/',
+        root: 'Specs.md',
         changes: [
           { kind: 'modified', path: 'Specs/Auth.md', text: expect.stringContaining('then out') },
         ],
@@ -217,9 +217,9 @@ describe('pushRef', () => {
     expect([...tree.keys()].sort()).toEqual([
       '.docsync/index.yaml',
       'Files/plain.txt',
+      'Specs.md',
       'Specs/Auth.md',
       'Specs/New page.md',
-      'Specs/Specs.md',
     ]);
   });
 

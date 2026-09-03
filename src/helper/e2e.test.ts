@@ -35,7 +35,7 @@ const MANIFEST = [
   'version: 1',
   'roots:',
   `  - src: notion:${NOTION_ROOT}`,
-  '    path: Specs/',
+  '    path: Specs.md',
   `  - src: gdocs:${DRIVE_ROOT}`,
   '    path: Files/',
   '',
@@ -207,8 +207,8 @@ describe.skipIf(process.platform === 'win32')(
         'Files/Plan.md',
         'Files/Rates.xlsx',
         'Files/logo.png',
+        'Specs.md',
         'Specs/Auth.md',
-        'Specs/Specs.md',
       ]);
       expect(w.read(co, 'Specs/Auth.md')).toBe(frontmatter(AUTH, 'Auth', 'Log in.\n'));
       expect(w.read(co, 'Files/logo.png')).toBe('PNG');
@@ -359,7 +359,7 @@ describe.skipIf(process.platform === 'win32')(
       editObject(state, AUTH, { body: 'Moved on.\n' });
       w.store.save(state);
       w.git(co, 'fetch', '--quiet');
-      w.write(co, 'Specs/Specs.md', frontmatter(NOTION_ROOT, 'Specs', 'Root, edited.\n'));
+      w.write(co, 'Specs.md', frontmatter(NOTION_ROOT, 'Specs', 'Root, edited.\n'));
       w.commit(co, 'behind');
 
       const rejected = w.tryGit(co, 'push');
@@ -371,7 +371,7 @@ describe.skipIf(process.platform === 'win32')(
     it('9. a forced push is rejected', () => {
       const w = world();
       const co = w.clone();
-      w.write(co, 'Specs/Specs.md', frontmatter(NOTION_ROOT, 'Specs', 'Root, edited.\n'));
+      w.write(co, 'Specs.md', frontmatter(NOTION_ROOT, 'Specs', 'Root, edited.\n'));
       w.commit(co, 'edit');
       const rejected = w.tryGit(co, 'push', '--force');
       expect(rejected.status).not.toBe(0);
@@ -388,7 +388,7 @@ describe.skipIf(process.platform === 'win32')(
 
       w.git(co, 'fetch', '--quiet');
       w.git(co, 'pull', '--quiet');
-      expect(w.files(co)).toEqual(['.docsync/index.yaml', 'Specs/Auth.md', 'Specs/Specs.md']);
+      expect(w.files(co)).toEqual(['.docsync/index.yaml', 'Specs.md', 'Specs/Auth.md']);
       expect(w.git(co, 'log', '-1', '--format=%s')).toBe('Update 3 documents');
       const after = w.store.load();
       expect(after.pushes).toEqual([]);
@@ -431,7 +431,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(push.status, push.stderr).toBe(0);
       expect(w.store.load().pushes).toEqual([
         {
-          root: 'Specs/',
+          root: 'Specs.md',
           changes: [{ kind: 'renamed', path: 'Specs/Login.md', previousPath: 'Specs/Auth.md' }],
         },
       ]);

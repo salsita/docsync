@@ -55,7 +55,7 @@ function seed(): FakeState {
 const manifest: Manifest = {
   version: 1,
   roots: [
-    { src: { source: 'notion', id: NOTION_ROOT }, path: 'Specs/', ignore: [] },
+    { src: { source: 'notion', id: NOTION_ROOT }, path: 'Specs.md', ignore: [] },
     { src: { source: 'gdocs', id: DRIVE_ROOT }, path: 'Contracts/', ignore: [] },
   ],
 };
@@ -95,8 +95,8 @@ describe('fetchCommit', () => {
     expect([...tree.keys()].sort()).toEqual([
       '.docsync/index.yaml',
       'Contracts/logo.png',
+      'Specs.md',
       'Specs/Auth.md',
-      'Specs/Specs.md',
     ]);
     const auth = (await repo.git.catBlob(tree.get('Specs/Auth.md')?.sha ?? '')).toString();
     expect(auth).toBe(
@@ -104,7 +104,7 @@ describe('fetchCommit', () => {
     );
 
     const index = parseIndex((await repo.git.catBlob(tree.get(INDEX_PATH)?.sha ?? '')).toString());
-    expect([...index.keys()]).toEqual(['Contracts/logo.png', 'Specs/Auth.md', 'Specs/Specs.md']);
+    expect([...index.keys()]).toEqual(['Contracts/logo.png', 'Specs.md', 'Specs/Auth.md']);
     expect(index.get('Contracts/logo.png')).toMatchObject({
       type: 'drive-file',
       md5: expect.any(String),
@@ -117,7 +117,7 @@ describe('fetchCommit', () => {
       `Ada Lovelace|ada@example.com|${Date.parse(edited) / 1000}|${COMMITTER.name}|${COMMITTER.email}|${Date.parse('2026-04-01T00:00:00Z') / 1000}|`,
     );
     expect(await repo.git.text(['log', '-1', '--format=%B', commit])).toBe(
-      'Add 3 documents\n\nContracts/logo.png\nSpecs/Auth.md\nSpecs/Specs.md\n',
+      'Add 3 documents\n\nContracts/logo.png\nSpecs.md\nSpecs/Auth.md\n',
     );
     expect(logged).toEqual(['notion: 2 changed', 'gdocs: 1 changed']);
   });
@@ -156,8 +156,8 @@ describe('fetchCommit', () => {
     const second = await fetchCommit(deps, fewer, first.commit);
     expect([...(await readTree(repo.git, second.commit)).keys()].sort()).toEqual([
       '.docsync/index.yaml',
+      'Specs.md',
       'Specs/Auth.md',
-      'Specs/Specs.md',
     ]);
     // Nothing had been edited, so the fallback identity signs the commit.
     expect(await repo.git.text(['log', '-1', '--format=%an|%at|%B', second.commit])).toBe(
@@ -176,6 +176,24 @@ describe('fetchCommit', () => {
     expect(await repo.git.text(['log', '-1', '--format=%B', second.commit])).toBe(
       'Update the index\n',
     );
+  });
+
+  it('holds a directory root the way the adapters lay one out', async () => {
+    reset();
+    // Written by hand or by an earlier version: the page goes inside the
+    // directory and its children in the sibling directory beside it (MANUAL §4).
+    const directory: Manifest = {
+      version: 1,
+      roots: [{ src: { source: 'notion', id: NOTION_ROOT }, path: 'Specs/', ignore: [] }],
+    };
+
+    const { commit } = await fetchCommit(deps, directory, undefined);
+
+    expect([...(await readTree(repo.git, commit)).keys()].sort()).toEqual([
+      '.docsync/index.yaml',
+      'Specs/Specs.md',
+      'Specs/Specs/Auth.md',
+    ]);
   });
 
   it('refuses a file the source calls unchanged that the last commit does not hold', async () => {
@@ -208,7 +226,7 @@ describe('fetchCommit', () => {
       },
     };
     await expect(fetchCommit(deps, manifest, undefined)).rejects.toThrow(
-      'Specs/Specs.md: the source reports it changed but sent no content',
+      'Specs.md: the source reports it changed but sent no content',
     );
   });
 
@@ -235,7 +253,7 @@ describe('fetchCommit', () => {
     expect(reports).toEqual([report]);
     expect(report.at).toBe('2026-04-01T00:00:00.000Z');
     expect(report.changed.map((one) => one.path)).toEqual([
-      'Specs/Specs.md',
+      'Specs.md',
       'Specs/Auth.md',
       'Contracts/logo.png',
     ]);
