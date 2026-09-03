@@ -68,9 +68,8 @@ export async function loadManifest(path: string): Promise<Manifest> {
   try {
     text = await readFile(path, 'utf8');
   } catch (error) {
-    const reason =
-      (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'no such file' : String(error);
-    throw new Error(`${path}: ${reason}`);
+    const failure = error as NodeJS.ErrnoException;
+    throw new Error(`${path}: ${failure.code === 'ENOENT' ? 'no such file' : failure.message}`);
   }
   const parsed = parseManifest(text);
   if (!parsed.ok) {

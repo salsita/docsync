@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/provider.js';
 import {
@@ -55,9 +55,9 @@ describe('resolveManifest', () => {
 
   it('falls back to .git under the current directory and a remote called origin', () => {
     expect(resolveManifest({ argv: ['origin', 'm.yaml'], env: {}, cwd: '/here' })).toMatchObject({
-      gitDir: '/here/.git',
-      worktree: '/here',
-      manifestPath: '/here/m.yaml',
+      gitDir: resolve('/here/.git'),
+      worktree: resolve('/here'),
+      manifestPath: resolve('/here/m.yaml'),
     });
   });
 
@@ -81,7 +81,7 @@ describe('loadManifest', () => {
 
     const broken = join(repo.root, 'broken.yaml');
     writeFileSync(broken, 'version: 1\nroots:\n  - src: nonsense\n    path: Specs/\n');
-    await expect(loadManifest(broken)).rejects.toThrow(new RegExp(`^${broken}:3: `));
+    await expect(loadManifest(broken)).rejects.toThrow(`${broken}:3: `);
 
     const overlapping = join(repo.root, 'overlap.yaml');
     writeFileSync(
@@ -89,14 +89,12 @@ describe('loadManifest', () => {
       `version: 1\nroots:\n  - src: notion:${ROOT}\n    path: Specs/\n  - src: notion:${fakeId('notion', 2)}\n    path: Specs/Inner/\n`,
     );
     await expect(loadManifest(overlapping)).rejects.toThrow(
-      new RegExp(`^${overlapping}: root 2 \\(Specs/Inner/\\): `),
+      `${overlapping}: root 2 (Specs/Inner/): `,
     );
 
     const unreadable = join(repo.root, 'dir.yaml');
     mkdirSync(unreadable);
-    await expect(loadManifest(unreadable)).rejects.toThrow(
-      new RegExp(`^${unreadable}: Error: EISDIR`),
-    );
+    await expect(loadManifest(unreadable)).rejects.toThrow(`${unreadable}: EISDIR`);
   });
 
   it('answers the manifest', async () => {
