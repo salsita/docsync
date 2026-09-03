@@ -1,7 +1,17 @@
 #!/usr/bin/env node
-import { version } from './version.js';
+/**
+ * `docsync`: the front end (MANUAL §5, §13). Everything is in `src/cli/`; this
+ * file only builds the context of a real run — the real sources, the
+ * keychain-backed credentials, the process streams — and answers an exit code.
+ */
+import { createContext } from './cli/context.js';
+import { runCli } from './cli/program.js';
 
-// Argument parsing arrives with ticket 10. For now every invocation prints the
-// version, so that an install can be smoke-tested end to end.
-process.stdout.write(`${version}\n`);
-process.exit(0);
+process.exitCode = await runCli(
+  process.argv.slice(2),
+  createContext({
+    cwd: process.cwd(),
+    out: (text) => process.stdout.write(text),
+    err: (text) => process.stderr.write(text),
+  }),
+);

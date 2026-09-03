@@ -1,0 +1,436 @@
+/**
+ * Every command, end to end: `runCli` in process over real `git`, the fake
+ * helper on PATH, and the fake `Source` behind one JSON file. Nothing about
+ * the wiring is simulated — a `docsync push` here really spawns git, which
+ * really runs the helper, which really applies the changes to the store.
+ */
+process.env.TZ = 'UTC';
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  addObject,
+  editObject,
+  emptyState,
+  type FakeState,
+  fakeId,
+} from '../helper/fake-source.mock.js';
+import { createWorld, fakeHelperBin, type World } from './harness.mock.js';
+
+const SPECS = fakeId('notion', 1);
+const AUTH = fakeId('notion', 2);
+const LEAF = fakeId('notion', 3);
+const CONTRACTS = fakeId('gdocs', 1);
+const TERMS = fakeId('gdocs', 2);
+const LOGO = fakeId('gdocs', 3);
+const ROADMAP = fakeId('gdocs', 4);
+const ADA = { id: 'ada', name: 'Ada Lovelace', email: 'ada@example.com' };
+
+function seed(): FakeState {
+  const state = emptyState();
+  addObject(state, {
+    id: SPECS,
+    source: 'notion',
+    kind: 'page',
+    title: 'Product Specs',
+    body: 'The specs.\n',
+    editor: ADA,
+  });
+  addObject(state, {
+    id: AUTH,
+    source: 'notion',
+    kind: 'page',
+    title: 'Auth',
+    parent: SPECS,
+    body: 'Log in.\n',
+    editor: ADA,
+  });
+  addObject(state, {
+    id: LEAF,
+    source: 'notion',
+    kind: 'page',
+    title: 'Leaf',
+    body: 'Nothing under me.\n',
+    editor: ADA,
+  });
+  addObject(state, { id: CONTRACTS, source: 'gdocs', kind: 'folder', title: 'Contracts' });
+  addObject(state, {
+    id: TERMS,
+    source: 'gdocs',
+    kind: 'doc',
+    title: 'Terms',
+    parent: CONTRACTS,
+    body: 'The terms.\n',
+    editor: ADA,
+  });
+  addObject(state, {
+    id: LOGO,
+    source: 'gdocs',
+    kind: 'file',
+    title: 'logo.png',
+    parent: CONTRACTS,
+    bytes: Buffer.from('PNG').toString('base64'),
+  });
+  addObject(state, {
+    id: ROADMAP,
+    source: 'gdocs',
+    kind: 'doc',
+    title: 'Roadmap',
+    body: 'Later.\n',
+    editor: ADA,
+  });
+  return state;
+}
+
+const worlds: World[] = [];
+
+function world(state: FakeState = seed()): World {
+  const made = createWorld(state);
+  worlds.push(made);
+  return made;
+}
+
+/** A checkout with the two roots of the quick start, and where it is. */
+async function checkout(w: World, ...refs: string[]): Promise<string> {
+  const run = await w.run(w.dir, 'init', 'my-docs', ...refs);
+  expect(run.code).toBe(0);
+  return join(w.dir, 'my-docs');
+}
+
+describe.skipIf(process.platform === 'win32')(
+  'the docsync commands',
+  () => {
+    beforeAll(() => {
+      fakeHelperBin();
+    }, 120_000);
+
+    afterEach(() => {
+      for (const one of worlds.splice(0)) one.remove();
+    });
+
+    it('init builds the checkout of the quick start', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`, `gdocs:${CONTRACTS}`);
+
+      expect(w.files(co)).toEqual([
+        '.docsync/index.yaml',
+        'Contracts/Terms.md',
+        'Contracts/logo.png',
+        'Product Specs/Auth.md',
+        'Product Specs/Product Specs.md',
+      ]);
+      expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in.');
+      // The manifest, the formatter files and the skill files belong to the
+      // checkout and not to the documents (MANUAL §5 step 4, §6, §10).
+      expect(w.read(co, '.docsync.yaml')).toContain(`src: notion:${SPECS}`);
+      expect(w.read(co, '.prettierrc')).toBe('{\n  "proseWrap": "preserve"\n}\n');
+      expect(w.read(co, '.editorconfig')).toContain('trim_trailing_whitespace = false');
+      expect(readFileSync(join(co, '.git/info/exclude'), 'utf8')).toContain('.prettierrc');
+      expect(w.git(co, 'status', '--porcelain')).toBe('');
+
+      expect(w.git(co, 'remote', 'get-url', 'origin')).toBe('docsync::.docsync.yaml');
+      expect(w.git(co, 'config', 'core.autocrlf')).toBe('false');
+      expect(w.git(co, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
+      expect(w.git(co, 'rev-parse', '--abbrev-ref', 'main@{upstream}')).toBe('origin/main');
+    });
+
+    it('init with no sources leaves a repo with one commit and no documents', async () => {
+      const w = world();
+      const co = await checkout(w);
+
+      expect(w.files(co)).toEqual(['.docsync/index.yaml']);
+      expect(w.git(co, 'rev-list', '--count', 'HEAD')).toBe('1');
+    });
+
+    it('init refuses a directory that is not empty, and accepts an empty repo', async () => {
+      const w = world();
+      mkdirSync(join(w.dir, 'taken'));
+      writeFileSync(join(w.dir, 'taken', 'notes.txt'), 'mine\n');
+
+      const refused = await w.run(w.dir, 'init', 'taken');
+      expect(refused.code).toBe(1);
+      expect(refused.err).toContain('is not empty');
+      expect(existsSync(join(w.dir, 'taken', '.docsync.yaml'))).toBe(false);
+
+      mkdirSync(join(w.dir, 'fresh'));
+      w.git(w.dir, 'init', '--quiet', join(w.dir, 'fresh'));
+      expect((await w.run(w.dir, 'init', 'fresh')).code).toBe(0);
+    });
+
+    it('init resolves every ref before it builds anything', async () => {
+      const w = world();
+
+      const run = await w.run(w.dir, 'init', 'my-docs', 'notion:0'.padEnd(39, '0'));
+
+      expect(run.code).toBe(1);
+      expect(existsSync(join(w.dir, 'my-docs'))).toBe(false);
+    });
+
+    it('add takes every alias form of the manual', async () => {
+      const w = world();
+      const co = await checkout(w);
+
+      const added = await w.run(
+        co,
+        'add',
+        '--no-fetch',
+        `notion:${LEAF}`,
+        `gdocs:${ROADMAP}=notes/`,
+        `notion:${SPECS}=specs/product`,
+        `gdocs:${CONTRACTS}=filed/`,
+      );
+
+      expect(added.code).toBe(0);
+      expect(w.read(co, '.docsync.yaml')).toContain('path: Leaf.md');
+      expect(w.read(co, '.docsync.yaml')).toContain('path: notes/Roadmap.md');
+      expect(w.read(co, '.docsync.yaml')).toContain('path: specs/product/');
+      expect(w.read(co, '.docsync.yaml')).toContain('path: filed/');
+      // `--no-fetch` stops at the manifest (ticket 10).
+      expect(w.files(co)).toEqual(['.docsync/index.yaml']);
+    });
+
+    it('add names a leaf that was given a path with no extension', async () => {
+      const w = world();
+      const co = await checkout(w);
+
+      const run = await w.run(co, 'add', '--no-fetch', `notion:${LEAF}=specs/leaf`);
+
+      expect(run.code).toBe(1);
+      expect(run.err).toContain('needs an extension');
+    });
+
+    it('add refuses a container that was given a file name', async () => {
+      const w = world();
+      const co = await checkout(w);
+
+      const run = await w.run(co, 'add', '--no-fetch', `notion:${SPECS}=specs/product.md`);
+
+      expect(run.code).toBe(1);
+      expect(run.err).toContain('a container cannot be a file');
+    });
+
+    it('add fetches and fast-forwards when the tree is clean', async () => {
+      const w = world();
+      const co = await checkout(w);
+
+      const run = await w.run(co, 'add', `notion:${SPECS}`);
+
+      expect(run.code).toBe(0);
+      expect(run.out).toContain('Added Product Specs/');
+      expect(w.files(co)).toEqual([
+        '.docsync/index.yaml',
+        'Product Specs/Auth.md',
+        'Product Specs/Product Specs.md',
+      ]);
+      expect(run.out).toContain('Product Specs/Auth.md');
+      expect(run.out).toContain('by Ada Lovelace');
+    });
+
+    it('remove commits the deletion, and the next push leaves the source alone', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      const removed = await w.run(co, 'remove', 'Product Specs/');
+      expect(removed.code).toBe(0);
+      expect(w.files(co)).toEqual(['.docsync/index.yaml']);
+      expect(w.git(co, 'log', '-1', '--format=%s')).toBe('Remove Product Specs/');
+      expect(w.read(co, '.docsync.yaml')).not.toContain(SPECS);
+
+      // The removal reaches the remote as an unsubscribe: nothing is trashed.
+      expect((await w.run(co, 'pull')).code).toBe(0);
+      const pushed = await w.run(co, 'push');
+      expect(pushed.code).toBe(0);
+      expect(w.store.load().pushes).toEqual([]);
+      expect(w.store.load().objects[AUTH]?.trashed).toBeUndefined();
+    });
+
+    it('remove says which root it does not have', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      const run = await w.run(co, 'remove', 'Nowhere/');
+
+      expect(run.code).toBe(1);
+      expect(run.err).toContain('no root at Nowhere/');
+    });
+
+    it('status prints git’s own status and then one line per root', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`, `gdocs:${CONTRACTS}`);
+
+      const quiet = await w.run(co, 'status');
+      expect(quiet.all).toContain('## main...origin/main');
+      expect(quiet.out).toContain(`notion:${SPECS.slice(0, 4)}…  Product Specs/  fetched 20`);
+      expect(quiet.out).toContain('up to date');
+
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in twice.\n' });
+      w.store.save(state);
+
+      const moved = await w.run(co, 'status');
+      expect(moved.out).toContain('1 changed at source');
+      expect(moved.out).toContain('Contracts/  fetched 20');
+    });
+
+    it('fetch prints what changed at the source and who changed it', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in twice.\n', editor: ADA });
+      w.store.save(state);
+
+      const run = await w.run(co, 'fetch');
+
+      expect(run.code).toBe(0);
+      expect(run.out).toMatch(/Product Specs\/Auth\.md {2}by Ada Lovelace {2}\d{4}-/);
+      // A fetch never touches the working tree (MANUAL §7).
+      expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in.');
+    });
+
+    it('fetch says so when nothing moved', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      expect((await w.run(co, 'fetch')).out).toContain('No documents changed at the source.');
+    });
+
+    it('pull prints the same report and updates the working tree', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in twice.\n', editor: ADA });
+      w.store.save(state);
+
+      const run = await w.run(co, 'pull');
+
+      expect(run.code).toBe(0);
+      expect(run.out).toContain('Product Specs/Auth.md  by Ada Lovelace');
+      expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in twice.');
+    });
+
+    it('push prints what it did, with the trashed documents last', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`, `gdocs:${CONTRACTS}`);
+      w.write(co, 'Product Specs/Auth.md', w.read(co, 'Product Specs/Auth.md') + 'And out.\n');
+      w.git(co, 'rm', '--quiet', 'Contracts/logo.png');
+      w.git(co, 'commit', '--quiet', '-a', '-m', 'Edit one, drop one');
+
+      const run = await w.run(co, 'push');
+
+      expect(run.code).toBe(0);
+      // The trashed document comes last, under its own heading (MANUAL §8).
+      expect(run.out).toContain('updated  Product Specs/Auth.md');
+      expect(run.out).toContain('Trashed:\n  Contracts/logo.png');
+      expect(run.out.indexOf('Trashed:')).toBeGreaterThan(run.out.indexOf('updated  '));
+      expect(w.store.load().objects[AUTH]?.body).toContain('And out.');
+      expect(w.store.load().objects[LOGO]?.trashed).toBe(true);
+      // The follow-up commit of §7 was merged, so nothing is left behind.
+      expect(w.git(co, 'status', '--porcelain')).toBe('');
+      expect(w.git(co, 'rev-parse', 'HEAD')).toBe(w.git(co, 'rev-parse', 'origin/main'));
+    });
+
+    it('push on a dirty tree says how to get the follow-up commit', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      w.write(co, 'Product Specs/Auth.md', w.read(co, 'Product Specs/Auth.md') + 'And out.\n');
+      w.git(co, 'commit', '--quiet', '-a', '-m', 'Edit');
+      w.write(co, 'Product Specs/Auth.md', 'still editing\n');
+
+      const run = await w.run(co, 'push');
+
+      expect(run.code).toBe(0);
+      expect(run.out).toContain('docsync pull');
+      // The edit in progress is still there: nothing was merged over it.
+      expect(w.read(co, 'Product Specs/Auth.md')).toBe('still editing\n');
+    });
+
+    it('push says so when the commits carried no document change', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      w.git(co, 'commit', '--quiet', '--allow-empty', '-m', 'Nothing');
+
+      const run = await w.run(co, 'push');
+
+      expect(run.code).toBe(0);
+      expect(run.out).toContain('No documents changed at the source.');
+    });
+
+    it('resolve prints what a ref is, without a checkout in sight', async () => {
+      const w = world();
+
+      const run = await w.run(w.dir, 'resolve', `notion:${SPECS}`);
+
+      expect(run.code).toBe(0);
+      expect(run.out.split('\n').slice(0, 4)).toEqual([
+        `ref       notion:${SPECS}`,
+        'type      container',
+        'title     Product Specs',
+        'children  1',
+      ]);
+      expect(run.out).toContain('editor    Ada Lovelace <ada@example.com>');
+    });
+
+    it('a command outside a checkout says what to do', async () => {
+      const w = world();
+
+      const run = await w.run(w.dir, 'status');
+
+      expect(run.code).toBe(1);
+      expect(run.err).toContain('docsync init');
+    });
+
+    it('auth signs in, reports the identity, and signs out', async () => {
+      const w = world();
+
+      expect((await w.run(w.dir, 'auth', 'notion')).out).toBe(
+        'Signed in as Ada Lovelace, ada@example.com.\n',
+      );
+      expect((await w.run(w.dir, 'auth', 'notion')).out).toBe(
+        'Already signed in as Ada Lovelace, ada@example.com.\n',
+      );
+      expect((await w.run(w.dir, 'auth', 'notion', '--logout')).out).toBe(
+        'Signed out of notion.\n',
+      );
+      expect(w.auth.calls).toEqual([
+        'whoAmI notion',
+        'signIn notion',
+        'whoAmI notion',
+        'signOut notion',
+      ]);
+    });
+
+    it('runs the quick start of MANUAL §3 as it is written', async () => {
+      const w = world();
+
+      // docsync init my-docs notion:2f3a9c… gdocs:1AbCdE…
+      const init = await w.run(w.dir, 'init', 'my-docs', `notion:${SPECS}`, `gdocs:${CONTRACTS}`);
+      expect(init.code).toBe(0);
+      const co = join(w.dir, 'my-docs');
+
+      // cd my-docs; ls
+      expect(w.files(co)).toContain('Product Specs/Auth.md');
+      expect(w.files(co)).toContain('Contracts/Terms.md');
+
+      // $EDITOR "Product Specs/Auth.md"
+      w.write(
+        co,
+        'Product Specs/Auth.md',
+        w.read(co, 'Product Specs/Auth.md') + '\nSession expiry is 30 days.\n',
+      );
+      // git diff
+      expect(w.git(co, 'diff', '--name-only')).toBe('Product Specs/Auth.md');
+      // git commit -am "Clarify session expiry"
+      w.git(co, 'commit', '-a', '--quiet', '-m', 'Clarify session expiry');
+      // git push
+      w.git(co, 'push', '--quiet');
+      // git pull
+      w.git(co, 'pull', '--quiet');
+
+      expect(w.store.load().objects[AUTH]?.body).toContain('Session expiry is 30 days.');
+      expect(w.git(co, 'status', '--porcelain')).toBe('');
+      expect(w.git(co, 'rev-parse', 'HEAD')).toBe(w.git(co, 'rev-parse', 'origin/main'));
+    });
+  },
+  120_000,
+);

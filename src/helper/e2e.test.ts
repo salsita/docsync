@@ -1,23 +1,15 @@
 /**
  * The helper end to end: real `git`, the built helper on PATH under the name
  * git discovers, the fake `Source` behind a JSON file. Each case starts from a
- * fresh temporary directory. The build is `tsc -p tsconfig.e2e.json` into
- * `node_modules/.cache/docsync-e2e`, once per run of this file.
+ * fresh temporary directory. `buildFakeHelper` compiles it once per run of
+ * this file.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { buildFakeHelper } from './fake-bin.mock.js';
 import {
   addObject,
   createFileStore,
@@ -29,9 +21,7 @@ import {
 } from './fake-source.mock.js';
 import { parseIndex } from './index-file.js';
 
-const PACKAGE_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const BUILD = join(PACKAGE_ROOT, 'node_modules', '.cache', 'docsync-e2e');
-const BIN = join(BUILD, 'bin');
+let BIN = '';
 
 const NOTION_ROOT = fakeId('notion', 1);
 const AUTH = fakeId('notion', 2);
@@ -201,24 +191,7 @@ describe.skipIf(process.platform === 'win32')(
   'git-remote-docsync',
   () => {
     beforeAll(() => {
-      // Windows needs a .cmd shim and is ticket 12; here the shim is a shell script.
-      rmSync(BUILD, { recursive: true, force: true });
-      execFileSync(
-        join(PACKAGE_ROOT, 'node_modules', '.bin', 'tsc'),
-        ['-p', 'tsconfig.e2e.json', '--outDir', BUILD],
-        {
-          cwd: PACKAGE_ROOT,
-          stdio: 'inherit',
-        },
-      );
-      writeFileSync(join(BUILD, 'package.json'), '{ "type": "module" }\n');
-      mkdirSync(BIN, { recursive: true });
-      const shim = join(BIN, 'git-remote-docsync');
-      writeFileSync(
-        shim,
-        `#!/bin/sh\nexec "${process.execPath}" "${join(BUILD, 'helper', 'fake-helper.mock.js')}" "$@"\n`,
-      );
-      chmodSync(shim, 0o755);
+      BIN = buildFakeHelper('docsync-e2e');
     }, 120_000);
 
     afterEach(() => {
