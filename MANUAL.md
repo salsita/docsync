@@ -411,7 +411,10 @@ below.
 | bookmark, embed, synced block, database, columns, table of contents, breadcrumb, button, everything else | placeholder                                                                                                            |
 
 Inline: bold, italic, strikethrough, code, links as in GFM; italic is
-written `_like this_`, bold `**like this**`. Underline is `<u>…</u>`. Text and
+written `_like this_`, bold `**like this**`. Bold italic nests as `**_like
+this_**`. Table cells are padded by display width, so an emoji or a CJK
+ideograph counts as two columns; that is how Prettier measures, and it is
+what keeps a formatted table identical to a fetched one. Underline is `<u>…</u>`. Text and
 background colours are `<span data-color="red">…</span>`. These are preserved
 so that a round trip does not strip them. A line break inside one block is a
 backslash at the end of the line. Push also accepts `*italic*` and the

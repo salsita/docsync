@@ -32,3 +32,25 @@ test keeps it that way.
 
 `pnpm check` green, the Prettier test passes, and the manual's inline rules
 match what the snapshots show.
+
+## Outcome
+
+Landed 2026-09-03 in one agent commit (`f6e484e`). `pnpm check` green,
+1029 tests.
+
+- Italic `_x_`, hard break as trailing backslash, both old spellings still
+  parsed, with tests in each direction. Bold italic now nests as `**_x_**`,
+  which Prettier leaves alone; a spelling change in the snapshots only.
+- One change beyond the ticket's two: **table padding by display width**.
+  Prettier counts screen columns, remark counted UTF-16 units, so a CJK or
+  emoji cell was re-padded on save. Fixed with `string-width` (pinned) as
+  remark-gfm's `stringLength`; a new runtime dependency, the first besides
+  the Markdown stack. Manual §6 says so now.
+- `src/markdown.prettier.test.ts` runs Prettier 3.9.6 (pinned, dev-only,
+  imported nowhere else) over every recorded page and Doc and over the
+  hand-written `src/dialect.mock.ts`, which the round-trip test shares so
+  the two cannot drift. Runs of two or more spaces inside a sentence are
+  collapsed on both sides before comparing, the one divergence the manual
+  documents.
+- Everything else already matched Prettier: escaping, markers, fences,
+  headings, links, placeholders.
