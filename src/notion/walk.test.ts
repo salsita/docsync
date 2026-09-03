@@ -65,7 +65,8 @@ describe('walkRoot', () => {
     expect(page.id).toBe(ROOT_ID);
     expect(page.ref).toEqual({ source: 'notion', id: ROOT_ID });
     expect(page.lastEditedTime).toMatch(/^\d{4}-\d\d-\d\dT/);
-    expect(page.lastEditedBy).toBe('2e924337-300b-4281-b820-a7ff207370b1');
+    // The integration itself, since ticket 06's smoke test created a page here.
+    expect(page.lastEditedBy).toBe('3cf715cb-eb08-81a6-ba7b-0027692af2c9');
   });
 
   it('carries each page’s blocks along', async () => {
