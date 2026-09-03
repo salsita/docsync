@@ -504,10 +504,11 @@ cannot undo this. Caveats:
   breaks are backslashes, but it does change a fenced code block whose
   content has trailing spaces. That is the block's content, and it pushes.
 
-Placeholders round-trip. Moving or deleting one moves or deletes the block.
-Editing inside one is not possible.
+Placeholders round-trip. Deleting one deletes the block; editing or moving
+one is refused, since the block cannot be recreated.
 
-An empty paragraph has no Markdown form, so a push removes it.
+An empty paragraph has no Markdown form. It shows as blank lines on fetch,
+survives a push that does not touch it, and cannot be created by one.
 
 ---
 
@@ -589,10 +590,16 @@ what to do with each:
   dialect (bold, italic, strikethrough, underline, code, link) touches only
   that attribute on that span. Everything else in the block survives.
 - An **inserted block** is created at its position; a **deleted block** is
-  deleted.
+  deleted. Notion can only append *after* a block, so a block inserted at the
+  very start of a page or of a list is written together with a copy of the
+  block that used to be first, and that original is deleted: one block loses
+  its id and comments per prepend.
 - A **moved block** is a deletion and an insertion, because neither source
   can move a block. It arrives at its new place as a new block: a new id on
-  Notion, and detached comments on both.
+  Notion, and detached comments on both. The same happens to a block you
+  rewrote so far that less than half its text survives, unless it is the
+  only block replaced at that spot; a paragraph rewritten in place keeps its
+  id.
 - A block whose **type changed** (a paragraph made a heading) is a style
   change on Google Docs and a delete-and-create on Notion, which cannot
   change a block's type.
@@ -600,9 +607,13 @@ what to do with each:
 What is lost, per source:
 
 - **Notion:** formatting on the characters you rewrote; the id and comments
-  of a moved block or a block whose type changed. A block the API cannot
-  create (bookmark, embed, synced block, column list, …) survives untouched;
-  editing its placeholder is refused, deleting it deletes the block. A block
+  of a moved block or a block whose type changed. An edit writes the block's
+  merged runs together with the attributes the dialect owns (colour, checked
+  state, code language, callout icon, table header flags). A block the API
+  cannot create (bookmark, embed, synced block, column list, …) survives
+  untouched; editing or moving its placeholder is refused, deleting it
+  deletes the block. A page pushed from a checkout that has no base version
+  of it is refused: fetch, merge, push again. A block
   with more than a hundred rich-text runs keeps its text but loses the
   formatting past the ninety-ninth run. Page-level comments, properties,
   sharing, child pages, child databases and the page id always survive.
@@ -619,8 +630,9 @@ What is lost, per source:
 - **Drive binaries:** a new revision of the same file is uploaded.
   Everything else about the file is untouched.
 
-The push report says how much was touched: `updated (3 blocks changed,
-41 kept)`. A document whose live version does not match the base is refused
+The push report says how much was touched: `updated  Specs/Auth.md  (3
+blocks changed, 41 kept)`, where changed counts updated, inserted and
+deleted blocks. A document whose live version does not match the base is refused
 with "the source changed": fetch, merge, push again.
 
 ### Conflicts

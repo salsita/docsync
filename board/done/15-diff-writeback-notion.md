@@ -65,3 +65,37 @@ Nothing is written into the Markdown to make this possible.
 `pnpm check` green; the smoke script proves a comment on an untouched block
 survives; manual §7 says what survives and what does not, per the table
 written at dispatch.
+
+## Outcome
+
+Landed 2026-09-03 in seven agent commits (`d7cab56` … `ba520bc`, `a44c0c8`)
+plus the landing commit. `pnpm check` green, 1110 tests. The smoke script
+ran once against a page it created and archived: a comment on one block
+survived a push that updated, inserted and deleted other blocks; 5 of 6
+block ids kept.
+
+Deviations and findings:
+
+- **Notion cannot insert before a block.** The children endpoint takes only
+  `after`, so a prepend is written as the new block plus a rewritten copy of
+  the old first block, and the original is deleted. One id lost per prepend.
+  Manual §7 says so.
+- **Pairing fallback.** Git's 50% similarity threshold made a short block
+  (`Two.` → `Two, edited.`) a delete and insert. Added at review: when
+  exactly one removed and one inserted block of the same type remain in a
+  hunk, they pair as an update. Losses remain only inside hunks with several
+  candidates of the same type.
+- `flattenBlocks` turns mdast into the blocks a source holds (one per list
+  item, table rows as children, attribute comments folded in) so ops line up
+  positionally with live blocks. Text diff tokenises with `Intl.Segmenter`
+  (CJK, emoji) and coalesces a rewritten stretch into one delete + insert.
+- The live-equals-base check compares both sides after a parse and
+  stringify, because the callout marker is written unescaped and re-parses
+  escaped.
+- A modified page with no `previousText` is refused, no fallback to
+  `replaceBody`; `replaceBody` remains for page creation and the second
+  pass that fills links on newly created pages.
+- Untouched empty paragraphs and placeholder blocks now survive a push;
+  editing or moving a placeholder is refused. Manual §6 and §7 updated.
+- The agent piped one smoke run through `tail`, against the board rule; it
+  ran once and cleaned up. Repeated in the dispatch brief next time.
