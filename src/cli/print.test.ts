@@ -117,6 +117,34 @@ describe('formatPushReport', () => {
     );
   });
 
+  it('says how much of a patched document the push touched', () => {
+    const out = formatPushReport(
+      pushed({
+        documents: [
+          {
+            path: 'Specs/Auth.md',
+            title: 'Auth',
+            action: 'updated',
+            blocks: { kept: 41, updated: 2, inserted: 1, deleted: 0 },
+          },
+          {
+            path: 'Specs/One.md',
+            title: 'One',
+            action: 'updated',
+            blocks: { kept: 3, updated: 1, inserted: 0, deleted: 0 },
+          },
+        ],
+      }),
+    );
+
+    expect(out).toBe(
+      [
+        'updated  Specs/Auth.md  (3 blocks changed, 41 kept)',
+        'updated  Specs/One.md   (1 block changed, 3 kept)',
+      ].join('\n'),
+    );
+  });
+
   it('puts the trashed documents last, under a heading of their own', () => {
     const out = formatPushReport(
       pushed({

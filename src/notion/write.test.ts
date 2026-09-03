@@ -214,6 +214,66 @@ describe('createPage', () => {
   });
 });
 
+describe('patchBody', () => {
+  it('holds an update to the same limits an append is under', async () => {
+    const fake = api([stored('x1', 'paragraph', { paragraph: { rich_text: [] } })]);
+
+    await createNotionWriter(fake).patchBody([
+      {
+        kind: 'update',
+        id: 'x1',
+        body: {
+          paragraph: {
+            rich_text: [{ type: 'text', text: { content: 'a'.repeat(2500), link: null } }],
+            color: 'default',
+          },
+        },
+      },
+    ]);
+
+    const body = fake.bodyOf('p')[0]?.paragraph as { rich_text: RawObject[] };
+    expect(body.rich_text.map((run) => (run.text as { content: string }).content.length)).toEqual([
+      2000, 500,
+    ]);
+  });
+
+  it('performs the operations in the order it was given them', async () => {
+    const fake = api([stored('x1', 'paragraph'), stored('x2', 'paragraph')]);
+
+    await createNotionWriter(fake).patchBody([
+      { kind: 'update', id: 'x1', body: { paragraph: { rich_text: [] } } },
+      { kind: 'insert', parentId: 'p', after: 'x1', blocks: paragraphs(1) },
+      { kind: 'delete', id: 'x2' },
+    ]);
+
+    expect(fake.calls).toEqual([
+      'update:x1:{"paragraph":{"rich_text":[]}}',
+      'append:p:1:after=x1',
+      'delete:x2',
+    ]);
+    expect(fake.bodyOf('p').map((block) => block.id)).toEqual(['x1', 'b1']);
+  });
+
+  it('chunks a long insertion, each chunk behind the one before it', async () => {
+    const fake = api([stored('x1', 'paragraph')]);
+
+    await createNotionWriter(fake).patchBody([
+      { kind: 'insert', parentId: 'p', after: 'x1', blocks: paragraphs(150) },
+    ]);
+
+    expect(fake.calls).toEqual(['append:p:100:after=x1', 'append:p:50:after=b100']);
+    expect(fake.bodyOf('p')).toHaveLength(151);
+  });
+
+  it('appends at the end when it is given nothing to append after', async () => {
+    const fake = api();
+    await createNotionWriter(fake).patchBody([
+      { kind: 'insert', parentId: 'p', blocks: paragraphs(1) },
+    ]);
+    expect(fake.calls).toEqual(['append:p:1']);
+  });
+});
+
 describe('renamePage and archivePage', () => {
   it('renames', async () => {
     const fake = api();

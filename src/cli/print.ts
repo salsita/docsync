@@ -109,8 +109,24 @@ export function formatPushReport(report: PushReportFile | undefined): string {
   return [...lines, ...skippedBlock(report.skipped)].join('\n');
 }
 
+/**
+ * One document's line. An update that was applied as a patch says how much of
+ * the document it touched, which is the proof that the rest was left alone
+ * (MANUAL §7).
+ */
 function actionRow(document: PushedDocument): string[] {
-  return [document.action, document.path];
+  const blocks = document.blocks;
+  if (blocks === undefined) return [document.action, document.path];
+  const changed = blocks.updated + blocks.inserted + blocks.deleted;
+  return [
+    document.action,
+    document.path,
+    `(${plural(changed, 'block')} changed, ${blocks.kept} kept)`,
+  ];
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
 /**

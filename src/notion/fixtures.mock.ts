@@ -84,12 +84,16 @@ export function fixtureApi(): NotionApi {
 }
 
 /** The write half, which a fixture-backed API has no business performing. */
-function readOnly(): Pick<NotionApi, 'deleteBlock' | 'append' | 'createPage' | 'updatePage'> {
+function readOnly(): Pick<
+  NotionApi,
+  'deleteBlock' | 'append' | 'createPage' | 'updatePage' | 'updateBlock'
+> {
   const refuse = (name: string) => async (): Promise<never> => {
     throw new Error(`the fixture API is read-only: ${name}`);
   };
   return {
     deleteBlock: refuse('deleteBlock'),
+    updateBlock: refuse('updateBlock'),
     append: refuse('append'),
     createPage: refuse('createPage'),
     updatePage: refuse('updatePage'),

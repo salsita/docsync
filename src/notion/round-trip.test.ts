@@ -15,12 +15,16 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/index.js';
-import type { IndexEntry } from '../index-file.js';
+import { flattenBlocks } from '../diff/blocks.js';
+import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
+import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import type { NotionBlock, RawObject } from './api.js';
+import { createFakeApi } from './fake-api.mock.js';
 import { fixtureApi, fixtureBlocks, ROOT_ID } from './fixtures.mock.js';
 import { markdownToBlocks } from './from-markdown.js';
 import { fetchRoot } from './index.js';
+import { pushRoot } from './push.js';
 import { blocksToMarkdown } from './to-markdown.js';
 
 /**
@@ -155,6 +159,94 @@ async function fixtures() {
   const ids = new Map(entries.map((entry): [string, string] => [entry.path, entry.src.id]));
   return { files, pages, ids };
 }
+
+/** The frontmatter a fetch writes, with no title so that no page is read. */
+function file(id: string, body: string): string {
+  return `---\nid: notion:${id}\n---\n\n${body}`;
+}
+
+describe('the 15 patch, over the whole fixture tree', () => {
+  it('edits one paragraph of every fixture page and touches nothing else', async () => {
+    const { files, pages } = await fixtures();
+    const index: DocumentIndex = new Map(
+      files.map((one) => [one.path, one.entry as IndexEntry] as const),
+    );
+    let edited = 0;
+
+    for (const one of files) {
+      const id = one.entry.src.id;
+      const api = createFakeApi({
+        pages: [{ id, title: 'Page', blocks: structuredClone(fixtureBlocks(id)) }],
+      });
+      const from = one.path;
+      const body = blocksToMarkdown(api.bodyOf(id), { pages, from });
+
+      // The first paragraph with something in it, edited in the tree the file
+      // parses to: exactly the change a person makes in their editor.
+      const tree = parseMarkdown(body);
+      const target = flattenBlocks(tree).find(
+        (block) => block.type === 'paragraph' && block.text.trim() !== '',
+      );
+      const last = [...(target?.inline ?? [])].reverse().find((node) => node.type === 'text');
+      if (target === undefined || last === undefined) continue;
+      last.value += ' Edited.';
+      edited += 1;
+
+      const next = stringifyMarkdown(tree);
+      await pushRoot(
+        root,
+        [{ kind: 'modified', path: from, text: file(id, next), previousText: file(id, body) }],
+        createFakeCredentialProvider(),
+        index,
+        { api },
+      );
+
+      // One block written, and the page now says what the file says. Both
+      // sides go through the pipeline, as the base check does, so that the two
+      // spellings of the callout marker (MANUAL §6) compare equal.
+      expect(api.calls.filter((call) => call.startsWith('update:'))).toHaveLength(1);
+      expect(api.calls.filter((call) => /^(append|delete):/.test(call))).toEqual([]);
+      expect(
+        stringifyMarkdown(parseMarkdown(blocksToMarkdown(api.bodyOf(id), { pages, from }))),
+      ).toBe(next);
+    }
+
+    expect(edited).toBeGreaterThan(1);
+  });
+
+  it('inserts a block at the end of every fixture page and keeps the rest', async () => {
+    const { files, pages } = await fixtures();
+    const index: DocumentIndex = new Map(
+      files.map((one) => [one.path, one.entry as IndexEntry] as const),
+    );
+
+    for (const one of files) {
+      const id = one.entry.src.id;
+      const api = createFakeApi({
+        pages: [{ id, title: 'Page', blocks: structuredClone(fixtureBlocks(id)) }],
+      });
+      const from = one.path;
+      const body = blocksToMarkdown(api.bodyOf(id), { pages, from });
+      const next = stringifyMarkdown(parseMarkdown(`${body}\nOne more paragraph.\n`));
+
+      await pushRoot(
+        root,
+        [{ kind: 'modified', path: from, text: file(id, next), previousText: file(id, body) }],
+        createFakeCredentialProvider(),
+        index,
+        { api },
+      );
+
+      expect(api.calls.filter((call) => call.startsWith('append:'))).toHaveLength(1);
+      expect(api.calls.filter((call) => /^(update|delete):/.test(call))).toEqual([]);
+      // Through the pipeline on both sides: an empty paragraph the dialect
+      // cannot write is still on the page, and writes blank lines nobody typed.
+      expect(
+        stringifyMarkdown(parseMarkdown(blocksToMarkdown(api.bodyOf(id), { pages, from }))),
+      ).toBe(next);
+    }
+  });
+});
 
 describe('the 05 + 06 round trip', () => {
   it('converts every fixture page back to the blocks it came from', async () => {

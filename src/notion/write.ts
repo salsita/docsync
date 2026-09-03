@@ -14,6 +14,7 @@
  */
 import type { NotionApi, RawObject } from './api.js';
 import type { BlockInput } from './from-markdown.js';
+import type { PatchOperation } from './patch.js';
 
 /** Children per `blocks.children.append` request. */
 const CHUNK = 100;
@@ -32,8 +33,14 @@ const COMPUTED = ['plain_text', 'href'] as const;
 
 /** The write operations, over an injected API so tests need no network. */
 export interface NotionWriter {
-  /** Deletes everything but the child pages, then writes the body back. */
+  /**
+   * Deletes everything but the child pages, then writes the body back. Used by
+   * `createPage` alone now that a modified page is patched (MANUAL §7); a fresh
+   * page has nothing to diff against.
+   */
   replaceBody(pageId: string, blocks: readonly BlockInput[]): Promise<void>;
+  /** Performs a plan from `patch.ts`, in the order it put the operations in. */
+  patchBody(operations: readonly PatchOperation[]): Promise<void>;
   /** Creates a page under a parent page. Answers the new page's id. */
   createPage(parentId: string, title: string, blocks: readonly BlockInput[]): Promise<string>;
   /** Changes a page's title. */
@@ -47,13 +54,22 @@ export function createNotionWriter(api: NotionApi): NotionWriter {
    * Appends a run of blocks under one parent, in chunks, following each
    * request with the children it was too deep to carry.
    */
-  async function appendAll(parentId: string, blocks: readonly BlockInput[]): Promise<void> {
+  async function appendAll(
+    parentId: string,
+    blocks: readonly BlockInput[],
+    after?: string,
+  ): Promise<void> {
+    let behind = after;
     for (let at = 0; at < blocks.length; at += CHUNK) {
       const chunk = blocks.slice(at, at + CHUNK).map((block) => layout(block, INLINE_DEPTH));
       const created = await api.append(
         parentId,
         chunk.map((one) => one.payload),
+        behind,
       );
+      // The next chunk goes behind the last block this one made, so that a long
+      // insertion keeps its order.
+      behind = created.at(-1)?.id ?? behind;
 
       for (const [index, one] of chunk.entries()) {
         const top = created[index];
@@ -89,6 +105,18 @@ export function createNotionWriter(api: NotionApi): NotionWriter {
       await appendAll(pageId, blocks);
     },
 
+    async patchBody(operations) {
+      for (const operation of operations) {
+        if (operation.kind === 'update') {
+          await api.updateBlock(operation.id, updateBody(operation.body));
+        } else if (operation.kind === 'insert') {
+          await appendAll(operation.parentId, operation.blocks, operation.after);
+        } else {
+          await api.deleteBlock(operation.id);
+        }
+      }
+    },
+
     async createPage(parentId, title, blocks) {
       // The body rides along with the create when the whole of it fits in one
       // request; otherwise the page is created empty and filled after, since a
@@ -114,6 +142,19 @@ export function createNotionWriter(api: NotionApi): NotionWriter {
       await api.updatePage(pageId, { archived: true });
     },
   };
+}
+
+/**
+ * An update body under the same limits an append is under: runs split at two
+ * thousand characters, and a hundred rich-text items per block. An update never
+ * carries children — a block's children are patched as blocks of their own.
+ */
+function updateBody(body: RawObject): RawObject {
+  const [type] = Object.keys(body);
+  if (type === undefined) return body;
+  const block: BlockInput = { type, [type]: body[type] };
+  const payload = layout(block, 0).payload;
+  return { [type]: payload[type] };
 }
 
 /** Children one request could not carry, and where under the block they go. */

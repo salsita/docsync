@@ -13,6 +13,7 @@
  * have bytes instead).
  */
 import type { CredentialProvider } from './auth/index.js';
+import type { BlockCounts } from './diff/blocks.js';
 import {
   describe as describeDrive,
   changedSince as driveChangedSince,
@@ -103,6 +104,12 @@ export interface PushedDocument {
   path: string;
   title: string;
   action: 'created' | 'updated' | 'renamed' | 'trashed';
+  /**
+   * How much of the document the push touched, for an update that was applied
+   * as a patch (MANUAL §7). Absent for a creation, a rename and a deletion, and
+   * for a source that does not patch yet.
+   */
+  blocks?: BlockCounts;
 }
 
 export type PushReport = PushedDocument[];

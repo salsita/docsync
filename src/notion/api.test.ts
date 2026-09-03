@@ -67,6 +67,11 @@ function fakeClient(options: FakeOptions = {}) {
         maybeFail();
         return { object: 'block', id: block_id };
       },
+      async update({ block_id, ...body }) {
+        calls.push(`update:${block_id}:${JSON.stringify(body)}`);
+        maybeFail();
+        return { object: 'block', id: block_id };
+      },
       children: {
         async list({ block_id, start_cursor }) {
           calls.push(`children:${block_id}:${start_cursor ?? ''}`);
@@ -81,8 +86,10 @@ function fakeClient(options: FakeOptions = {}) {
             next_cursor: more ? String(index + 1) : null,
           };
         },
-        async append({ block_id, children }) {
-          calls.push(`append:${block_id}:${children.length}`);
+        async append({ block_id, children, after }) {
+          calls.push(
+            `append:${block_id}:${children.length}${after === undefined ? '' : `:after=${after}`}`,
+          );
           maybeFail();
           return { results: children.map((_child, at) => block(`${block_id}-${at}`, 'paragraph')) };
         },
@@ -262,6 +269,24 @@ describe('createNotionApi', () => {
     expect(created.map((one) => one.id)).toEqual(['p-0']);
   });
 
+  it('appends after a block that is already there', async () => {
+    const { client, calls } = fakeClient({});
+    await createNotionApi(client, noSleep).append(
+      'p',
+      [{ type: 'paragraph', paragraph: {} }],
+      'b7',
+    );
+    expect(calls).toEqual(['append:p:1:after=b7']);
+  });
+
+  it('updates one block with its type-specific body', async () => {
+    const { client, calls } = fakeClient({});
+    await createNotionApi(client, noSleep).updateBlock('b1', {
+      paragraph: { rich_text: [], color: 'red' },
+    });
+    expect(calls).toEqual(['update:b1:{"paragraph":{"rich_text":[],"color":"red"}}']);
+  });
+
   it('answers no blocks when the append response carries none', async () => {
     const client = fakeClient({}).client;
     client.blocks.children.append = async () => ({});
@@ -324,6 +349,7 @@ describe('createNotionClient', () => {
     expect(typeof client.users.retrieve).toBe('function');
     expect(typeof client.blocks.delete).toBe('function');
     expect(typeof client.blocks.children.append).toBe('function');
+    expect(typeof client.blocks.update).toBe('function');
     expect(typeof client.pages.create).toBe('function');
     expect(typeof client.pages.update).toBe('function');
     expect(NOTION_VERSION).toBe('2025-09-03');

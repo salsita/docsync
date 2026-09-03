@@ -68,11 +68,40 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
     return block.children;
   }
 
+  /**
+   * The fields Notion computes for a rich-text run and a request may not carry
+   * (`write.ts` strips them), filled in the way Notion fills them: a run's
+   * `plain_text` is its content, and its `href` is its link. A mention keeps
+   * whatever it was sent, since only Notion knows what a mention is called.
+   */
+  function computed(value: unknown): unknown {
+    if (!Array.isArray(value)) return value;
+    return value.map((raw) => {
+      const run = { ...(raw as RawObject) };
+      const text = run.text as { content?: string; link?: { url: string } | null } | undefined;
+      const equation = run.equation as { expression?: string } | undefined;
+      const content = text?.content ?? equation?.expression;
+      if (typeof content === 'string') run.plain_text = content;
+      run.href = text?.link?.url ?? run.href ?? null;
+      return run;
+    });
+  }
+
+  /** One block body with the computed fields of every run it holds filled in. */
+  function withComputed(body: RawObject): RawObject {
+    const out = { ...body };
+    if ('rich_text' in out) out.rich_text = computed(out.rich_text);
+    if ('caption' in out) out.caption = computed(out.caption);
+    if (Array.isArray(out.cells))
+      out.cells = (out.cells as unknown[]).map((cell) => computed(cell));
+    return out;
+  }
+
   /** Turns one request payload into stored blocks, children and all. */
   function create(payload: RawObject): NotionBlock {
     nextBlock += 1;
     const type = String(payload.type);
-    const sent = { ...((payload[type] as RawObject | undefined) ?? {}) };
+    const sent = withComputed({ ...((payload[type] as RawObject | undefined) ?? {}) });
     const nested = Array.isArray(sent.children) ? (sent.children as RawObject[]) : [];
     delete sent.children;
 
@@ -128,15 +157,30 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
       if (found) found.list.splice(found.index, 1);
     },
 
-    async append(id, children) {
-      calls.push(`append:${id}:${children.length}`);
+    async append(id, children, after) {
+      calls.push(`append:${id}:${children.length}${after === undefined ? '' : `:after=${after}`}`);
       appends.push([...children] as RawObject[]);
       const list = listOf(id);
       if (!list) throw new Error(`no block ${id}`);
       const created = children.map((child) => create(child as RawObject));
-      list.push(...created);
+      // `after` puts the new blocks directly behind that child, as the API does;
+      // without it they go at the end.
+      const at = after === undefined ? -1 : list.findIndex((block) => block.id === after);
+      if (at < 0) list.push(...created);
+      else list.splice(at + 1, 0, ...created);
       // The API answers only the blocks it made at the top of the request.
       return created.map((block) => ({ ...block, children: undefined }));
+    },
+
+    async updateBlock(id, body) {
+      calls.push(`update:${id}:${JSON.stringify(body)}`);
+      const found = find(id);
+      if (!found) throw new Error(`no block ${id}`);
+      const block = found.list[found.index] as NotionBlock;
+      // The API replaces the type-specific body and cannot change the type.
+      const sent = withComputed((body[block.type] ?? {}) as RawObject);
+      block[block.type] = { ...((block[block.type] ?? {}) as RawObject), ...sent };
+      return { object: 'block', id };
     },
 
     async createPage(parentId, title, children) {

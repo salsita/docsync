@@ -58,9 +58,16 @@ export interface NotionClient {
   users: { retrieve(args: { user_id: string }): Promise<unknown> };
   blocks: {
     delete(args: { block_id: string }): Promise<unknown>;
+    /**
+     * The type-specific body of one block, replaced. The API will not change a
+     * block's *type*, which is why a type change is a delete and an insert
+     * (MANUAL §7).
+     */
+    update(args: { block_id: string } & RawObject): Promise<unknown>;
     children: {
       list(args: { block_id: string; start_cursor?: string; page_size?: number }): Promise<unknown>;
-      append(args: { block_id: string; children: RawObject[] }): Promise<unknown>;
+      /** `after` is the id of the block the new ones go behind. */
+      append(args: { block_id: string; children: RawObject[]; after?: string }): Promise<unknown>;
     };
   };
 }
@@ -77,8 +84,14 @@ export interface NotionApi {
   children(id: string): Promise<NotionBlock[]>;
   /** Archives one block. Deleting a `child_page` block archives the page. */
   deleteBlock(id: string): Promise<void>;
-  /** Appends blocks under `id`; answers the blocks it created, with their ids. */
-  append(id: string, children: readonly RawObject[]): Promise<NotionBlock[]>;
+  /**
+   * Appends blocks under `id`; answers the blocks it created, with their ids.
+   * `after` puts them directly behind that child instead of at the end, which
+   * is how a diff-based push inserts without rewriting the neighbours.
+   */
+  append(id: string, children: readonly RawObject[], after?: string): Promise<NotionBlock[]>;
+  /** Replaces one block's type-specific body. It cannot change the type. */
+  updateBlock(id: string, body: RawObject): Promise<RawObject>;
   /** Creates a page under `parentId`, optionally with a body. */
   createPage(parentId: string, title: string, children?: readonly RawObject[]): Promise<RawObject>;
   /** Renames a page, archives it, or both. */
@@ -165,11 +178,18 @@ export function createNotionApi(client: NotionClient, options: NotionApiOptions 
     async deleteBlock(id) {
       await call(() => client.blocks.delete({ block_id: id }));
     },
-    async append(id, children) {
+    async append(id, children, after) {
       const response = (await call(() =>
-        client.blocks.children.append({ block_id: id, children: [...children] }),
+        client.blocks.children.append({
+          block_id: id,
+          children: [...children],
+          ...(after === undefined ? {} : { after }),
+        }),
       )) as { results?: RawObject[] };
       return (response.results ?? []) as NotionBlock[];
+    },
+    async updateBlock(id, body) {
+      return (await call(() => client.blocks.update({ block_id: id, ...body }))) as RawObject;
     },
     async createPage(parentId, title, children) {
       return (await call(() =>
