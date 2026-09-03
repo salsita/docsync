@@ -64,7 +64,7 @@ const answer: number = 42;
 console.log(\`answer is \${answer}\`);
 \`\`\`
 
-\`\`\`javascript
+\`\`\`
 plain code block with no language
 \`\`\`
 

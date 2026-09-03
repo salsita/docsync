@@ -57,13 +57,13 @@ A paragraph in Georgia at 14 points.
   - Nested bullet
     - Deeper bullet
 - Bullet three with **bold**
-- Numbered one
-- Numbered two
-  - Nested numbered
-- Numbered three
 
-Two lines in one paragraph,
+1. Numbered one
+2. Numbered two
+   1. Nested numbered
+3. Numbered three
 
+Two lines in one paragraph,  
 separated by a soft line break.
 
 | **Name**  | **Value**  |
@@ -83,6 +83,8 @@ Paragraph before a page break.
 <!-- docsync:pagebreak -->
 
 Paragraph after a page break.
+
+This line contains double  space.
 
 Characters that need escaping in Markdown: \\* \\_ \\\` # \\[brackets] \\<angle> {braces} | ^ \\~ \\ and a trailing backslash \\\\
 

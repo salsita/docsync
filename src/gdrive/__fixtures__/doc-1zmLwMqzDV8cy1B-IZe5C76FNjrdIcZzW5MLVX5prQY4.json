@@ -1027,7 +1027,9 @@
           },
           "bullet": {
             "listId": "kix.list.1",
-            "textStyle": {}
+            "textStyle": {
+              "underline": false
+            }
           }
         }
       },
@@ -1112,7 +1114,9 @@
           },
           "bullet": {
             "listId": "kix.list.1",
-            "textStyle": {}
+            "textStyle": {
+              "underline": false
+            }
           }
         }
       },
@@ -1196,9 +1200,11 @@
             }
           },
           "bullet": {
-            "listId": "kix.list.2",
+            "listId": "kix.list.1",
             "nestingLevel": 1,
-            "textStyle": {}
+            "textStyle": {
+              "underline": false
+            }
           }
         }
       },
@@ -1282,9 +1288,11 @@
             }
           },
           "bullet": {
-            "listId": "kix.list.3",
+            "listId": "kix.list.1",
             "nestingLevel": 2,
-            "textStyle": {}
+            "textStyle": {
+              "underline": false
+            }
           }
         }
       },
@@ -1451,11 +1459,11 @@
               "dashStyle": "SOLID"
             },
             "indentFirstLine": {
-              "magnitude": 12,
+              "magnitude": 18,
               "unit": "PT"
             },
             "indentStart": {
-              "magnitude": 30,
+              "magnitude": 36,
               "unit": "PT"
             },
             "shading": {
@@ -1463,8 +1471,10 @@
             }
           },
           "bullet": {
-            "listId": "kix.list.4",
-            "textStyle": {}
+            "listId": "kix.nzb29bvuak1b",
+            "textStyle": {
+              "underline": false
+            }
           }
         }
       },
@@ -1536,11 +1546,11 @@
               "dashStyle": "SOLID"
             },
             "indentFirstLine": {
-              "magnitude": 12,
+              "magnitude": 18,
               "unit": "PT"
             },
             "indentStart": {
-              "magnitude": 30,
+              "magnitude": 36,
               "unit": "PT"
             },
             "shading": {
@@ -1548,8 +1558,10 @@
             }
           },
           "bullet": {
-            "listId": "kix.list.4",
-            "textStyle": {}
+            "listId": "kix.nzb29bvuak1b",
+            "textStyle": {
+              "underline": false
+            }
           }
         }
       },
@@ -1621,11 +1633,11 @@
               "dashStyle": "SOLID"
             },
             "indentFirstLine": {
-              "magnitude": 42,
+              "magnitude": 54,
               "unit": "PT"
             },
             "indentStart": {
-              "magnitude": 60,
+              "magnitude": 72,
               "unit": "PT"
             },
             "shading": {
@@ -1633,9 +1645,11 @@
             }
           },
           "bullet": {
-            "listId": "kix.list.5",
+            "listId": "kix.nzb29bvuak1b",
             "nestingLevel": 1,
-            "textStyle": {}
+            "textStyle": {
+              "underline": false
+            }
           }
         }
       },
@@ -1707,11 +1721,11 @@
               "dashStyle": "SOLID"
             },
             "indentFirstLine": {
-              "magnitude": 12,
+              "magnitude": 18,
               "unit": "PT"
             },
             "indentStart": {
-              "magnitude": 30,
+              "magnitude": 36,
               "unit": "PT"
             },
             "shading": {
@@ -1719,94 +1733,23 @@
             }
           },
           "bullet": {
-            "listId": "kix.list.4",
-            "textStyle": {}
+            "listId": "kix.nzb29bvuak1b",
+            "textStyle": {
+              "underline": false
+            }
           }
         }
       },
       {
         "startIndex": 445,
-        "endIndex": 473,
-        "paragraph": {
-          "elements": [
-            {
-              "startIndex": 445,
-              "endIndex": 473,
-              "textRun": {
-                "content": "Two lines in one paragraph,\n",
-                "textStyle": {}
-              }
-            }
-          ],
-          "paragraphStyle": {
-            "namedStyleType": "NORMAL_TEXT",
-            "direction": "LEFT_TO_RIGHT",
-            "borderBetween": {
-              "color": {},
-              "width": {
-                "unit": "PT"
-              },
-              "padding": {
-                "unit": "PT"
-              },
-              "dashStyle": "SOLID"
-            },
-            "borderTop": {
-              "color": {},
-              "width": {
-                "unit": "PT"
-              },
-              "padding": {
-                "unit": "PT"
-              },
-              "dashStyle": "SOLID"
-            },
-            "borderBottom": {
-              "color": {},
-              "width": {
-                "unit": "PT"
-              },
-              "padding": {
-                "unit": "PT"
-              },
-              "dashStyle": "SOLID"
-            },
-            "borderLeft": {
-              "color": {},
-              "width": {
-                "unit": "PT"
-              },
-              "padding": {
-                "unit": "PT"
-              },
-              "dashStyle": "SOLID"
-            },
-            "borderRight": {
-              "color": {},
-              "width": {
-                "unit": "PT"
-              },
-              "padding": {
-                "unit": "PT"
-              },
-              "dashStyle": "SOLID"
-            },
-            "shading": {
-              "backgroundColor": {}
-            }
-          }
-        }
-      },
-      {
-        "startIndex": 473,
         "endIndex": 505,
         "paragraph": {
           "elements": [
             {
-              "startIndex": 473,
+              "startIndex": 445,
               "endIndex": 505,
               "textRun": {
-                "content": "separated by a soft line break.\n",
+                "content": "Two lines in one paragraph,\u000bseparated by a soft line break.\n",
                 "textStyle": {}
               }
             }
@@ -3186,12 +3129,85 @@
       },
       {
         "startIndex": 648,
-        "endIndex": 762,
+        "endIndex": 682,
         "paragraph": {
           "elements": [
             {
               "startIndex": 648,
-              "endIndex": 762,
+              "endIndex": 682,
+              "textRun": {
+                "content": "This line contains double  space.\n",
+                "textStyle": {}
+              }
+            }
+          ],
+          "paragraphStyle": {
+            "namedStyleType": "NORMAL_TEXT",
+            "direction": "LEFT_TO_RIGHT",
+            "borderBetween": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderTop": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderBottom": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderLeft": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "borderRight": {
+              "color": {},
+              "width": {
+                "unit": "PT"
+              },
+              "padding": {
+                "unit": "PT"
+              },
+              "dashStyle": "SOLID"
+            },
+            "shading": {
+              "backgroundColor": {}
+            }
+          }
+        }
+      },
+      {
+        "startIndex": 682,
+        "endIndex": 796,
+        "paragraph": {
+          "elements": [
+            {
+              "startIndex": 682,
+              "endIndex": 796,
               "textRun": {
                 "content": "Characters that need escaping in Markdown: * _ ` # [brackets] <angle> {braces} | ^ ~ \\ and a trailing backslash \\\n",
                 "textStyle": {}
@@ -3258,13 +3274,13 @@
         }
       },
       {
-        "startIndex": 762,
-        "endIndex": 779,
+        "startIndex": 796,
+        "endIndex": 813,
         "paragraph": {
           "elements": [
             {
-              "startIndex": 762,
-              "endIndex": 779,
+              "startIndex": 796,
+              "endIndex": 813,
               "textRun": {
                 "content": "Final paragraph.\n",
                 "textStyle": {}
@@ -5775,9 +5791,168 @@
           }
         ]
       }
+    },
+    "kix.nzb29bvuak1b": {
+      "listProperties": {
+        "nestingLevels": [
+          {
+            "bulletAlignment": "START",
+            "glyphType": "DECIMAL",
+            "glyphFormat": "%0.",
+            "indentFirstLine": {
+              "magnitude": 18,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 36,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          },
+          {
+            "bulletAlignment": "START",
+            "glyphType": "ALPHA",
+            "glyphFormat": "%1.",
+            "indentFirstLine": {
+              "magnitude": 54,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 72,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          },
+          {
+            "bulletAlignment": "END",
+            "glyphType": "ROMAN",
+            "glyphFormat": "%2.",
+            "indentFirstLine": {
+              "magnitude": 90,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 108,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          },
+          {
+            "bulletAlignment": "START",
+            "glyphType": "DECIMAL",
+            "glyphFormat": "%3.",
+            "indentFirstLine": {
+              "magnitude": 126,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 144,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          },
+          {
+            "bulletAlignment": "START",
+            "glyphType": "ALPHA",
+            "glyphFormat": "%4.",
+            "indentFirstLine": {
+              "magnitude": 162,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 180,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          },
+          {
+            "bulletAlignment": "END",
+            "glyphType": "ROMAN",
+            "glyphFormat": "%5.",
+            "indentFirstLine": {
+              "magnitude": 198,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 216,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          },
+          {
+            "bulletAlignment": "START",
+            "glyphType": "DECIMAL",
+            "glyphFormat": "%6.",
+            "indentFirstLine": {
+              "magnitude": 234,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 252,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          },
+          {
+            "bulletAlignment": "START",
+            "glyphType": "ALPHA",
+            "glyphFormat": "%7.",
+            "indentFirstLine": {
+              "magnitude": 270,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 288,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          },
+          {
+            "bulletAlignment": "END",
+            "glyphType": "ROMAN",
+            "glyphFormat": "%8.",
+            "indentFirstLine": {
+              "magnitude": 306,
+              "unit": "PT"
+            },
+            "indentStart": {
+              "magnitude": 324,
+              "unit": "PT"
+            },
+            "textStyle": {
+              "underline": false
+            },
+            "startNumber": 1
+          }
+        ]
+      }
     }
   },
-  "revisionId": "ANLCKQleHbj9PGsIzZ_6EKHACUuFYrs5SD_tAMISR5rGXrG6hMF5vFGTygnZMIc4tXBJYeuswVx04GkpjZfiFfn-Wd1lpk5FaxmAPasG8g",
+  "revisionId": "ANLCKQnyOjJ4-SM1UhBHWu8oX6ZX80Qqp1E8ERZxZuMgpusei31Gfzu3XCFwfaEaD3IJ4pmSxuLK2XwAVyEI3XAMxD9reOY4k0Jm1z_B3g",
   "suggestionsViewMode": "PREVIEW_WITHOUT_SUGGESTIONS",
   "inlineObjects": {
     "kix.655cbf6q1wjw": {
@@ -5785,7 +5960,7 @@
       "inlineObjectProperties": {
         "embeddedObject": {
           "imageProperties": {
-            "contentUri": "https://lh7-rt.googleusercontent.com/docsz/AD_4nXcC-85lphTR5Jz6S_fRLl8rJckUtfAcN-a8ohBmD1hBkjOuaRq0vDHlrVWC5bfq1c_HiI_piHT0lwc2SzM7UcTvq4mKePPpksbrSXCyxYgxK1__Zq8si6O0dZq_OY2y3mL0Ig0_YGoEpi7rdceVqOQQ2MAgXL5GcxfyJVoqNo0QhMMNsw=s2048?key=inYg-OPdxQ0aQkJepuaB5A",
+            "contentUri": "https://lh7-rt.googleusercontent.com/docsz/AD_4nXfT8EHlZEr43MrcyocxCtR_BrvKE-lAHB0udQJHhOB4PnB1uX8yp_wmjVgxEyV-rhw_W2-bmpCdLxjev8_5HiA2kkCNzFmjmDa8csxtDIxQp7mzYfRbaJNbDGdq8OGse6nRHqo5E_UKGhndYkeNDMY7uNlAkqZiUtgNrGnoDBMKQy240Q=s2048?key=inYg-OPdxQ0aQkJepuaB5A",
             "cropProperties": {}
           },
           "embeddedObjectBorder": {

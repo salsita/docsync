@@ -1,7 +1,10 @@
 {
   "rootId": "13bDdq9dYrAR1E23oS2cLV__S71xIagPt",
   "rootName": "Docsync test",
-  "folders": ["13bDdq9dYrAR1E23oS2cLV__S71xIagPt", "1RoSAIyz2ktweMqiOBnlnl6AsXClvD3Wo"],
+  "folders": [
+    "13bDdq9dYrAR1E23oS2cLV__S71xIagPt",
+    "1RoSAIyz2ktweMqiOBnlnl6AsXClvD3Wo"
+  ],
   "docs": [
     "1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4",
     "1bTJ2HHyIP0ZqnRZuOpOo1q3tZLErUtTNIAVAbk05lL8",

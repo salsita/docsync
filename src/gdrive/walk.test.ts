@@ -63,7 +63,7 @@ describe('walkRoot over the recorded tree', () => {
       id: '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4',
       ref: { source: 'gdocs', id: '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4' },
       kind: 'doc',
-      modifiedTime: '2026-09-03T07:54:46.926Z',
+      modifiedTime: '2026-09-03T14:28:24.494Z',
     });
     expect(elements?.lastModifyingUser?.emailAddress).toBe('jirist@salsitasoft.com');
 

@@ -71,11 +71,23 @@ describe('fetchRoot', () => {
 
   it('names the last editor from the user cache', async () => {
     const { files } = await fetch();
+    const blocks = files.find((file) => file.path.endsWith('Blocks.md'));
 
-    expect(files[0]?.editor).toEqual({
+    expect(blocks?.editor).toEqual({
       id: '2e924337-300b-4281-b820-a7ff207370b1',
       name: 'Jiří Staniševský',
       email: 'jirist@salsitasoft.com',
+    });
+  });
+
+  it('names a bot editor too, without an email', async () => {
+    const { files } = await fetch();
+    // The root page was last touched by the docsync integration itself, when
+    // ticket 06's smoke test created a page under it.
+    expect(files[0]?.editor).toEqual({
+      id: '3cf715cb-eb08-81a6-ba7b-0027692af2c9',
+      name: 'docsync',
+      email: undefined,
     });
   });
 
@@ -87,8 +99,9 @@ describe('fetchRoot', () => {
       },
     };
     const { files } = await fetch(undefined, api);
+    const blocks = files.find((file) => file.path.endsWith('Blocks.md'));
 
-    expect(files[0]?.editor).toEqual({
+    expect(blocks?.editor).toEqual({
       id: '2e924337-300b-4281-b820-a7ff207370b1',
       name: undefined,
       email: undefined,
