@@ -467,7 +467,7 @@ roman numerals are not represented either.
 | bold, italic, strikethrough, code font        | as in GFM                                                                                             |
 | underline                                     | `<u>…</u>`                                                                                            |
 | text colour, highlight, font, size, alignment | not represented. See write-back limitations (§7).                                                     |
-| comments, suggestions                         | not in the body. They stay at the source.                                                             |
+| comments, suggestions                         | not in the body; open ones in the sidecar `<title>.comments.md` ("Comments and suggestions" below)       |
 
 #### Placeholders
 
@@ -509,6 +509,69 @@ one is refused, since the block cannot be recreated.
 
 An empty paragraph has no Markdown form. It shows as blank lines on fetch,
 survives a push that does not touch it, and cannot be created by one.
+
+### Comments and suggestions
+
+Open comment threads and pending suggestions are pulled into a sidecar file
+beside the document, `<title>.comments.md`, which exists only while the
+document has at least one. It is **read-only**: a push that changes, adds or
+removes one is refused before any source is touched, with the `git checkout`
+command that restores it. Replying, resolving, accepting and rejecting stay
+in the source's own UI (§12). The body file never carries a comment.
+
+The sidecar is Markdown, one `##` heading per thread, in the order the
+anchors appear in the body:
+
+```markdown
+---
+document: gdocs:1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4
+fetched: 2026-09-03T16:31:07Z
+---
+
+## AAACFLfYEtk — comment
+
+> Paragraph before a ==page break==.
+
+in: Heading six
+
+**Jiří Staniševský** · 2026-09-03 07:55
+Makes the page break.
+
+**Jane Client** · 2026-09-03 09:12
+Agreed, leave it.
+
+## suggest.r73ve12ed25a — suggestion
+
+in: Heading six
+
+```diff
+- Let's us collaborate on this text.
++ Let's us collaborate on the paragraph.
+```
+```
+
+- **Anchor.** The paragraph, list item, heading or table cell that contains
+  the commented text, quoted, with the commented words marked `==like
+  this==`; then `in:` and the nearest heading above it. On Notion a comment
+  belongs to a whole block, so the block is quoted without marks. When the
+  quoted text is found nowhere in the body, the bare text is quoted and
+  `in:` says `(not found)`. When it is found in two places, the first wins.
+- **Suggestion** (Google Docs only): the paragraph as it stands and as it
+  would read with the suggestion accepted, as a diff. Two suggestions in one
+  paragraph are two threads. A pure formatting suggestion is quoted with
+  `formatting only`.
+- **Entries** are author, time and text, in creation order. Deleted entries
+  are omitted.
+- **Resolved threads are not in the file.** A thread disappears from the
+  sidecar when it is resolved or deleted at the source, which the next pull
+  shows as a diff.
+- **Order** is the anchor's position in the body; threads whose anchor is
+  not found come last; ties by creation time.
+
+Notion's API reports a comment on a text selection as a comment on the
+block, and gives no time finer than the minute. A Notion integration needs
+the "read comments" capability; `docsync auth notion` says so when it is
+missing.
 
 ---
 
@@ -766,9 +829,18 @@ character (§7 "Write-back"); nothing is stored in the Markdown for it.
 
 ### Phase 4 — comment threads
 
-Pull comment threads alongside the document, push replies and resolutions.
-Comments can be client-facing, so docsync never writes a comment on its own;
-only what you author and push. File format to be designed when we get there.
+Open comment threads and pending suggestions are pulled into a read-only
+sidecar beside the document (§6 "Comments and suggestions"), so a person or
+an agent can read them in context and answer them by editing the body.
+Nothing is pushed back in this phase.
+
+**Later:** replies and resolving from the checkout. Google Docs allows both
+through the API; Notion allows replies but has no resolve call and does not
+return resolved threads. Accepting and rejecting Docs suggestions, and
+**push as suggestions**, writing a push in suggesting mode so the client
+reviews it in Docs, both need the Google Workspace Developer Preview
+Program. Comments can be client-facing, so docsync will never write a
+comment on its own; only what you author.
 
 ### Later
 
