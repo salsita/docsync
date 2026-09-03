@@ -1,0 +1,639 @@
+/**
+ * A Google Doc that lives in memory, for the round trip (ticket 08).
+ *
+ * `documents.batchUpdate` is the only part of a push that cannot be checked
+ * against a recorded fixture: the fixtures say what Google *answers*, not what
+ * it does with a request. So this is a small model of the half-dozen request
+ * kinds `from-markdown.ts` emits, faithful to the Docs semantics that the
+ * generator depends on and to nothing else:
+ *
+ * - a body is a run of paragraphs and tables, and every index is a UTF-16 code
+ *   unit, counted the way `documents.get` reports them (a paragraph's newline
+ *   is one, a page break is one, a footnote reference is one, a table costs one
+ *   for itself, one per row, one per cell, and one to close);
+ * - text inserted at a location **inherits the style and the bullet** of the
+ *   paragraph it lands in, which is exactly the trap the generator's explicit
+ *   `updateTextStyle` and `deleteParagraphBullets` requests exist to avoid;
+ * - `createParagraphBullets` reads the leading tabs of every paragraph in range
+ *   as its nesting level and removes them;
+ * - deleting a paragraph's newline merges it with the paragraph after it.
+ *
+ * It is scaffolding, not shipped code, and it is tested on its own in
+ * `docs-model.test.ts` so that the round trip is testing the generator rather
+ * than two mistakes cancelling out.
+ */
+import type {
+  DocsDocument,
+  DocsList,
+  NestingLevel,
+  Paragraph,
+  ParagraphElement,
+  StructuralElement,
+  TableCell,
+  TableRow,
+  TextStyle,
+} from './api.js';
+import type { DocsRequest } from './from-markdown.js';
+
+/** One piece of a paragraph. Exactly the three the generator can create. */
+type Item =
+  | { kind: 'text'; text: string; style: TextStyle }
+  | { kind: 'pageBreak' }
+  | { kind: 'footnote'; id: string };
+
+interface Para {
+  items: Item[];
+  named: string;
+  bullet?: { listId: string; nestingLevel: number };
+}
+
+/** A cell holds paragraphs, like every other container. */
+type Cell = Para[];
+
+type Node = { kind: 'para'; para: Para } | { kind: 'table'; rows: Cell[][] };
+
+/** One reply, in the shape `batchUpdate` answers with. */
+export interface BatchReply {
+  createFootnote?: { footnoteId?: string };
+}
+
+export interface DocsModel {
+  /** Applies one batch, in order, and answers one reply per request. */
+  apply(requests: readonly DocsRequest[]): BatchReply[];
+  /** The document as `documents.get` would answer it. */
+  document(): DocsDocument;
+  /** The index one past the last character of the body. */
+  endIndex(): number;
+}
+
+const NORMAL = 'NORMAL_TEXT';
+
+/** The glyphs `documents.get` reports for each preset (ticket 07 Outcome). */
+const BULLET_SYMBOLS = ['●', '○', '■'];
+const NUMBER_TYPES = ['DECIMAL', 'ALPHA', 'ROMAN'];
+const LEVELS = 9;
+
+function emptyPara(named = NORMAL): Para {
+  return { items: [], named };
+}
+
+/** An empty document: a section break, then one empty paragraph. */
+export function createDocsModel(documentId = 'model', title = 'Model'): DocsModel {
+  const body: Node[] = [{ kind: 'para', para: emptyPara() }];
+  const footnotes = new Map<string, Para[]>();
+  const lists = new Map<string, string>();
+  let listCount = 0;
+  let footnoteCount = 0;
+
+  /* --------------------------------------------------------------- layout */
+
+  function itemLength(item: Item): number {
+    return item.kind === 'text' ? item.text.length : 1;
+  }
+
+  function paraLength(para: Para): number {
+    // The paragraph's own newline is the `+ 1`.
+    return para.items.reduce((total, item) => total + itemLength(item), 0) + 1;
+  }
+
+  function cellLength(cell: Cell): number {
+    return 1 + cell.reduce((total, para) => total + paraLength(para), 0);
+  }
+
+  function tableLength(rows: Cell[][]): number {
+    let length = 2;
+    for (const row of rows) {
+      length += 1;
+      for (const cell of row) length += cellLength(cell);
+    }
+    return length;
+  }
+
+  /** Every paragraph of one segment, with where it starts and what holds it. */
+  interface Slot {
+    para: Para;
+    start: number;
+    /** Puts new paragraphs directly after this one, wherever it lives. */
+    insert(paras: readonly Para[]): void;
+  }
+
+  function slots(segmentId?: string): Slot[] {
+    const out: Slot[] = [];
+    if (segmentId !== undefined && segmentId !== '') {
+      const content = footnotes.get(segmentId) ?? [];
+      let index = 0;
+      for (const [at, para] of content.entries()) {
+        out.push({ para, start: index, insert: (paras) => content.splice(at + 1, 0, ...paras) });
+        index += paraLength(para);
+      }
+      return out;
+    }
+
+    // The body starts at 1: index 0 is the section break.
+    let index = 1;
+    for (const node of body) {
+      if (node.kind === 'para') {
+        out.push({ para: node.para, start: index, insert: (paras) => after(node, paras) });
+        index += paraLength(node.para);
+        continue;
+      }
+      index += 1;
+      for (const row of node.rows) {
+        index += 1;
+        for (const cell of row) {
+          index += 1;
+          for (const [at, para] of cell.entries()) {
+            out.push({ para, start: index, insert: (paras) => cell.splice(at + 1, 0, ...paras) });
+            index += paraLength(para);
+          }
+        }
+      }
+      index += 1;
+    }
+    return out;
+  }
+
+  /** Puts paragraphs into the body directly after one of its nodes. */
+  function after(node: Node, paras: readonly Para[]): void {
+    const at = body.indexOf(node);
+    body.splice(at + 1, 0, ...paras.map((para) => ({ kind: 'para' as const, para })));
+  }
+
+  function bodyEnd(): number {
+    let index = 1;
+    for (const node of body) {
+      index += node.kind === 'para' ? paraLength(node.para) : tableLength(node.rows);
+    }
+    return index;
+  }
+
+  /** The paragraph an index falls in, and how far into it. */
+  function locate(index: number, segmentId?: string): { slot: Slot; offset: number } {
+    const all = slots(segmentId);
+    let found = all[0];
+    for (const slot of all) {
+      if (slot.start <= index) found = slot;
+    }
+    if (found === undefined) throw new Error(`no paragraph at ${index}`);
+    const offset = Math.max(0, Math.min(index - found.start, paraLength(found.para) - 1));
+    return { slot: found, offset };
+  }
+
+  /** The items of a paragraph, cut at `offset`. */
+  function split(para: Para, offset: number): [Item[], Item[]] {
+    const head: Item[] = [];
+    const tail: Item[] = [];
+    let seen = 0;
+    for (const item of para.items) {
+      const length = itemLength(item);
+      if (seen + length <= offset) head.push(item);
+      else if (seen >= offset) tail.push(item);
+      else if (item.kind === 'text') {
+        const cut = offset - seen;
+        head.push({ ...item, text: item.text.slice(0, cut) });
+        tail.push({ ...item, text: item.text.slice(cut) });
+      } else tail.push(item);
+      seen += length;
+    }
+    return [head, tail];
+  }
+
+  /** The bullet a paragraph carries, for the halves a split leaves behind. */
+  function bulletOf(para: Para): { bullet?: { listId: string; nestingLevel: number } } {
+    return para.bullet === undefined ? {} : { bullet: { ...para.bullet } };
+  }
+
+  /**
+   * The style text inserted at `offset` inherits: the run it lands in, and at
+   * the very start of a paragraph the run that starts there. This is the trap
+   * the generator's explicit `updateTextStyle` per run exists to avoid.
+   */
+  function styleAt(para: Para, offset: number): TextStyle {
+    let seen = 0;
+    let style: TextStyle | undefined;
+    for (const item of para.items) {
+      const length = itemLength(item);
+      if (item.kind === 'text' && (style === undefined || seen < offset)) style = item.style;
+      seen += length;
+    }
+    return { ...(style ?? {}) };
+  }
+
+  /* ----------------------------------------------------------- operations */
+
+  function insertText(index: number, text: string, segmentId?: string): void {
+    const { slot, offset } = locate(index, segmentId);
+    const [head, tail] = split(slot.para, offset);
+    const style = styleAt(slot.para, offset);
+    const lines = text.split('\n');
+    const first = lines[0] ?? '';
+
+    slot.para.items = [
+      ...head,
+      ...(first === '' ? [] : [{ kind: 'text' as const, text: first, style }]),
+    ];
+    const made: Para[] = [];
+    for (const line of lines.slice(1)) {
+      made.push({
+        items: line === '' ? [] : [{ kind: 'text', text: line, style }],
+        named: slot.para.named,
+        ...(slot.para.bullet === undefined ? {} : { bullet: { ...slot.para.bullet } }),
+      });
+    }
+    const last = made.at(-1);
+    if (last === undefined) slot.para.items.push(...tail);
+    else last.items.push(...tail);
+    slot.insert(made);
+  }
+
+  /** Every paragraph a range touches, which is what Docs styles. */
+  function inRange(startIndex: number, endIndex: number, segmentId?: string): Para[] {
+    return slots(segmentId)
+      .filter((slot) => slot.start < endIndex && slot.start + paraLength(slot.para) > startIndex)
+      .map((slot) => slot.para);
+  }
+
+  function updateParagraphStyle(request: Record<string, unknown>): void {
+    const range = request.range as { startIndex: number; endIndex: number; segmentId?: string };
+    const style = request.paragraphStyle as { namedStyleType?: string };
+    const fields = String(request.fields ?? '');
+    if (!fields.includes('namedStyleType') || style.namedStyleType === undefined) return;
+    for (const para of inRange(range.startIndex, range.endIndex, range.segmentId)) {
+      para.named = style.namedStyleType;
+    }
+  }
+
+  function updateTextStyle(request: Record<string, unknown>): void {
+    const range = request.range as { startIndex: number; endIndex: number; segmentId?: string };
+    const style = (request.textStyle ?? {}) as Record<string, unknown>;
+    const fields = String(request.fields ?? '').split(',');
+
+    for (const slot of slots(range.segmentId)) {
+      let index = slot.start;
+      const out: Item[] = [];
+      for (const item of slot.para.items) {
+        const length = itemLength(item);
+        if (item.kind !== 'text') {
+          out.push(item);
+          index += length;
+          continue;
+        }
+        // The piece of this run that the range covers is styled; the rest of
+        // the run stays as it was, which is why a run can be cut in three.
+        const from = Math.max(range.startIndex - index, 0);
+        const to = Math.min(range.endIndex - index, length);
+        if (from >= to) {
+          out.push(item);
+          index += length;
+          continue;
+        }
+        const styled: TextStyle = { ...item.style };
+        for (const field of fields) {
+          if (field in style) (styled as Record<string, unknown>)[field] = style[field];
+          else delete (styled as Record<string, unknown>)[field];
+        }
+        if (from > 0) out.push({ kind: 'text', text: item.text.slice(0, from), style: item.style });
+        out.push({ kind: 'text', text: item.text.slice(from, to), style: styled });
+        if (to < length) out.push({ kind: 'text', text: item.text.slice(to), style: item.style });
+        index += length;
+      }
+      slot.para.items = out;
+    }
+  }
+
+  function createParagraphBullets(request: Record<string, unknown>): void {
+    const range = request.range as { startIndex: number; endIndex: number; segmentId?: string };
+    listCount += 1;
+    const listId = `kix.list.${listCount}`;
+    lists.set(listId, String(request.bulletPreset ?? ''));
+
+    for (const para of inRange(range.startIndex, range.endIndex, range.segmentId)) {
+      // The nesting level is the leading tabs, which the request then removes.
+      let tabs = 0;
+      for (const item of para.items) {
+        if (item.kind !== 'text') break;
+        const found = /^\t*/.exec(item.text)?.[0].length ?? 0;
+        tabs += found;
+        item.text = item.text.slice(found);
+        if (item.text !== '') break;
+      }
+      para.items = para.items.filter((item) => item.kind !== 'text' || item.text !== '');
+      para.bullet = { listId, nestingLevel: Math.min(tabs, LEVELS - 1) };
+    }
+  }
+
+  function deleteParagraphBullets(request: Record<string, unknown>): void {
+    const range = request.range as { startIndex: number; endIndex: number; segmentId?: string };
+    for (const para of inRange(range.startIndex, range.endIndex, range.segmentId)) {
+      para.bullet = undefined;
+    }
+  }
+
+  function insertPageBreak(index: number): void {
+    const { slot, offset } = locate(index);
+    const [head, tail] = split(slot.para, offset);
+    slot.para.items = [...head, { kind: 'pageBreak' }];
+    // A page break is followed by a newline, so the paragraph is cut in two —
+    // and both halves are still the paragraph they were, bullet included.
+    slot.insert([{ items: tail, named: slot.para.named, ...bulletOf(slot.para) }]);
+  }
+
+  function insertTable(request: Record<string, unknown>): void {
+    const location = request.location as { index: number };
+    const rows = Number(request.rows ?? 0);
+    const columns = Number(request.columns ?? 0);
+    const { slot, offset } = locate(location.index);
+    const [head, tail] = split(slot.para, offset);
+    slot.para.items = head;
+
+    const grid: Cell[][] = [];
+    for (let row = 0; row < rows; row += 1) {
+      const made: Cell[] = [];
+      for (let column = 0; column < columns; column += 1) made.push([emptyPara()]);
+      grid.push(made);
+    }
+
+    // A newline goes in before the table, which is the paragraph the split left
+    // behind; the rest of the original paragraph follows the table.
+    const at = body.findIndex((node) => node.kind === 'para' && node.para === slot.para);
+    body.splice(
+      at + 1,
+      0,
+      { kind: 'table', rows: grid },
+      { kind: 'para', para: { items: tail, named: slot.para.named, ...bulletOf(slot.para) } },
+    );
+  }
+
+  function createFootnote(request: Record<string, unknown>): BatchReply {
+    const location = request.location as { index: number };
+    footnoteCount += 1;
+    const id = `kix.fn${footnoteCount}`;
+    footnotes.set(id, [emptyPara()]);
+
+    const { slot, offset } = locate(location.index);
+    const [head, tail] = split(slot.para, offset);
+    slot.para.items = [...head, { kind: 'footnote', id }, ...tail];
+    return { createFootnote: { footnoteId: id } };
+  }
+
+  /** Removes a range, merging the paragraphs whose newline it took. */
+  function deleteContentRange(request: Record<string, unknown>): void {
+    const range = request.range as { startIndex: number; endIndex: number };
+    const kept: Node[] = [];
+    let index = 1;
+    let merging: Para | undefined;
+
+    for (const node of body) {
+      if (node.kind === 'table') {
+        const start = index;
+        index += tableLength(node.rows);
+        if (start >= range.endIndex || index <= range.startIndex) kept.push(node);
+        continue;
+      }
+      const para = node.para;
+      const start = index;
+      const end = index + paraLength(para);
+      index = end;
+
+      if (range.endIndex <= start || range.startIndex >= end) {
+        if (merging === undefined) kept.push(node);
+        else {
+          merging.items.push(...para.items);
+          merging = undefined;
+        }
+        continue;
+      }
+
+      trim(para, range.startIndex - start, range.endIndex - start);
+      const newlineGone = range.startIndex <= end - 1 && range.endIndex > end - 1;
+      let target = para;
+      if (merging === undefined) kept.push(node);
+      else {
+        merging.items.push(...para.items);
+        target = merging;
+      }
+      merging = newlineGone ? target : undefined;
+    }
+
+    body.length = 0;
+    body.push(...(kept.length === 0 ? [{ kind: 'para' as const, para: emptyPara() }] : kept));
+  }
+
+  /** Removes the items, and the parts of items, that a range covers. */
+  function trim(para: Para, from: number, to: number): void {
+    const out: Item[] = [];
+    let seen = 0;
+    for (const item of para.items) {
+      const length = itemLength(item);
+      const start = seen;
+      seen += length;
+      if (start >= to || seen <= from) {
+        out.push(item);
+        continue;
+      }
+      if (item.kind !== 'text') continue;
+      const head = item.text.slice(0, Math.max(from - start, 0));
+      const tail = item.text.slice(Math.min(Math.max(to - start, 0), length));
+      if (head + tail !== '') out.push({ ...item, text: head + tail });
+    }
+    para.items = out;
+  }
+
+  /* ---------------------------------------------------------- the document */
+
+  function elements(para: Para, start: number): ParagraphElement[] {
+    const out: ParagraphElement[] = [];
+    let index = start;
+    const numbers = footnoteNumbers();
+
+    for (const item of para.items) {
+      const length = itemLength(item);
+      const bounds = { startIndex: index, endIndex: index + length };
+      if (item.kind === 'text')
+        out.push({ ...bounds, textRun: { content: item.text, textStyle: item.style } });
+      else if (item.kind === 'pageBreak') out.push({ ...bounds, pageBreak: {} });
+      else {
+        out.push({
+          ...bounds,
+          footnoteReference: {
+            footnoteId: item.id,
+            footnoteNumber: String(numbers.get(item.id) ?? 1),
+          },
+        });
+      }
+      index += length;
+    }
+
+    // The paragraph's newline is part of its last run, as Docs reports it.
+    const last = out.at(-1);
+    if (last?.textRun !== undefined) {
+      last.textRun.content = `${last.textRun.content ?? ''}\n`;
+      last.endIndex = (last.endIndex ?? index) + 1;
+    } else {
+      out.push({
+        startIndex: index,
+        endIndex: index + 1,
+        textRun: { content: '\n', textStyle: {} },
+      });
+    }
+    return out;
+  }
+
+  /** Footnote numbers, which Docs assigns by where the reference stands. */
+  function footnoteNumbers(): Map<string, number> {
+    const numbers = new Map<string, number>();
+    for (const slot of slots()) {
+      for (const item of slot.para.items) {
+        if (item.kind === 'footnote' && !numbers.has(item.id))
+          numbers.set(item.id, numbers.size + 1);
+      }
+    }
+    return numbers;
+  }
+
+  function paragraph(para: Para, start: number): StructuralElement {
+    const content: Paragraph = {
+      elements: elements(para, start),
+      paragraphStyle: { namedStyleType: para.named },
+      ...(para.bullet === undefined ? {} : { bullet: { ...para.bullet } }),
+    };
+    return { startIndex: start, endIndex: start + paraLength(para), paragraph: content };
+  }
+
+  function structure(nodes: readonly Node[], from: number): StructuralElement[] {
+    const out: StructuralElement[] = [];
+    let index = from;
+    for (const node of nodes) {
+      if (node.kind === 'para') {
+        out.push(paragraph(node.para, index));
+        index += paraLength(node.para);
+        continue;
+      }
+      const start = index;
+      index += 1;
+      const tableRows: TableRow[] = [];
+      for (const row of node.rows) {
+        index += 1;
+        const cells: TableCell[] = [];
+        for (const cell of row) {
+          index += 1;
+          const content = structure(
+            cell.map((para) => ({ kind: 'para' as const, para })),
+            index,
+          );
+          index += cell.reduce((total, para) => total + paraLength(para), 0);
+          cells.push({ content });
+        }
+        tableRows.push({ tableCells: cells });
+      }
+      index += 1;
+      out.push({
+        startIndex: start,
+        endIndex: index,
+        table: { rows: node.rows.length, columns: node.rows[0]?.length ?? 0, tableRows },
+      });
+    }
+    return out;
+  }
+
+  /** The nesting levels `documents.get` reports for one preset. */
+  function nestingLevels(preset: string): NestingLevel[] {
+    const out: NestingLevel[] = [];
+    for (let level = 0; level < LEVELS; level += 1) {
+      if (preset.startsWith('NUMBERED')) {
+        out.push({
+          glyphType: NUMBER_TYPES[level % NUMBER_TYPES.length],
+          glyphFormat: `%${level}.`,
+          startNumber: 1,
+        });
+      } else if (preset === 'BULLET_CHECKBOX') {
+        // A checklist is Docs' odd one out: no symbol, no type, a bare `%n`.
+        out.push({ glyphType: 'GLYPH_TYPE_UNSPECIFIED', glyphFormat: `%${level}` });
+      } else {
+        out.push({
+          glyphSymbol: BULLET_SYMBOLS[level % BULLET_SYMBOLS.length],
+          glyphFormat: `%${level}`,
+        });
+      }
+    }
+    return out;
+  }
+
+  return {
+    apply(requests) {
+      const replies: BatchReply[] = [];
+      for (const request of requests) {
+        const [name, value] = Object.entries(request)[0] ?? [];
+        const payload = (value ?? {}) as Record<string, unknown>;
+        switch (name) {
+          case 'insertText': {
+            const location = payload.location as { index: number; segmentId?: string };
+            insertText(location.index, String(payload.text ?? ''), location.segmentId);
+            replies.push({});
+            break;
+          }
+          case 'deleteContentRange':
+            deleteContentRange(payload);
+            replies.push({});
+            break;
+          case 'updateParagraphStyle':
+            updateParagraphStyle(payload);
+            replies.push({});
+            break;
+          case 'updateTextStyle':
+            updateTextStyle(payload);
+            replies.push({});
+            break;
+          case 'createParagraphBullets':
+            createParagraphBullets(payload);
+            replies.push({});
+            break;
+          case 'deleteParagraphBullets':
+            deleteParagraphBullets(payload);
+            replies.push({});
+            break;
+          case 'insertPageBreak':
+            insertPageBreak((payload.location as { index: number }).index);
+            replies.push({});
+            break;
+          case 'insertTable':
+            insertTable(payload);
+            replies.push({});
+            break;
+          case 'createFootnote':
+            replies.push(createFootnote(payload));
+            break;
+          default:
+            throw new Error(`the model does not know ${name}`);
+        }
+      }
+      return replies;
+    },
+
+    endIndex: bodyEnd,
+
+    document() {
+      const listed: Record<string, DocsList> = {};
+      for (const [listId, preset] of lists) {
+        listed[listId] = { listProperties: { nestingLevels: nestingLevels(preset) } };
+      }
+      const notes: DocsDocument['footnotes'] = {};
+      for (const [id, content] of footnotes) {
+        notes[id] = {
+          footnoteId: id,
+          content: structure(
+            content.map((para) => ({ kind: 'para' as const, para })),
+            0,
+          ),
+        };
+      }
+      return {
+        documentId,
+        title,
+        body: { content: [{ endIndex: 1, sectionBreak: {} }, ...structure(body, 1)] },
+        lists: listed,
+        footnotes: notes,
+      };
+    },
+  };
+}

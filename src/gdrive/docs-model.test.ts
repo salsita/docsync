@@ -1,0 +1,223 @@
+/**
+ * The model on its own, so that the round trip is testing `from-markdown.ts`
+ * and not two mistakes cancelling out. Every assertion here is a claim about
+ * what the real Docs API does, taken from the recorded fixtures (the index
+ * arithmetic, the checklist glyphs) or from the request reference.
+ */
+import { describe, expect, it } from 'vitest';
+import { createDocsModel } from './docs-model.mock.js';
+import { documentToMarkdown } from './to-markdown.js';
+
+/** The body's structural elements, without the section break. */
+function content(model: ReturnType<typeof createDocsModel>) {
+  return (model.document().body?.content ?? []).slice(1);
+}
+
+describe('an empty document', () => {
+  it('is a section break and one empty paragraph', () => {
+    const model = createDocsModel();
+    expect(model.document().body?.content).toEqual([
+      { endIndex: 1, sectionBreak: {} },
+      {
+        startIndex: 1,
+        endIndex: 2,
+        paragraph: {
+          elements: [{ startIndex: 1, endIndex: 2, textRun: { content: '\n', textStyle: {} } }],
+          paragraphStyle: { namedStyleType: 'NORMAL_TEXT' },
+        },
+      },
+    ]);
+    expect(model.endIndex()).toBe(2);
+  });
+});
+
+describe('insertText', () => {
+  it('splits the paragraph it lands in at every newline', () => {
+    const model = createDocsModel();
+    model.apply([{ insertText: { location: { index: 1 }, text: 'one\ntwo\n' } }]);
+    expect(content(model).map((element) => element.startIndex)).toEqual([1, 5, 9]);
+    expect(documentToMarkdown(model.document())).toBe('one\n\ntwo\n');
+  });
+
+  it('inherits the style and the bullet of the paragraph it lands in', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'bold\n' } },
+      {
+        updateTextStyle: {
+          range: { startIndex: 1, endIndex: 5 },
+          textStyle: { bold: true },
+          fields: 'bold',
+        },
+      },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 1, endIndex: 6 },
+          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+        },
+      },
+      // This is the trap: an unstyled insert in front of a styled list item.
+      { insertText: { location: { index: 1 }, text: 'plain\n' } },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('- **plain**\n- **bold**\n');
+  });
+
+  it('goes into a footnote segment when the location names one', () => {
+    const model = createDocsModel();
+    const [reply] = model.apply([{ createFootnote: { location: { index: 1 } } }]);
+    const segmentId = reply?.createFootnote?.footnoteId ?? '';
+    model.apply([{ insertText: { location: { index: 0, segmentId }, text: 'A note\n' } }]);
+    expect(documentToMarkdown(model.document())).toBe('[^1]\n\n[^1]: A note\n');
+  });
+});
+
+describe('updateTextStyle', () => {
+  it('cuts a run in three and clears what the mask does not set', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'abcde\n' } },
+      {
+        updateTextStyle: {
+          range: { startIndex: 2, endIndex: 4 },
+          textStyle: { bold: true },
+          fields: 'bold,italic',
+        },
+      },
+      {
+        updateTextStyle: {
+          range: { startIndex: 3, endIndex: 4 },
+          textStyle: {},
+          fields: 'bold,italic',
+        },
+      },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('a**b**cde\n');
+  });
+});
+
+describe('createParagraphBullets', () => {
+  it('reads the leading tabs as the level and takes them out', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'one\n\ttwo\n' } },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 1, endIndex: 10 },
+          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+        },
+      },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('- one\n  - two\n');
+  });
+
+  it('draws each preset the way `documents.get` reports it', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'a\nb\nc\n' } },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 1, endIndex: 3 },
+          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+        },
+      },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 3, endIndex: 5 },
+          bulletPreset: 'NUMBERED_DECIMAL_ALPHA_ROMAN',
+        },
+      },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 5, endIndex: 7 },
+          bulletPreset: 'BULLET_CHECKBOX',
+        },
+      },
+    ]);
+    const levels = Object.values(model.document().lists ?? {}).map(
+      (list) => list.listProperties?.nestingLevels?.[0],
+    );
+    expect(levels).toEqual([
+      { glyphSymbol: '●', glyphFormat: '%0' },
+      { glyphType: 'DECIMAL', glyphFormat: '%0.', startNumber: 1 },
+      // A checklist is the odd one out: no symbol, no type, a bare `%0`.
+      { glyphType: 'GLYPH_TYPE_UNSPECIFIED', glyphFormat: '%0' },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('- a\n\n1. b\n\n- [ ] c\n');
+  });
+
+  it('is undone for one paragraph by deleteParagraphBullets', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'a\nb\n' } },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 1, endIndex: 5 },
+          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+        },
+      },
+      { deleteParagraphBullets: { range: { startIndex: 1, endIndex: 2 } } },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('a\n\n- b\n');
+  });
+});
+
+describe('insertTable', () => {
+  it('puts a newline before it and lays the cells out as Docs does', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertTable: { rows: 2, columns: 2, location: { index: 1 } } },
+      { insertText: { location: { index: 12 }, text: 'd' } },
+      { insertText: { location: { index: 10 }, text: 'c' } },
+      { insertText: { location: { index: 7 }, text: 'b' } },
+      { insertText: { location: { index: 5 }, text: 'a' } },
+    ]);
+    const [, table] = content(model);
+    expect(table?.startIndex).toBe(2);
+    expect(documentToMarkdown(model.document())).toBe('| a | b |\n| - | - |\n| c | d |\n');
+  });
+});
+
+describe('insertPageBreak', () => {
+  it('is a page break and a newline, so the paragraph is cut in two', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'after\n' } },
+      { insertPageBreak: { location: { index: 1 } } },
+      { insertText: { location: { index: 1 }, text: 'before\n' } },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe(
+      'before\n\n<!-- docsync:pagebreak -->\n\nafter\n',
+    );
+  });
+});
+
+describe('deleteContentRange', () => {
+  it('empties a body and merges what is left into one paragraph', () => {
+    const model = createDocsModel();
+    model.apply([{ insertText: { location: { index: 1 }, text: 'one\ntwo\nthree\n' } }]);
+    model.apply([{ insertTable: { rows: 1, columns: 1, location: { index: 1 } } }]);
+    model.apply([
+      { deleteContentRange: { range: { startIndex: 1, endIndex: model.endIndex() - 1 } } },
+    ]);
+    expect(content(model)).toHaveLength(1);
+    expect(model.endIndex()).toBe(2);
+    expect(documentToMarkdown(model.document())).toBe('');
+  });
+
+  it('leaves a paragraph the range does not reach alone', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'one\ntwo\n' } },
+      { deleteContentRange: { range: { startIndex: 1, endIndex: 4 } } },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('two\n');
+  });
+});
+
+describe('a request the model does not know', () => {
+  it('fails loudly rather than being ignored', () => {
+    expect(() => createDocsModel().apply([{ insertInlineImage: {} }])).toThrow(
+      'the model does not know insertInlineImage',
+    );
+  });
+});
