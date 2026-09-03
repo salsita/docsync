@@ -62,6 +62,73 @@ function existing(end: number) {
   return { documentId: 'doc1', body: { content: [{ endIndex: end }] } };
 }
 
+describe('patchBody', () => {
+  it('sends the plan as one batch and answers what it dropped', async () => {
+    const { writer: write, calls } = writer([{ replies: [] }]);
+
+    const result = await write.patchBody('doc1', {
+      requests: [{ deleteContentRange: { range: { startIndex: 3, endIndex: 5 } } }],
+      footnotes: [],
+      counts: { kept: 1, updated: 1, inserted: 0, deleted: 0 },
+      dropped: ['horizontal rule'],
+      suggestions: [],
+      rewritten: [],
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(`${DOCS_ENDPOINT}/documents/doc1:batchUpdate`);
+    expect(batch(calls[0])).toEqual([
+      { deleteContentRange: { range: { startIndex: 3, endIndex: 5 } } },
+    ]);
+    expect(result).toEqual({ dropped: ['horizontal rule'], batches: 1 });
+  });
+
+  it('writes nothing at all when the diff says nothing changed', async () => {
+    const { writer: write, calls } = writer([]);
+
+    const result = await write.patchBody('doc1', {
+      requests: [],
+      footnotes: [],
+      counts: { kept: 4, updated: 0, inserted: 0, deleted: 0 },
+      dropped: [],
+      suggestions: [],
+      rewritten: [],
+    });
+
+    expect(calls).toEqual([]);
+    expect(result).toEqual({ dropped: [], batches: 0 });
+  });
+
+  it('fills a footnote an inserted block made, in a second batch', async () => {
+    const { writer: write, calls } = writer([
+      { replies: [{ createFootnote: { footnoteId: 'kix.fn1' } }] },
+      existing(2),
+      { replies: [] },
+    ]);
+
+    const result = await write.patchBody('doc1', {
+      requests: [{ createFootnote: { location: { index: 7 } } }],
+      footnotes: [
+        {
+          requestIndex: 0,
+          requests: (segmentId) => [
+            { insertText: { location: { index: 0, segmentId }, text: 'The note.' } },
+          ],
+        },
+      ],
+      counts: { kept: 0, updated: 1, inserted: 0, deleted: 0 },
+      dropped: [],
+      suggestions: [],
+      rewritten: [],
+    });
+
+    expect(batch(calls[2])).toEqual([
+      { insertText: { location: { index: 0, segmentId: 'kix.fn1' }, text: 'The note.' } },
+    ]);
+    expect(result.batches).toBe(2);
+  });
+});
+
 describe('replaceBody', () => {
   it('deletes the whole body first, in the same batch', async () => {
     const { writer: write, calls } = writer([existing(42), { replies: [] }]);

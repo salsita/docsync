@@ -25,6 +25,7 @@ import {
   type GDriveApi,
 } from './api.js';
 import { mdastToRequests, type PlannedFootnote } from './from-markdown.js';
+import type { PatchPlan } from './patch.js';
 
 /** What writing one body did, for the push report. */
 export interface BodyResult {
@@ -40,8 +41,14 @@ export interface CreatedDoc extends BodyResult {
 
 /** The write operations, over an injected API so tests need no network. */
 export interface GDriveWriter {
-  /** Clears a Doc's body and writes the Markdown in its place. */
+  /**
+   * Clears a Doc's body and writes the Markdown in its place. Used by
+   * `createDoc` alone now that a modified document is patched (MANUAL §7); a
+   * fresh document has nothing to diff against.
+   */
   replaceBody(documentId: string, tree: Root): Promise<BodyResult>;
+  /** Sends a plan from `patch.ts`: one batch, and one more for its footnotes. */
+  patchBody(documentId: string, plan: PatchPlan): Promise<BodyResult>;
   /** A new Doc under a folder, with its body. Answers the new file's id. */
   createDoc(parentId: string, name: string, tree: Root): Promise<CreatedDoc>;
   /** A new folder under a folder, for a path whose directory does not exist. */
@@ -105,6 +112,24 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
   return {
     async replaceBody(documentId, tree) {
       return writeBody(documentId, tree, await api.getDocument(documentId));
+    },
+
+    async patchBody(documentId, plan) {
+      if (plan.requests.length === 0) return { dropped: plan.dropped, batches: 0 };
+      const replies = await api.batchUpdate(documentId, plan.requests);
+      if (plan.footnotes.length === 0) return { dropped: plan.dropped, batches: 1 };
+
+      // A footnote an inserted block made exists now, and only the document
+      // can say how long its segment is (see `footnoteRequests`).
+      const second = footnoteRequests(
+        plan.footnotes,
+        replies,
+        0,
+        await api.getDocument(documentId),
+      );
+      if (second.length === 0) return { dropped: plan.dropped, batches: 1 };
+      await api.batchUpdate(documentId, second);
+      return { dropped: plan.dropped, batches: 2 };
     },
 
     async createDoc(parentId, name, tree) {

@@ -198,6 +198,9 @@ export interface DocsWriteReply {
   createFootnote?: { footnoteId?: string };
 }
 
+/** What `documents.get` does with pending suggestions. */
+export type SuggestionsMode = 'preview' | 'inline';
+
 /** The metadata half of a create or an update: what Drive calls a File. */
 export interface FileMetadata {
   name?: string;
@@ -218,8 +221,13 @@ export interface GDriveApi {
   listFolder(id: string): Promise<DriveFile[]>;
   /** One file's metadata, with the same fields as a listing entry. */
   getFile(id: string): Promise<DriveFile>;
-  /** A Google Doc's document model, with suggestions left out. */
-  getDocument(id: string): Promise<DocsDocument>;
+  /**
+   * A Google Doc's document model. `mode` is what to do with pending
+   * suggestions: leave them out, which is what a fetch wants, or bring them
+   * inline, which is what a push needs to derive the version it diffs from
+   * (MANUAL §7, ticket 16).
+   */
+  getDocument(id: string, mode?: SuggestionsMode): Promise<DocsDocument>;
   /** A binary file's bytes, as stored. */
   download(id: string): Promise<Uint8Array>;
   /** A Google-native file converted to `mimeType` (Sheets, Slides, Drawings). */
@@ -324,12 +332,13 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
       return json<DriveFile>(`${DRIVE_ENDPOINT}/files/${id}?${query}`);
     },
 
-    async getDocument(id) {
-      // Suggestions are never part of the body (MANUAL §6), so they are left
-      // out at the source rather than filtered out afterwards.
-      return json<DocsDocument>(
-        `${DOCS_ENDPOINT}/documents/${id}?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS`,
-      );
+    async getDocument(id, mode = 'preview') {
+      // Suggestions are never part of the body (MANUAL §6), so a fetch leaves
+      // them out at the source rather than filtering them out afterwards. A
+      // push asks for them inline: it has to know they are there, and it has
+      // to see the document as it is to address it (ticket 16).
+      const view = mode === 'inline' ? 'SUGGESTIONS_INLINE' : 'PREVIEW_WITHOUT_SUGGESTIONS';
+      return json<DocsDocument>(`${DOCS_ENDPOINT}/documents/${id}?suggestionsViewMode=${view}`);
     },
 
     async download(id) {

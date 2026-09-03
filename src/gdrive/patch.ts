@@ -32,6 +32,7 @@ import {
   type Span,
   type StyledRun,
 } from '../diff/text.js';
+import { PushError } from '../push-types.js';
 import type { DocsWriteRequest } from './api.js';
 import {
   BULLET_PRESETS,
@@ -178,9 +179,25 @@ export function planPatch(
 
   /* -------------------------------------------------------------- editing */
 
+  /**
+   * A block the dialect only carries as a placeholder is not ours to change.
+   * It can be deleted — that deletes the thing it stands for — but nothing
+   * here could write it back (MANUAL §6).
+   */
+  function refuseIfPlaceholder(block: DiffBlock, what: 'edited' | 'moved'): void {
+    if (!block.type.startsWith('placeholder:')) return;
+    const type = block.type.slice('placeholder:'.length);
+    throw new PushError(
+      `a ${type} cannot be ${what} through docsync; change it in Google Docs, ` +
+        'or delete the line to delete it',
+      options.path,
+    );
+  }
+
   /** One block edited in place: only the characters that changed (MANUAL §7). */
   function edit(ranged: Ranged, base: DiffBlock, next: DiffBlock): void {
     const segmentId = ranged.segmentId;
+    refuseIfPlaceholder(base, 'edited');
     if (base.type !== next.type) restyle(ranged, next);
 
     if (base.cells !== undefined && next.cells !== undefined) {
@@ -408,6 +425,7 @@ export function planPatch(
 
     for (const [at, op] of paired.entries()) {
       if (op.op === 'insert' || op.op === 'move') {
+        if (op.op === 'move') refuseIfPlaceholder(op.base, 'moved');
         if (context.table !== undefined) {
           // A row is its own request, and its cells are filled inside it.
           if (op.op === 'move') {

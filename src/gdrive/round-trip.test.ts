@@ -24,10 +24,13 @@
  */
 import type { Root, RootContent } from 'mdast';
 import { describe, expect, it } from 'vitest';
+import { diffBlocks } from '../diff/blocks.js';
 import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
-import { createDocsModel } from './docs-model.mock.js';
+import { createDocsModel, type DocsModel } from './docs-model.mock.js';
 import { DOC_IDS, fixtureDocument } from './fixtures.mock.js';
 import { markdownToRequests } from './from-markdown.js';
+import { planPatch } from './patch.js';
+import { readLive } from './ranges.js';
 import { documentToMarkdown } from './to-markdown.js';
 import { footnoteRequests } from './write.js';
 
@@ -100,4 +103,52 @@ describe('the 07 + 08 round trip', () => {
       ],
     });
   });
+});
+
+/** A model holding exactly the Markdown given. */
+function model(markdown: string, documentId: string): DocsModel {
+  const made = createDocsModel(documentId);
+  const plan = markdownToRequests(markdown);
+  const replies = made.apply(plan.requests);
+  made.apply(footnoteRequests(plan.footnotes, replies, 0, made.document()));
+  return made;
+}
+
+/**
+ * The same text with one paragraph edited: three words added to the end of the
+ * first plain paragraph there is. Every fixture has one, and it is the edit a
+ * reader makes.
+ */
+function editOne(markdown: string): { next: string; line: number } {
+  const lines = markdown.split('\n');
+  const at = lines.findIndex((line) => /^[A-Za-z][^|]*[.!?]$/.test(line));
+  if (at === -1) throw new Error('no paragraph to edit');
+  const next = [...lines];
+  next[at] = `${lines[at]?.slice(0, -1) ?? ''}, and a few words more.`;
+  return { next: next.join('\n'), line: at };
+}
+
+describe('the 16 patch round trip', () => {
+  for (const id of DOC_IDS) {
+    it(`edits one paragraph of ${id} and writes back only that`, () => {
+      // The base is what a push of the fetched text would have left behind,
+      // since that is the document the next push starts from.
+      const { text: base } = project(documentToMarkdown(fixtureDocument(id)));
+      const made = model(base, id);
+      expect(documentToMarkdown(made.document())).toBe(base);
+
+      const { next } = editOne(base);
+      const plan = planPatch(
+        readLive(made.document()),
+        diffBlocks(parseMarkdown(base), parseMarkdown(next)),
+      );
+      const replies = made.apply(plan.requests);
+      made.apply(footnoteRequests(plan.footnotes, replies, 0, made.document()));
+
+      expect(documentToMarkdown(made.document())).toBe(next);
+      // One paragraph edited, and every other block left where it was.
+      expect(plan.counts.updated).toBe(1);
+      expect(plan.counts.inserted + plan.counts.deleted).toBe(0);
+    });
+  }
 });

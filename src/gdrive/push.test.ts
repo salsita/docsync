@@ -8,7 +8,9 @@ import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import type { FileChange } from '../push-types.js';
 import { createFakeDrive, type FakeDrive } from './fake-api.mock.js';
+import { markdownToRequests } from './from-markdown.js';
 import { pushRoot } from './push.js';
+import { footnoteRequests } from './write.js';
 
 const ROOT_ID = 'folder-root';
 const SUB_ID = 'folder-sub';
@@ -86,30 +88,139 @@ function file(id: string | undefined, title: string, body: string): string {
   return `---\n${frontmatter}title: ${title}\n---\n\n${body}`;
 }
 
+/** A document holding exactly what the Markdown says, as a fetch would find. */
+async function seed(api: FakeDrive, id: string, markdown: string): Promise<void> {
+  const plan = markdownToRequests(markdown);
+  const replies = await api.batchUpdate(id, plan.requests);
+  await api.batchUpdate(
+    id,
+    footnoteRequests(plan.footnotes, replies, 0, await api.getDocument(id)),
+  );
+  api.calls.length = 0;
+}
+
 describe('a modified document', () => {
-  it('replaces the body and says it updated it', async () => {
+  const base = '# Notes\n\nOne.\n\nTwo.\n\nThree.\n';
+
+  it('patches what changed and leaves the rest alone', async () => {
     const api = drive();
+    await seed(api, ELEMENTS_ID, base);
+    const next = '# Notes\n\nOne.\n\nTwo, edited.\n\nThree.\n';
 
     const report = await push(api, [
       {
         kind: 'modified',
         path: 'drive/Elements.md',
-        text: file(ELEMENTS_ID, 'Elements', '# New\n\nBody.\n'),
+        text: file(ELEMENTS_ID, 'Elements', next),
+        previousText: file(ELEMENTS_ID, 'Elements', base),
       },
     ]);
 
-    expect(api.markdown(ELEMENTS_ID)).toBe('# New\n\nBody.\n');
-    expect(report).toEqual([{ path: 'drive/Elements.md', title: 'Elements', action: 'updated' }]);
+    expect(api.markdown(ELEMENTS_ID)).toBe(next);
+    // One batch, and nothing else: the title is asked about, the body is
+    // patched, and no second write goes out.
+    expect(api.calls).toEqual([`getFile ${ELEMENTS_ID}`, `batchUpdate ${ELEMENTS_ID}`]);
+    expect(report).toEqual([
+      {
+        path: 'drive/Elements.md',
+        title: 'Elements',
+        action: 'updated',
+        blocks: { kept: 3, updated: 1, inserted: 0, deleted: 0 },
+      },
+    ]);
+  });
+
+  it('inserts, deletes and edits in one batch', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, base);
+    const next = '# Notes\n\nOne, edited.\n\nInserted.\n\nThree.\n';
+
+    const report = await push(api, [
+      {
+        kind: 'modified',
+        path: 'drive/Elements.md',
+        text: file(ELEMENTS_ID, 'Elements', next),
+        previousText: file(ELEMENTS_ID, 'Elements', base),
+      },
+    ]);
+
+    expect(api.markdown(ELEMENTS_ID)).toBe(next);
+    // Two short paragraphs replaced by two others in one hunk: the similarity
+    // measure will not say which is which, so they are written afresh (§7).
+    expect(report[0]?.blocks).toEqual({ kept: 2, updated: 0, inserted: 2, deleted: 2 });
+  });
+
+  it('is refused when the live document is not the version pushed from', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'Someone else wrote this.\n');
+
+    await expect(
+      push(api, [
+        {
+          kind: 'modified',
+          path: 'drive/Elements.md',
+          text: file(ELEMENTS_ID, 'Elements', 'Mine.\n'),
+          previousText: file(ELEMENTS_ID, 'Elements', base),
+        },
+      ]),
+    ).rejects.toThrow('the source changed');
+    // Nothing was written: the read of the file's name is all that happened.
+    expect(api.calls).toEqual([`getFile ${ELEMENTS_ID}`]);
+  });
+
+  it('is refused when the checkout has no base version of it', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, base);
+
+    await expect(
+      push(api, [
+        {
+          kind: 'modified',
+          path: 'drive/Elements.md',
+          text: file(ELEMENTS_ID, 'Elements', 'Mine.\n'),
+        },
+      ]),
+    ).rejects.toThrow('there is no base version of this file');
+  });
+
+  it('names the pending suggestion an edit wrote over', async () => {
+    const drive0 = drive();
+    await seed(drive0, ELEMENTS_ID, 'A suggested paragraph.\n');
+    // The fake document model knows nothing of suggestions; the API is what
+    // reports them, so this is where one is put.
+    const api: FakeDrive = {
+      ...drive0,
+      async getDocument(id, mode) {
+        const doc = await drive0.getDocument(id, mode);
+        const run = doc.body?.content?.[1]?.paragraph?.elements?.[0]?.textRun;
+        if (run !== undefined) run.suggestedDeletionIds = ['suggest.1'];
+        return doc;
+      },
+    };
+
+    const report = await push(api, [
+      {
+        kind: 'modified',
+        path: 'drive/Elements.md',
+        text: file(ELEMENTS_ID, 'Elements', 'A rewritten paragraph.\n'),
+        previousText: file(ELEMENTS_ID, 'Elements', 'A suggested paragraph.\n'),
+      },
+    ]);
+
+    expect(report[0]?.suggestions).toEqual(['suggest.1']);
+    expect(drive0.markdown(ELEMENTS_ID)).toBe('A rewritten paragraph.\n');
   });
 
   it('renames the file when the frontmatter title has changed', async () => {
     const api = drive();
+    await seed(api, ELEMENTS_ID, 'Body.\n');
 
     await push(api, [
       {
         kind: 'modified',
         path: 'drive/Elements.md',
         text: file(ELEMENTS_ID, 'Renamed', 'Body.\n'),
+        previousText: file(ELEMENTS_ID, 'Elements', 'Body.\n'),
       },
     ]);
 

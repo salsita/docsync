@@ -110,6 +110,12 @@ export interface PushedDocument {
    * for a source that does not patch yet.
    */
   blocks?: BlockCounts;
+  /**
+   * Pending suggestions the push wrote over, by id (MANUAL §7). Google Docs
+   * only: the API can neither accept nor reject one, so an edit inside a
+   * suggested range resolves it by overwriting it.
+   */
+  suggestions?: string[];
 }
 
 export type PushReport = PushedDocument[];

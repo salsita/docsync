@@ -98,6 +98,13 @@ describe('getDocument', () => {
       `${DOCS_ENDPOINT}/documents/d?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS`,
     );
   });
+
+  it('reads it with the suggestions inline when a push asks', async () => {
+    const { api, calls } = apiWith([{ body: { documentId: 'd' } }]);
+
+    await api.getDocument('d', 'inline');
+    expect(calls[0]).toBe(`${DOCS_ENDPOINT}/documents/d?suggestionsViewMode=SUGGESTIONS_INLINE`);
+  });
 });
 
 describe('download and export', () => {

@@ -12,14 +12,19 @@
  * same push finds its parent. Everything else follows in the order git listed
  * it, and a deletion is a trashing, never a delete (MANUAL §8).
  */
+import type { Root as MdastRoot } from 'mdast';
 import type { CredentialProvider } from '../auth/index.js';
+import { diffBlocks } from '../diff/blocks.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
+import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import { type FileChange, PushError, type PushReport } from '../push-types.js';
 import { DEFAULT_UPLOAD_MIME, FOLDER_MIME, type GDriveApi } from './api.js';
 import { gdriveApi } from './index.js';
-import { createGDriveWriter } from './write.js';
+import { type PatchPlan, planPatch } from './patch.js';
+import { readLive } from './ranges.js';
+import { createGDriveWriter, type GDriveWriter } from './write.js';
 
 export interface PushOptions {
   /** The API to use. Tests pass a fake one; a real push passes nothing. */
@@ -182,8 +187,17 @@ async function pushWith(
     }
 
     if (isDoc && change.text !== undefined) {
-      await writer.replaceBody(id, document.body);
-    } else if (change.bytes !== undefined) {
+      const plan = await patchDocument(api, writer, id, change, document.body);
+      report.push({
+        path: change.path,
+        title: wanted,
+        action: 'updated',
+        blocks: plan.counts,
+        ...(plan.suggestions.length === 0 ? {} : { suggestions: plan.suggestions }),
+      });
+      continue;
+    }
+    if (change.bytes !== undefined) {
       await writer.uploadRevision(id, change.bytes, mimeOf(name));
     } else {
       report.push({ path: change.path, title: wanted, action: renamed ? 'renamed' : 'updated' });
@@ -193,6 +207,46 @@ async function pushWith(
   }
 
   return report;
+}
+
+/**
+ * One modified document, patched (MANUAL §7).
+ *
+ * The live document is read with its suggestions inline and converted, and the
+ * result has to say exactly what the version this push started from says. Push
+ * step 1 has already made that true for the whole checkout; checking it here
+ * makes it local, and makes the alignment between the base blocks and the live
+ * ranges — the *n*th is the *n*th — a fact rather than an assumption. What the
+ * diff then says is the only thing written.
+ */
+async function patchDocument(
+  api: GDriveApi,
+  writer: GDriveWriter,
+  id: string,
+  change: FileChange,
+  body: MdastRoot,
+): Promise<PatchPlan> {
+  if (change.previousText === undefined) {
+    throw new PushError(
+      'there is no base version of this file to patch the document from; fetch, merge and push again',
+      change.path,
+    );
+  }
+
+  const live = readLive(await api.getDocument(id, 'inline'));
+  const base = parseDocument(change.previousText).body;
+  // Both sides go through the one pipeline before they are compared, so that a
+  // spelling the dialect accepts either way is not read as someone else's edit.
+  if (stringifyMarkdown(parseMarkdown(live.markdown)) !== stringifyMarkdown(base)) {
+    throw new PushError(
+      'the source changed: the Google Doc is not the version this push started from; fetch, merge and push again',
+      change.path,
+    );
+  }
+
+  const plan = planPatch(live, diffBlocks(base, body), { path: change.path });
+  await writer.patchBody(id, plan);
+  return plan;
 }
 
 /**

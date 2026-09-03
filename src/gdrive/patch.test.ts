@@ -257,6 +257,51 @@ describe('what the API cannot write', () => {
   });
 });
 
+describe('a placeholder', () => {
+  /** A document holding what no request can create: a table of contents. */
+  function withContents(): DocsDocument {
+    return {
+      documentId: 'doc',
+      title: 'Doc',
+      body: {
+        content: [
+          { endIndex: 1, sectionBreak: {} },
+          { startIndex: 1, endIndex: 2, tableOfContents: {} },
+          {
+            startIndex: 2,
+            endIndex: 12,
+            paragraph: {
+              elements: [{ startIndex: 2, endIndex: 12, textRun: { content: 'After it.\n' } }],
+              paragraphStyle: { namedStyleType: 'NORMAL_TEXT' },
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  const base = '<!-- docsync:block gdocs:doc#1 type=table-of-contents -->\n\nAfter it.\n';
+
+  it('is refused when it is edited, since nothing could write it back', () => {
+    expect(() =>
+      plan(
+        base,
+        '<!-- docsync:block gdocs:doc#9 type=table-of-contents -->\n\nAfter it.\n',
+        withContents(),
+      ),
+    ).toThrow('a table-of-contents cannot be edited through docsync');
+  });
+
+  it('is deleted by deleting the block it stands for', () => {
+    const patch = plan(base, 'After it.\n', withContents());
+
+    expect(kinds(patch.requests)).toEqual(['deleteContentRange']);
+    expect(patch.requests[0]?.deleteContentRange).toEqual({
+      range: { startIndex: 1, endIndex: 2 },
+    });
+  });
+});
+
 describe('a footnote body', () => {
   it('is patched inside its own segment', () => {
     const base = 'Body.[^1]\n\n[^1]: The first note.\n';
