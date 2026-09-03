@@ -50,4 +50,8 @@ reviewer and dispatcher. An implementation agent (Opus) does the coding.
   change in its result; Claude applies it in the landing and the Outcome
   section says so. Two parties editing one file in a shared tree is how edits
   get swept into the wrong commit.
+- **Smoke tests clean up.** A script that writes to a real source creates
+  its own objects, verifies, trashes them at the end, and prints what it did
+  and what it left behind. Fixture trees are read-only. Never pipe a smoke
+  script through another command; it re-runs it.
 - **Commit messages** end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
