@@ -18,7 +18,8 @@ Phase 1.
 
 `src/cli/commands.test.ts` "init builds the checkout of the quick start"
 failed once with git exit 128 during a full `pnpm check` under load and
-passed alone and on rerun (2026-09-03). Two real-git test files each build the
+passed alone and on rerun (2026-09-03). `src/helper/e2e.test.ts` did the
+same during ticket 21 (2026-09-04). Two real-git test files each build the
 helper with `tsc`; serialise them or share one build in CI.
 
 ## Done when

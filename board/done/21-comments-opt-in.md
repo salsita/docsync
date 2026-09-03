@@ -24,3 +24,18 @@ off, because on Notion the refresh costs one request per block per fetch.
 ## Done when
 
 `pnpm check` green; the manual's §4 row and §7 warning match behaviour.
+
+## Outcome
+
+Landed 2026-09-04 in one agent commit (`c56773a`) plus the landing commit.
+`pnpm check` green, 1250 tests.
+
+- `Root.comments?: boolean`, explicit `false` preserved on serialisation,
+  written after `ignore`. Off by default; both adapters make no comment
+  request when off, and a Drive Doc stops recording `suggested`.
+- Request counts, now pinned by tests over counting fixture APIs: Drive 3
+  off / 11 on, Notion 19 off / 85 on, nothing changed.
+- Turning the option off drops the sidecars on the next fetch.
+- `docsync status` appends `comments on`; manual §5 and §12 updated.
+- The git-spawning e2e test flaked once under load, like the CLI one;
+  noted in ticket 13.

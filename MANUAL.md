@@ -271,8 +271,9 @@ push without that pull is refused as "the source changed".
 
 ### `docsync status`
 
-Like `git status`, plus one line per root: source, path, last fetched time, and
-whether the source has moved since (a cheap metadata check, no download).
+Like `git status`, plus one line per root: source, path, last fetched time,
+whether the source has moved since (a cheap metadata check, no download), and
+`comments on` when the root pulls comment sidecars (§4).
 
 ### `docsync fetch` / `docsync pull` / `docsync push`
 
@@ -858,10 +859,11 @@ character (§7 "Write-back"); nothing is stored in the Markdown for it.
 
 ### Phase 4 — comment threads
 
-Open comment threads and pending suggestions are pulled into a read-only
-sidecar beside the document (§6 "Comments and suggestions"), so a person or
-an agent can read them in context and answer them by editing the body.
-Nothing is pushed back in this phase.
+On a root with `comments: true`, open comment threads and pending
+suggestions are pulled into a read-only sidecar beside the document (§6
+"Comments and suggestions"), so a person or an agent can read them in
+context and answer them by editing the body. Nothing is pushed back in this
+phase.
 
 **Later:** replies and resolving from the checkout. Google Docs allows both
 through the API; Notion allows replies but has no resolve call and does not
