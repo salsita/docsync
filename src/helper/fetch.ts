@@ -13,9 +13,10 @@
 import type { CredentialProvider } from '../auth/index.js';
 import type { Editor, IndexEntry } from '../index-file.js';
 import type { Manifest } from '../manifest/types.js';
-import type { FetchedFile, SourceRegistry } from '../source.js';
+import type { FetchedFile, SkippedObject, SourceRegistry } from '../source.js';
 import type { Git, Identity } from './git.js';
 import { INDEX_PATH, parseIndex, serializeIndex } from './index-file.js';
+import type { FetchReport, ReportWriter } from './report.js';
 import { buildTree, type FileTree, readTree, type TreeFile } from './tree.js';
 
 export interface FetchDeps {
@@ -25,12 +26,20 @@ export interface FetchDeps {
   /** Progress, one line at a time, for stderr. */
   log: (line: string) => void;
   now: () => Date;
+  /**
+   * Where a run's two report files go, so that `docsync fetch`, `pull` and
+   * `push` can print what happened rather than parse git's relayed stderr
+   * (ticket 10). Absent in a test that does not care.
+   */
+  report?: ReportWriter;
 }
 
 export interface FetchOutcome {
   /** The commit that now holds the source state: a new one, or `parent`. */
   commit: string;
   changed: boolean;
+  /** What this fetch found, as `last-fetch.json` records it. */
+  report: FetchReport;
 }
 
 /** Who commits a fetch. The author is the source's last editor. */
@@ -51,6 +60,8 @@ export async function fetchCommit(
 
   const files = new Map<string, TreeFile>();
   const entries: IndexEntry[] = [];
+  const changedDocuments: FetchReport['changed'] = [];
+  const skipped: SkippedObject[] = [];
   let latest: FetchedFile | undefined;
 
   for (const root of manifest.roots) {
@@ -61,23 +72,31 @@ export async function fetchCommit(
 
     for (const file of result.files) {
       files.set(file.path, { sha: await blobFor(git, file, previousTree) });
-      if (
-        file.changed &&
-        file.editor !== undefined &&
-        (latest === undefined || after(file, latest))
-      ) {
+      if (!file.changed) continue;
+      changedDocuments.push({
+        path: file.path,
+        lastEditedTime: file.entry.lastEditedTime,
+        ...(file.editor === undefined ? {} : { editor: file.editor }),
+      });
+      if (file.editor !== undefined && (latest === undefined || after(file, latest))) {
         latest = file;
       }
     }
     entries.push(...result.entries);
+    skipped.push(...result.skipped);
   }
   files.set(INDEX_PATH, { sha: await git.hashObject(Buffer.from(serializeIndex(entries))) });
 
+  const now = deps.now().toISOString();
+  const report: FetchReport = { at: now, changed: changedDocuments, skipped };
+  await deps.report?.fetch(report);
+
   const changedPaths = diff(previousTree, files);
-  if (changedPaths.length === 0 && parent !== undefined) return { commit: parent, changed: false };
+  if (changedPaths.length === 0 && parent !== undefined) {
+    return { commit: parent, changed: false, report };
+  }
   const documents = changedPaths.filter((path) => path !== INDEX_PATH);
 
-  const now = deps.now().toISOString();
   const commit = await git.commitTree({
     tree: await buildTree(git, files),
     parents: parent === undefined ? [] : [parent],
@@ -85,7 +104,7 @@ export async function fetchCommit(
     author: authorOf(latest, now),
     committer: { ...COMMITTER, date: now },
   });
-  return { commit, changed: true };
+  return { commit, changed: true, report };
 }
 
 /** The index the last commit holds, or an empty one when there is no commit. */

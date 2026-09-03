@@ -15,4 +15,11 @@ describe('sources', () => {
     expect(sources.gdocs.fetchRoot).toBe(gdrive.fetchRoot);
     expect(sources.gdocs.pushRoot).toBe(gdrive.pushRoot);
   });
+
+  it('routes the two calls the CLI makes without a fetch', () => {
+    expect(sources.notion.describe).toBe(notion.describe);
+    expect(sources.notion.changedSince).toBe(notion.changedSince);
+    expect(sources.gdocs.describe).toBe(gdrive.describe);
+    expect(sources.gdocs.changedSince).toBe(gdrive.changedSince);
+  });
 });

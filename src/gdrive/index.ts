@@ -15,15 +15,18 @@
  */
 import type { CredentialProvider } from '../auth/index.js';
 import { serializeDocument } from '../frontmatter.js';
-import type { Editor, IndexEntry } from '../index-file.js';
+import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
+import { isUnderRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import type {
+  SourceDescription,
   FetchedFile as SourceFetchedFile,
   FetchResult as SourceFetchResult,
 } from '../source.js';
+import type { SourceRef } from '../source-ref.js';
 import { createGDriveApi, type DriveUser, type GDriveApi } from './api.js';
 import { documentToMarkdown } from './to-markdown.js';
-import { type SkippedObject, type WalkedFile, walkRoot } from './walk.js';
+import { EXPORTS, FOLDER_MIME, type SkippedObject, type WalkedFile, walkRoot } from './walk.js';
 
 /**
  * One file, ready to be written. A Drive root holds files that are not
@@ -78,6 +81,86 @@ export async function fetchRoot(
   for (const file of walked.files) files.push(await toFile(file, api, before.get(file.id)));
 
   return { files, entries: files.map((file) => file.entry), skipped: walked.skipped };
+}
+
+/**
+ * What one Drive object is, from its metadata alone (MANUAL §5).
+ *
+ * A folder is a container and its child count is one listing; everything else
+ * is a leaf that brings its own extension, which is what `resolveAlias` needs
+ * to tell `specs/auth.md` from `specs/auth/`. Nothing is downloaded.
+ */
+export async function describe(
+  ref: SourceRef,
+  provider: CredentialProvider,
+  options: FetchOptions = {},
+): Promise<SourceDescription> {
+  const api = options.api ?? (await gdriveApi(provider, options.fetch));
+  const file = await api.getFile(ref.id);
+  const folder = file.mimeType === FOLDER_MIME;
+  const editor = editorOf(file.lastModifyingUser);
+
+  return {
+    ref: { source: 'gdocs', id: file.id },
+    title: file.name,
+    kind: folder ? 'container' : 'leaf',
+    childCount: folder ? (await api.listFolder(file.id)).length : 0,
+    ...(folder ? {} : { ext: extensionOf(file.mimeType, file.name) }),
+    ...(editor === undefined ? {} : { editor }),
+    lastEditedTime: file.modifiedTime ?? '',
+  };
+}
+
+/**
+ * The paths under one root whose Drive metadata has moved since `previous`,
+ * the index of the last fetch (MANUAL §5, `docsync status`).
+ *
+ * The walk lists; it does not download, so this stays one listing per folder
+ * however large the documents are. A binary's checksum counts as metadata,
+ * since Drive moves a file's modified time without moving its content and the
+ * other way round. A file that is gone from the source counts too.
+ */
+export async function changedSince(
+  root: Root,
+  provider: CredentialProvider,
+  previous: DocumentIndex,
+  options: FetchOptions = {},
+): Promise<string[]> {
+  const api = options.api ?? (await gdriveApi(provider, options.fetch));
+  const known = [...previous.values()].filter((entry) => entry.src.source === 'gdocs');
+  const walked = await walkRoot(
+    api,
+    root,
+    new Map(known.map((one): [string, string] => [one.src.id, one.path])),
+  );
+
+  const before = new Map(known.map((one): [string, IndexEntry] => [one.src.id, one]));
+  const changed: string[] = [];
+  for (const file of walked.files) {
+    const was = before.get(file.id);
+    if (
+      was === undefined ||
+      was.lastEditedTime !== file.modifiedTime ||
+      (file.md5Checksum !== undefined && was.md5 !== file.md5Checksum)
+    ) {
+      changed.push(file.path);
+    }
+  }
+
+  const found = new Set(walked.files.map((file) => file.id));
+  for (const entry of known) {
+    if (!found.has(entry.src.id) && isUnderRoot(root.path, entry.path)) changed.push(entry.path);
+  }
+  return [...new Set(changed)].sort();
+}
+
+/** The extension a leaf takes on disk: `.md`, an export's, or the name's own. */
+function extensionOf(mimeType: string, name: string): string {
+  if (mimeType === 'application/vnd.google-apps.document') return '.md';
+  const exported = EXPORTS[mimeType];
+  if (exported !== undefined) return exported.ext;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot) : '';
 }
 
 async function toFile(

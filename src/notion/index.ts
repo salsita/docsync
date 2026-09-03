@@ -9,15 +9,18 @@
  */
 import type { CredentialProvider } from '../auth/index.js';
 import { serializeDocument } from '../frontmatter.js';
-import type { Editor, IndexEntry } from '../index-file.js';
+import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
+import { isUnderRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import type {
+  SourceDescription,
   FetchedFile as SourceFetchedFile,
   FetchResult as SourceFetchResult,
 } from '../source.js';
-import { createNotionApi, createNotionClient, type NotionApi } from './api.js';
-import { blocksToMarkdown } from './to-markdown.js';
-import { type SkippedObject, type WalkedPage, walkRoot } from './walk.js';
+import type { SourceRef } from '../source-ref.js';
+import { createNotionApi, createNotionClient, type NotionApi, type RawObject } from './api.js';
+import { bareId, blocksToMarkdown } from './to-markdown.js';
+import { type SkippedObject, titleOf, type WalkedPage, walkRoot } from './walk.js';
 
 /**
  * One Markdown file, ready to be written. A Notion page is always Markdown, so
@@ -108,17 +111,96 @@ async function toFile(
   };
 }
 
+/**
+ * What one page is, from its own object and its direct blocks (MANUAL §5).
+ *
+ * A page with child pages is a container: on disk it is `<title>.md` and the
+ * directory `<title>/` beside it, which is what `resolveAlias` needs to know.
+ * Nothing is converted and no subtree is walked — this runs before there is a
+ * checkout, and `docsync add` must be cheap.
+ */
+export async function describe(
+  ref: SourceRef,
+  provider: CredentialProvider,
+  options: FetchOptions = {},
+): Promise<SourceDescription> {
+  const api = options.api ?? (await notionApi(provider));
+  const id = bareId(ref.id);
+  const [page, blocks] = await Promise.all([api.page(id), api.children(id)]);
+  const childCount = blocks.filter((block) => block.type === 'child_page').length;
+  const editor = await editorFor(userIdOf(page.last_edited_by), api);
+
+  return {
+    ref: { source: 'notion', id },
+    title: titleOf(page),
+    kind: childCount === 0 ? 'leaf' : 'container',
+    childCount,
+    // Every Notion page is a Markdown document (MANUAL §6).
+    ext: '.md',
+    ...(editor === undefined ? {} : { editor }),
+    lastEditedTime: String(page.last_edited_time ?? ''),
+  };
+}
+
+/**
+ * The paths under one root whose last-edit time differs from `previous`, the
+ * index of the last fetch (MANUAL §5, `docsync status`).
+ *
+ * The walk is the same one a fetch does, and it stops there: page bodies are
+ * never converted and nothing is downloaded. A page that appeared since the
+ * last fetch and one that is gone from the source both count as changed, since
+ * both are things the next fetch will move.
+ */
+export async function changedSince(
+  root: Root,
+  provider: CredentialProvider,
+  previous: DocumentIndex,
+  options: FetchOptions = {},
+): Promise<string[]> {
+  const api = options.api ?? (await notionApi(provider));
+  const known = [...previous.values()].filter((entry) => entry.src.source === 'notion');
+  const walked = await walkRoot(
+    api,
+    root,
+    new Map(known.map((one): [string, string] => [one.src.id, one.path])),
+  );
+
+  const times = new Map(known.map((one): [string, string] => [one.src.id, one.lastEditedTime]));
+  const changed = walked.pages
+    .filter((page) => times.get(page.id) !== page.lastEditedTime)
+    .map((page) => page.path);
+
+  // A document the last fetch had and the source no longer offers is a change
+  // too: the next fetch removes it.
+  const found = new Set(walked.pages.map((page) => page.id));
+  for (const entry of known) {
+    if (!found.has(entry.src.id) && isUnderRoot(root.path, entry.path)) changed.push(entry.path);
+  }
+  return [...new Set(changed)].sort();
+}
+
+/** The id inside a `{ object: 'user', id }` reference on a page object. */
+function userIdOf(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const id = (value as RawObject).id;
+  return typeof id === 'string' ? id : undefined;
+}
+
 /** The last editor of a page, resolved through the cached user lookup. */
 async function editorOf(page: WalkedPage, api: NotionApi): Promise<Editor | undefined> {
-  if (page.lastEditedBy === undefined) return undefined;
-  const user = await api.user(page.lastEditedBy);
+  return editorFor(page.lastEditedBy, api);
+}
+
+async function editorFor(userId: string | undefined, api: NotionApi): Promise<Editor | undefined> {
+  if (userId === undefined) return undefined;
+  const user = await api.user(userId);
   const person = user?.person;
   const email =
     typeof person === 'object' && person !== null
       ? (person as { email?: unknown }).email
       : undefined;
   return {
-    id: page.lastEditedBy,
+    id: userId,
     name: typeof user?.name === 'string' ? user.name : undefined,
     email: typeof email === 'string' ? email : undefined,
   };

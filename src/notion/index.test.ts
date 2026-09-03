@@ -5,7 +5,7 @@ import type { IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import type { NotionApi } from './api.js';
 import { fixtureApi, ROOT_ID } from './fixtures.mock.js';
-import { fetchRoot, notionApi } from './index.js';
+import { changedSince, describe as describeRef, fetchRoot, notionApi } from './index.js';
 
 const BLOCKS_ID = '3cf715cbeb0881168ea0f3f18715e1a4';
 const LEAF_ID = '3cf715cbeb08819db888c032d7bb60de';
@@ -184,6 +184,88 @@ describe('fetchRoot', () => {
     await expect(fetchRoot(root, createFakeCredentialProvider())).rejects.toThrow(
       /docsync auth notion/,
     );
+  });
+});
+
+describe('describe', () => {
+  const api = fixtureApi();
+
+  it('calls a page with child pages a container, and counts them', async () => {
+    const one = await describeRef({ source: 'notion', id: ROOT_ID }, provider, { api });
+
+    expect(one).toMatchObject({
+      ref: { source: 'notion', id: ROOT_ID },
+      title: 'Docsync test',
+      kind: 'container',
+      ext: '.md',
+    });
+    expect(one.childCount).toBeGreaterThan(0);
+    expect(one.lastEditedTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('calls a page with no child pages a leaf', async () => {
+    const one = await describeRef({ source: 'notion', id: LEAF_ID }, provider, { api });
+
+    expect(one).toMatchObject({ title: 'Leaf', kind: 'leaf', childCount: 0, ext: '.md' });
+  });
+
+  it('normalises a dashed id and names the last editor', async () => {
+    const dashed = [
+      LEAF_ID.slice(0, 8),
+      LEAF_ID.slice(8, 12),
+      LEAF_ID.slice(12, 16),
+      LEAF_ID.slice(16, 20),
+      LEAF_ID.slice(20),
+    ].join('-');
+
+    const one = await describeRef({ source: 'notion', id: dashed }, provider, { api });
+
+    expect(one.ref).toEqual({ source: 'notion', id: LEAF_ID });
+    expect(one.editor?.id).toEqual(expect.any(String));
+  });
+
+  it('asks the credential provider for a token when given no API', async () => {
+    await expect(
+      describeRef({ source: 'notion', id: LEAF_ID }, createFakeCredentialProvider()),
+    ).rejects.toThrow(/docsync auth notion/);
+  });
+});
+
+describe('changedSince', () => {
+  const api = fixtureApi();
+
+  it('calls every page changed when there is no previous index', async () => {
+    const { files } = await fetch();
+
+    expect(await changedSince(root, provider, new Map(), { api })).toEqual(
+      files.map((file) => file.path).sort(),
+    );
+  });
+
+  it('calls nothing changed when the index still matches the source', async () => {
+    const { entries } = await fetch();
+    const previous = new Map(entries.map((one) => [one.path, one]));
+
+    expect(await changedSince(root, provider, previous, { api })).toEqual([]);
+  });
+
+  it('names the paths whose last-edit time moved', async () => {
+    const { entries } = await fetch();
+    const previous = new Map(entries.map((one) => [one.path, one]));
+    const moved = entries.find((one) => one.path.endsWith('Leaf.md'));
+    previous.set(moved?.path ?? '', { ...(moved as IndexEntry), lastEditedTime: '2000-01-01' });
+
+    expect(await changedSince(root, provider, previous, { api })).toEqual([moved?.path]);
+  });
+
+  it('counts a document the source no longer offers', async () => {
+    const { entries } = await fetch();
+    const previous = new Map(entries.map((one) => [one.path, one]));
+    previous.set('Docsync test/Gone.md', entry('Docsync test/Gone.md', 'f'.repeat(32), ''));
+    // An entry of another root is not this root's business.
+    previous.set('other/Gone.md', entry('other/Gone.md', 'e'.repeat(32), ''));
+
+    expect(await changedSince(root, provider, previous, { api })).toEqual(['Docsync test/Gone.md']);
   });
 });
 

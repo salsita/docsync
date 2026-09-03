@@ -12,6 +12,7 @@ import {
 } from './fake-source.mock.js';
 import { COMMITTER, type FetchDeps, fetchCommit } from './fetch.js';
 import { INDEX_PATH, parseIndex } from './index-file.js';
+import type { FetchReport } from './report.js';
 import { createTempRepo, type TempRepo } from './temp-repo.mock.js';
 import { readTree } from './tree.js';
 
@@ -126,7 +127,7 @@ describe('fetchCommit', () => {
     const first = await fetchCommit(deps, manifest, undefined);
     logged = [];
     const second = await fetchCommit(deps, manifest, first.commit);
-    expect(second).toEqual({ commit: first.commit, changed: false });
+    expect(second).toMatchObject({ commit: first.commit, changed: false });
     expect(logged).toEqual(['notion: unchanged', 'gdocs: unchanged']);
   });
 
@@ -217,5 +218,71 @@ describe('fetchCommit', () => {
     await expect(fetchCommit(deps, manifest, undefined)).rejects.toThrow(
       'Not signed in to Notion. Run: docsync auth notion',
     );
+  });
+
+  it('reports every changed document with its editor, for the CLI to print', async () => {
+    reset();
+    const reports: FetchReport[] = [];
+    deps.report = {
+      fetch: async (one) => {
+        reports.push(one);
+      },
+      push: async () => undefined,
+    };
+
+    const { report } = await fetchCommit(deps, manifest, undefined);
+
+    expect(reports).toEqual([report]);
+    expect(report.at).toBe('2026-04-01T00:00:00.000Z');
+    expect(report.changed.map((one) => one.path)).toEqual([
+      'Specs/Specs.md',
+      'Specs/Auth.md',
+      'Contracts/logo.png',
+    ]);
+    expect(report.changed[1]).toEqual({
+      path: 'Specs/Auth.md',
+      lastEditedTime: store.load().objects[fakeId('notion', 2)]?.lastEditedTime,
+      editor: ADA,
+    });
+    // The logo has no editor at the fake source, so it carries none.
+    expect(report.changed[2]?.editor).toBeUndefined();
+    expect(report.skipped).toEqual([]);
+  });
+
+  it('reports an empty change list when the fetch found nothing new', async () => {
+    reset();
+    const reports: FetchReport[] = [];
+    const first = await fetchCommit(deps, manifest, undefined);
+    deps.report = {
+      fetch: async (one) => {
+        reports.push(one);
+      },
+      push: async () => undefined,
+    };
+
+    const second = await fetchCommit(deps, manifest, first.commit);
+
+    expect(second.changed).toBe(false);
+    expect(reports).toEqual([{ at: '2026-04-01T00:00:00.000Z', changed: [], skipped: [] }]);
+  });
+
+  it('reports what the source left out', async () => {
+    reset();
+    const skipped = { id: 'db', title: 'Tasks', path: 'Specs/Tasks', reason: 'database' };
+    const plain = createFakeRegistry(store);
+    deps.sources = {
+      ...deps.sources,
+      notion: {
+        ...deps.sources.notion,
+        fetchRoot: async (root, provider, previous) => ({
+          ...(await plain.notion.fetchRoot(root, provider, previous)),
+          skipped: [skipped],
+        }),
+      },
+    };
+
+    const { report } = await fetchCommit(deps, manifest, undefined);
+
+    expect(report.skipped).toEqual([skipped]);
   });
 });

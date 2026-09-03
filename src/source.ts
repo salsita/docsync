@@ -13,11 +13,21 @@
  * have bytes instead).
  */
 import type { CredentialProvider } from './auth/index.js';
-import { fetchRoot as fetchDriveRoot, pushRoot as pushDriveRoot } from './gdrive/index.js';
+import {
+  describe as describeDrive,
+  changedSince as driveChangedSince,
+  fetchRoot as fetchDriveRoot,
+  pushRoot as pushDriveRoot,
+} from './gdrive/index.js';
 import type { DocumentIndex, Editor, IndexEntry } from './index-file.js';
-import type { Root } from './manifest/types.js';
-import { fetchRoot as fetchNotionRoot, pushRoot as pushNotionRoot } from './notion/index.js';
-import type { Source as SourceName } from './source-ref.js';
+import type { Kind, Root } from './manifest/types.js';
+import {
+  describe as describeNotion,
+  fetchRoot as fetchNotionRoot,
+  changedSince as notionChangedSince,
+  pushRoot as pushNotionRoot,
+} from './notion/index.js';
+import type { Source as SourceName, SourceRef } from './source-ref.js';
 
 /** One file a fetch produced, ready to be written into a commit. */
 export interface FetchedFile {
@@ -88,6 +98,29 @@ export interface PushedDocument {
 
 export type PushReport = PushedDocument[];
 
+/**
+ * What one source object is, without checking anything out (MANUAL §5).
+ *
+ * This is what `docsync resolve` prints and what `docsync add` needs before it
+ * can write a root: `title`, `kind` and `ext` are exactly the `ResolvedObject`
+ * that `resolveAlias` turns into a path, so an alias and a description meet in
+ * one place and neither adapter has to know about `=<path>`.
+ */
+export interface SourceDescription {
+  /** The ref as the source canonicalised it. */
+  ref: SourceRef;
+  title: string;
+  /** `leaf` becomes one file, `container` a directory (MANUAL §6). */
+  kind: Kind;
+  /** Documents directly inside it. Zero for a leaf. */
+  childCount: number;
+  /** The extension a leaf takes on disk, dot included. `.md` for a document. */
+  ext?: string;
+  editor?: Editor;
+  /** ISO 8601, as the source reported it. */
+  lastEditedTime: string;
+}
+
 /** One document store, as the helper and the CLI use it. */
 export interface Source {
   /**
@@ -111,6 +144,25 @@ export interface Source {
     provider: CredentialProvider,
     index: DocumentIndex,
   ): Promise<PushReport>;
+
+  /**
+   * What one object is, from its metadata alone. `docsync resolve` prints it
+   * and `docsync add` turns it into a path, both before there is a checkout to
+   * fetch into.
+   */
+  describe(ref: SourceRef, provider: CredentialProvider): Promise<SourceDescription>;
+
+  /**
+   * The paths under `root` whose source metadata has moved since `previous`,
+   * the index of the last fetch: what `docsync status` says is "changed at
+   * source". Nothing is downloaded — only the listing every adapter already
+   * walks. A path that appeared and one that is gone both count as moved.
+   */
+  changedSince(
+    root: Root,
+    provider: CredentialProvider,
+    previous: DocumentIndex,
+  ): Promise<string[]>;
 }
 
 /** The registry: one `Source` per source name. */
@@ -121,11 +173,21 @@ export type SourceRegistry = Record<SourceName, Source>;
  * place in the helper where a source name means anything.
  */
 export const sources: SourceRegistry = {
-  notion: { fetchRoot: fetchNotionRoot, pushRoot: pushNotionRoot },
-  gdocs: { fetchRoot: fetchDriveRoot, pushRoot: pushDriveRoot },
+  notion: {
+    fetchRoot: fetchNotionRoot,
+    pushRoot: pushNotionRoot,
+    describe: describeNotion,
+    changedSince: notionChangedSince,
+  },
+  gdocs: {
+    fetchRoot: fetchDriveRoot,
+    pushRoot: pushDriveRoot,
+    describe: describeDrive,
+    changedSince: driveChangedSince,
+  },
 };
 
 /** Every source name, sorted, for a message that has to list them. */
 export const sourceNames: SourceName[] = Object.keys(sources).sort() as SourceName[];
 
-export type { SourceName };
+export type { Kind, SourceName, SourceRef };

@@ -3,7 +3,7 @@ import { createFakeCredentialProvider } from '../auth/provider.js';
 import type { IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { fixtureApi, ROOT_ID } from './fixtures.mock.js';
-import { fetchRoot } from './index.js';
+import { changedSince, describe as describeRef, fetchRoot } from './index.js';
 
 const ELEMENTS = '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4';
 const TEXT = '1oiqaDywxRX2qqjSpAlu2gZjS-0BWcqfr';
@@ -171,5 +171,80 @@ describe('fetchRoot', () => {
         { fetch: async () => new Response('{}', { status: 401 }) },
       ),
     ).rejects.toThrow(/401/);
+  });
+});
+
+const SHEET = '1ATMpIGObGedDD6f3yjkGq0jl0SPJ-BDbqpKC85MHg1w';
+
+describe('describe', () => {
+  it('calls a folder a container and counts what is directly inside it', async () => {
+    const one = await describeRef({ source: 'gdocs', id: ROOT_ID }, provider, options);
+
+    expect(one).toMatchObject({ ref: { source: 'gdocs', id: ROOT_ID }, kind: 'container' });
+    expect(one.childCount).toBeGreaterThan(0);
+    // A container has no file of its own, so it carries no extension.
+    expect(one.ext).toBeUndefined();
+  });
+
+  it('calls a Doc a leaf that lands in a .md file', async () => {
+    const one = await describeRef({ source: 'gdocs', id: ELEMENTS }, provider, options);
+
+    expect(one).toMatchObject({ title: 'Elements', kind: 'leaf', childCount: 0, ext: '.md' });
+    expect(one.editor).toEqual({
+      id: '11118091577995849452',
+      name: 'Jiří Staniševský',
+      email: 'jirist@salsitasoft.com',
+    });
+  });
+
+  it('gives an export and a binary the extension they take on disk', async () => {
+    expect((await describeRef({ source: 'gdocs', id: SHEET }, provider, options)).ext).toBe(
+      '.xlsx',
+    );
+    expect((await describeRef({ source: 'gdocs', id: TEXT }, provider, options)).ext).toBe('.txt');
+  });
+});
+
+describe('changedSince', () => {
+  it('calls every path changed when there is no previous index', async () => {
+    const first = await fetchRoot(root, provider, new Map(), options);
+
+    expect(await changedSince(root, provider, new Map(), options)).toEqual(
+      first.files.map((file) => file.path).sort(),
+    );
+  });
+
+  it('calls nothing changed when the index still matches Drive', async () => {
+    const first = await fetchRoot(root, provider, new Map(), options);
+    const previous = new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+
+    expect(await changedSince(root, provider, previous, options)).toEqual([]);
+  });
+
+  it('sees a binary whose checksum moved under an unchanged time', async () => {
+    const first = await fetchRoot(root, provider, new Map(), options);
+    const previous = new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+    const was = previous.get('drive/plain.txt');
+    if (was !== undefined) previous.set('drive/plain.txt', { ...was, md5: 'something else' });
+
+    expect(await changedSince(root, provider, previous, options)).toEqual(['drive/plain.txt']);
+  });
+
+  it('counts a file the root no longer holds, and no other root\u2019s', async () => {
+    const first = await fetchRoot(root, provider, new Map(), options);
+    const previous = new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+    previous.set(
+      'drive/Gone.md',
+      entry({ path: 'drive/Gone.md', src: { source: 'gdocs', id: 'gone-id-that-is-long-enough' } }),
+    );
+    previous.set(
+      'other/Gone.md',
+      entry({
+        path: 'other/Gone.md',
+        src: { source: 'gdocs', id: 'other-id-that-is-long-enough' },
+      }),
+    );
+
+    expect(await changedSince(root, provider, previous, options)).toEqual(['drive/Gone.md']);
   });
 });

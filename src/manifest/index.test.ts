@@ -8,6 +8,7 @@ describe('the manifest module', () => {
       'fileNameFor',
       'isDirectoryPath',
       'isIgnored',
+      'isUnderRoot',
       'parseManifest',
       'resolveAlias',
       'serializeManifest',

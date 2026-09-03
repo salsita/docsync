@@ -14,6 +14,7 @@
  * A refusal or an adapter error leaves it where it was.
  */
 import type { Manifest } from '../manifest/types.js';
+import type { PushedDocument } from '../source.js';
 import { planChanges } from './changes.js';
 import { type FetchDeps, fetchCommit } from './fetch.js';
 import { INDEX_PATH, parseIndex } from './index-file.js';
@@ -69,6 +70,7 @@ export async function pushRef(deps: FetchDeps, request: PushRequest): Promise<Pu
   const plan = await planChanges(diff, request.manifest.roots, index, (path) =>
     git.catBlob(`${pushed}:${path}`),
   );
+  const documents: PushedDocument[] = [];
   for (const { root, changes } of plan) {
     const report = await deps.sources[root.src.source].pushRoot(
       root,
@@ -77,10 +79,15 @@ export async function pushRef(deps: FetchDeps, request: PushRequest): Promise<Pu
       index,
     );
     for (const done of report) deps.log(`${root.src.source}: ${done.action} ${done.path}`);
+    documents.push(...report);
   }
 
   // 6. The post-push fetch, on top of what was pushed.
   const after = await fetchCommit(deps, request.manifest, pushed);
   await git.updateRef(request.ref, after.commit);
+  // The report file is the CLI's only channel: by the time `docsync push`
+  // prints, git has interleaved the progress lines above with its own output
+  // (ticket 10).
+  await deps.report?.push({ at: after.report.at, documents, skipped: after.report.skipped });
   return { ok: true };
 }

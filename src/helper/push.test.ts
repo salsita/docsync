@@ -14,6 +14,7 @@ import {
 } from './fake-source.mock.js';
 import { type FetchDeps, fetchCommit } from './fetch.js';
 import { pushRef } from './push.js';
+import type { PushReportFile } from './report.js';
 import { createTempRepo, type TempRepo } from './temp-repo.mock.js';
 import { readTree } from './tree.js';
 
@@ -220,5 +221,46 @@ describe('pushRef', () => {
       'Specs/New page.md',
       'Specs/Specs.md',
     ]);
+  });
+
+  it('reports every document it touched, for `docsync push` to print', async () => {
+    await serve();
+    const reports: PushReportFile[] = [];
+    deps.report = {
+      fetch: async () => undefined,
+      push: async (one) => {
+        reports.push(one);
+      },
+    };
+    write('Specs/New.md', '---\ntitle: New page\n---\n\nFresh.\n');
+    rmSync(join(repo.root, 'Files/logo.png'));
+    commit('a create and a trash');
+
+    expect(await push()).toEqual({ ok: true });
+
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.at).toBe('2026-04-01T00:00:00.000Z');
+    expect(reports[0]?.documents).toEqual([
+      { path: 'Specs/New.md', title: 'New page', action: 'created' },
+      { path: 'Files/logo.png', title: 'logo.png', action: 'trashed' },
+    ]);
+    expect(reports[0]?.skipped).toEqual([]);
+    delete deps.report;
+  });
+
+  it('writes no push report when the push is refused', async () => {
+    await serve();
+    const reports: PushReportFile[] = [];
+    deps.report = {
+      fetch: async () => undefined,
+      push: async (one) => {
+        reports.push(one);
+      },
+    };
+
+    expect(await push(`+${BRANCH}:${BRANCH}`)).toMatchObject({ ok: false });
+
+    expect(reports).toEqual([]);
+    delete deps.report;
   });
 });

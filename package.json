@@ -41,6 +41,7 @@
   "dependencies": {
     "@napi-rs/keyring": "^2.0.0",
     "@notionhq/client": "^5.26.0",
+    "commander": "15.0.0",
     "ignore": "^7.0.8",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-to-markdown": "^2.1.2",

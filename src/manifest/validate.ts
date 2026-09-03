@@ -30,6 +30,21 @@ export function territoryOf(path: string): string {
 }
 
 /**
+ * Whether a checked-out path belongs to the root at `rootPath`.
+ *
+ * The root's territory is its directory plus, for a file root, the file
+ * itself — the pair `specs/auth.md` and `specs/auth/` that one document with
+ * children produces. `docsync status` uses it to ask each root what changed
+ * without looking at the other roots' entries.
+ */
+export function isUnderRoot(rootPath: string, path: string): boolean {
+  const root = rootPath.normalize('NFC');
+  const territory = territoryOf(root);
+  const at = path.normalize('NFC');
+  return at === root || at === territory || at.startsWith(`${territory}/`);
+}
+
+/**
  * Checks one path's syntax (MANUAL §4). Returns a message, or undefined if it is fine.
  */
 export function validatePath(path: string): string | undefined {

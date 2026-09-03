@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SourceRef } from '../source-ref.js';
 import type { Root } from './types.js';
-import { validateRoots } from './validate.js';
+import { isUnderRoot, validateRoots } from './validate.js';
 
 let counter = 0;
 function root(path: string, src?: SourceRef): Root {
@@ -113,6 +113,25 @@ describe('validateRoots', () => {
 
     it('does not compare a root against itself', () => {
       expect(messages('Specs/')).toEqual([]);
+    });
+  });
+
+  describe('isUnderRoot', () => {
+    it('claims everything inside a directory root', () => {
+      expect(isUnderRoot('Specs/', 'Specs/Auth.md')).toBe(true);
+      expect(isUnderRoot('Specs/', 'Specs/Auth/Deep.md')).toBe(true);
+      expect(isUnderRoot('Specs/', 'Specifications/Auth.md')).toBe(false);
+      expect(isUnderRoot('Specs/', 'Contracts/Auth.md')).toBe(false);
+    });
+
+    it('claims a file root and the sibling directory of the same stem', () => {
+      expect(isUnderRoot('notes/roadmap.md', 'notes/roadmap.md')).toBe(true);
+      expect(isUnderRoot('notes/roadmap.md', 'notes/roadmap/Q1.md')).toBe(true);
+      expect(isUnderRoot('notes/roadmap.md', 'notes/other.md')).toBe(false);
+    });
+
+    it('compares after NFC normalisation, as every path rule does', () => {
+      expect(isUnderRoot('Spe\u0301cs/', 'Sp\u00e9cs/Auth.md')).toBe(true);
     });
   });
 });

@@ -17,6 +17,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import type { CredentialProvider } from '../auth/index.js';
 import { parseDocument, serializeDocument } from '../frontmatter.js';
 import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
+import { isUnderRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import { stringifyMarkdown } from '../markdown.js';
 import { PushError } from '../push-types.js';
@@ -26,6 +27,7 @@ import type {
   FileChange,
   PushReport,
   Source,
+  SourceDescription,
   SourceName,
   SourceRegistry,
 } from '../source.js';
@@ -322,7 +324,64 @@ export function createFakeSource(store: FakeStore): Source {
     return report;
   }
 
-  return { fetchRoot, pushRoot };
+  /** What one object is, as `docsync resolve` and `docsync add` ask (ticket 10). */
+  async function describe(
+    ref: SourceRef,
+    provider: CredentialProvider,
+  ): Promise<SourceDescription> {
+    await provider.accessToken(ref.source);
+    const state = store.load();
+    const object = state.objects[ref.id];
+    if (object === undefined || object.trashed === true) {
+      throw new Error(`${ref.source}:${ref.id} is not accessible`);
+    }
+    const children = Object.values(state.objects).filter(
+      (one) => one.parent === ref.id && one.trashed !== true,
+    );
+    const container = object.kind === 'folder' || children.length > 0;
+    const name = fileName(object);
+    return {
+      ref,
+      title: object.title,
+      kind: container ? 'container' : 'leaf',
+      childCount: children.length,
+      ...(object.kind === 'folder' ? {} : { ext: name.slice(stem(name).length) || '.md' }),
+      ...(object.editor === undefined ? {} : { editor: object.editor }),
+      lastEditedTime: object.lastEditedTime,
+    };
+  }
+
+  /** The paths under a root whose metadata moved since the last fetch. */
+  async function changedSince(
+    root: Root,
+    provider: CredentialProvider,
+    previous: DocumentIndex,
+  ): Promise<string[]> {
+    await provider.accessToken(root.src.source);
+    const state = store.load();
+    const known = new Map([...previous.values()].map((entry) => [entry.src.id, entry]));
+
+    const changed: string[] = [];
+    const found = new Set<string>();
+    for (const [path, object] of layout(state, root)) {
+      found.add(object.id);
+      const before = known.get(object.id);
+      const bytes = object.bytes === undefined ? undefined : Buffer.from(object.bytes, 'base64');
+      if (
+        before === undefined ||
+        before.lastEditedTime !== object.lastEditedTime ||
+        before.md5 !== (bytes === undefined ? undefined : md5(bytes))
+      ) {
+        changed.push(path);
+      }
+    }
+    for (const entry of previous.values()) {
+      if (!found.has(entry.src.id) && isUnderRoot(root.path, entry.path)) changed.push(entry.path);
+    }
+    return [...new Set(changed)].sort();
+  }
+
+  return { fetchRoot, pushRoot, describe, changedSince };
 }
 
 /** Both source names served by one fake, over one store. */

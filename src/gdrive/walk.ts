@@ -16,7 +16,8 @@ import type { Root } from '../manifest/types.js';
 import type { SourceRef } from '../source-ref.js';
 import type { DriveFile, DriveUser, GDriveApi } from './api.js';
 
-const FOLDER_MIME = 'application/vnd.google-apps.folder';
+/** Drive's own type for a folder, which is a container and never a document. */
+export const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const DOCUMENT_MIME = 'application/vnd.google-apps.document';
 
 /** Google-native types that are checked out as an export, and as what (MANUAL §6). */

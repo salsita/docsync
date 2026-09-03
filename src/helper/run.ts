@@ -16,11 +16,12 @@ import { parseManifest, validateRoots } from '../manifest/index.js';
 import type { Manifest } from '../manifest/types.js';
 import { refreshSkillFiles } from '../skill.js';
 import type { SourceRegistry } from '../source.js';
-import { fetchCommit } from './fetch.js';
+import { type FetchDeps, fetchCommit } from './fetch.js';
 import { createGit, type Git } from './git.js';
 import type { Commands } from './protocol.js';
 import { runProtocol } from './protocol.js';
 import { pushRef } from './push.js';
+import { createReportWriter, type ReportWriter } from './report.js';
 
 /** The one branch a docsync remote serves. */
 export const BRANCH = 'refs/heads/main';
@@ -43,6 +44,8 @@ export interface HelperOptions {
   now?: () => Date;
   git?: Git;
   refresh?: (worktree: string) => Promise<void>;
+  /** Where the run's report files go. Default: `$GIT_DIR/docsync/`. */
+  report?: ReportWriter;
 }
 
 /** Where the manifest of a run is, from argv and the environment. */
@@ -92,7 +95,7 @@ export function createCommands(options: HelperOptions): Commands {
   const git = options.git ?? createGit(gitDir);
   const ref = `refs/docsync/${remote}/main`;
   let verbosity = 1;
-  const deps = {
+  const deps: FetchDeps = {
     git,
     sources: options.sources,
     provider: options.provider,
@@ -100,6 +103,8 @@ export function createCommands(options: HelperOptions): Commands {
       if (verbosity > 0) options.stderr(line);
     },
     now: options.now ?? (() => new Date()),
+    // What `docsync fetch`, `pull` and `push` print afterwards (ticket 10).
+    report: options.report ?? createReportWriter(gitDir),
   };
 
   let manifest: Promise<Manifest> | undefined;
