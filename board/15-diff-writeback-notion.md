@@ -1,21 +1,67 @@
 # 15 — Diff-based write-back: Notion
 
-Phase 3. Manual §12 phase 3.
+Phase 3. Manual §7 "Write-back" (rewritten with this ticket), §12 phase 3.
 
 ## Goal
 
-Push patches only the blocks that changed, preserving block ids, block-level
-comments and history elsewhere on the page.
+A push patches only what changed. An untouched block keeps its id, its
+comments, its history and every attribute the dialect cannot express. An
+edited block keeps its id and everything outside the edited characters.
+Nothing is written into the Markdown to make this possible.
 
-## Scope
+## Decisions
 
-- Carry block ids in the Markdown in a way that survives editing and merging
-  (trailing comment per block, or a sidecar map; decide with tests).
-- Diff old and new block sequences; emit update, insert, delete and move
-  operations.
-- Fall back to whole-body replace for a page when the ids are unusable.
+| Concern | Choice | Why |
+|---|---|---|
+| Identity | None in the file. At push time the adapter re-reads the live page, converts it with `to-markdown`, and requires the result to equal the base body (the served commit's version, which the helper now passes as `FileChange.previousText`). Base block *n* is live block *n*. A mismatch is refused with "the source changed" | Push step 1 already guarantees live equals base; this check makes the guarantee local and cheap. The owner: no garbage in the file. |
+| Block diff | `src/diff/blocks.ts`, shared with ticket 16: longest common subsequence over the top-level mdast blocks of base and new, a block's canonical Markdown as its identity. Inside each hunk, a removed and an inserted block of the same type whose plain text is at least 50% similar (git's rename measure) pair as **update**; an exact match elsewhere is **move**, everything else **delete** or **insert**. Recursion into list items, toggles and callouts on their children, and into tables on rows | It is `git diff` on blocks. Same trust, same failure modes. |
+| Text diff | `src/diff/text.ts`: character-level diff of the plain text of an updated pair, tokenised on word boundaries, answering kept, deleted and inserted spans; plus the inline style difference (bold, italic, strikethrough, code, underline, link, colour span, mention, equation) per kept span | Selective replacement inside a paragraph, per the owner. |
+| Update | The live block's rich-text runs are the base. Deleted spans are cut, inserted spans take the annotations of the run before them (the run after, at the start), style differences set only the annotation keys the dialect owns on the affected runs, and the merged array goes in one `PATCH /blocks/{id}` with the type-specific fields the dialect controls (`language`, `checked`, `color` when the attribute comment changed, `icon` for callouts). A mention or equation run is atomic: an edit touching it replaces it | Notion has no partial update; merging locally gives the same effect. Comments are per block, so they survive any update. |
+| Type change | Delete and insert at the same position. New id | The API cannot change a block's type. |
+| Insert | `PATCH /blocks/{parent}/children` with `after` set to the live id of the preceding kept block (absent for the first position), chunked and laid out as `write.ts` already does for deep children | Position without rewriting the neighbours. |
+| Delete, move | `DELETE /blocks/{id}`; a move is a delete and an insert. New id, comments lost, said in the manual | No move call. |
+| Untouched placeholders | A placeholder block (bookmark, embed, synced block, column list…) that is unchanged is kept as is. Changing its text is refused with the block type named; deleting it deletes the block | Today every push destroys them. |
+| Overflow | An inserted or updated block past 100 runs follows ticket 18 when landed, and today's flattening until then | Unchanged. |
+| Whole-page replace | Retired as the default. Kept in `write.ts` for `createPage` only | Nothing calls it for a modified page any more. |
+| Helper | `FileChange.previousText` for `modified` and content-changing `renamed`, read from the served tree in `src/helper/changes.ts` | Both adapters need the base. |
+| Report | `PushedDocument` gains `blocks: { kept, updated, inserted, deleted }` and the CLI prints `updated (3 blocks changed, 41 kept)` | The number is the proof the diff worked. |
+
+## Module
+
+| File | Purpose |
+|---|---|
+| `src/diff/blocks.ts`, `text.ts`, `similarity.ts` | Pure, over mdast; no source knowledge. |
+| `src/notion/patch.ts` | Live blocks + block ops → API calls, in order: updates, then inserts bottom up, then deletes. |
+| `src/notion/rich-text-merge.ts` | Text edits and style differences applied to live runs. |
+| `src/notion/write.ts` | `patchBody(pageId, ops)`; `replaceBody` no longer used by push. |
+| `src/notion/push.ts` | Reads live, checks base, diffs, patches. |
+
+## Tests
+
+- `blocks.ts`: unchanged; one paragraph edited; paragraph inserted at start,
+  middle, end; deleted; moved; two adjacent edited; heading turned into a
+  paragraph (type change); nested list item edited without touching its
+  siblings; table cell edited; a hunk where similarity pairing must choose
+  between two candidates.
+- `text.ts`: a word replaced; text inserted at start and end; a whole
+  sentence rewritten; only formatting changed (bold added); a link target
+  changed; a mention deleted; CJK and emoji.
+- `rich-text-merge.ts`: coloured run survives an edit elsewhere in the block;
+  inserted word inherits red; bold added to part of a red run splits it;
+  an edit across a mention replaces it; 2000-character run splitting still
+  holds.
+- `push.ts` against the fake API: each op kind becomes the expected calls and
+  nothing else; base mismatch refused; placeholder kept, edited placeholder
+  refused; report counts.
+- Round trip on every fixture page: fetch, change one block, push through
+  the fake API, fetch, compare.
+- A real-workspace smoke script (`scripts/notion-patch-smoke.ts`) that
+  creates its own page, adds a comment on one block through the API,
+  patches another block, verifies the comment survived, and archives the
+  page. Board rule: it cleans up.
 
 ## Done when
 
-Editing one paragraph on a page with comments on another leaves those comments
-intact, verified against a real workspace.
+`pnpm check` green; the smoke script proves a comment on an untouched block
+survives; manual §7 says what survives and what does not, per the table
+written at dispatch.
