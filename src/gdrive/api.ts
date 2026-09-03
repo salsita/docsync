@@ -82,6 +82,14 @@ export interface TextStyle {
 export interface TextRun {
   content?: string;
   textStyle?: TextStyle;
+  /**
+   * Pending suggestions on the run, present only when the document was asked
+   * for with them inline. A run carrying insertion ids is not in the version
+   * the suggestion was made against; one carrying deletion ids still is
+   * (MANUAL §7).
+   */
+  suggestedInsertionIds?: string[];
+  suggestedDeletionIds?: string[];
 }
 
 /** One piece of a paragraph. Exactly one field is set. */
@@ -109,11 +117,15 @@ export interface Paragraph {
 }
 
 export interface TableCell {
+  startIndex?: number;
+  endIndex?: number;
   content?: StructuralElement[];
   tableCellStyle?: { rowSpan?: number; columnSpan?: number };
 }
 
 export interface TableRow {
+  startIndex?: number;
+  endIndex?: number;
   tableCells?: TableCell[];
 }
 

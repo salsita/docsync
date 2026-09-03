@@ -14,8 +14,14 @@
  * paragraphs back into trees.
  *
  * What Docs stores and the dialect does not carry — colour, highlight, font,
- * size, alignment, indentation — is dropped here (MANUAL §6, §7). Comments and
- * suggestions never arrive: `api.ts` asks for the document without them.
+ * size, alignment, indentation — is dropped here (MANUAL §6, §7). Comments
+ * never arrive. Suggestions do, since ticket 16: a push asks for the document
+ * with them inline, and the body this module describes is the one they were
+ * suggested against (see `convertDocument`).
+ *
+ * A caller that means to write the document back asks for **provenance**: every
+ * node then carries the index range it came from under `data.gdocs`, which is
+ * what `ranges.ts` turns into the map a patch addresses the document through.
  */
 import type {
   BlockContent,
@@ -84,6 +90,8 @@ interface FlatItem {
   level: number;
   kind: ListKind;
   content: PhrasingContent[];
+  /** The paragraph the item is, for the patch (ticket 16). */
+  origin: Omit<Origin, 'segmentId'>;
 }
 
 /** The conversion in progress: the document, and the footnotes met so far. */
@@ -92,6 +100,53 @@ interface Context {
   /** Footnote definitions in the order their references appeared. */
   footnotes: FootnoteDefinition[];
   seen: Set<string>;
+  /** Whether every node records where in the document it came from. */
+  provenance: boolean;
+  /** The footnote segment being converted. Absent for the body. */
+  segmentId?: string;
+  /** Suggestion ids met in the paragraph being converted. */
+  pending: Set<string>;
+  /** Suggestion ids met anywhere in the document. */
+  suggestions: Set<string>;
+}
+
+/**
+ * Where a node came from in the live document, in the UTF-16 code units both
+ * `documents.get` and `batchUpdate` count in (ticket 16).
+ *
+ * Recorded under `data.gdocs`, which nothing in the Markdown pipeline reads,
+ * and only when the caller asks: a fetch has no use for it.
+ */
+export interface Origin {
+  /** The footnote segment the indices are in. Absent for the body. */
+  segmentId?: string;
+  /** The first index the node covers. */
+  start: number;
+  /** One past the last. A paragraph's own newline is inside it. */
+  end: number;
+  /** How many characters the node contributes to its block's plain text. */
+  text?: number;
+  /** Whether an edit cannot cut it in half: a footnote reference, an image. */
+  atomic?: boolean;
+  /** Pending suggestions inside it (MANUAL §7). */
+  suggestions?: string[];
+}
+
+/** A node's origin, or `undefined` when it was built without provenance. */
+export function originOf(node: { data?: unknown } | undefined): Origin | undefined {
+  return (node?.data as { gdocs?: Origin } | undefined)?.gdocs;
+}
+
+export interface ConvertOptions {
+  /** Record every node's origin under `data.gdocs`, for the patch. */
+  provenance?: boolean;
+}
+
+/** What a conversion learned about the document beyond the tree itself. */
+export interface Converted {
+  tree: Root;
+  /** Every pending suggestion the document carries, in document order. */
+  suggestions: string[];
 }
 
 /** A Google Doc to canonical Markdown text. */
@@ -100,11 +155,61 @@ export function documentToMarkdown(doc: DocsDocument): string {
 }
 
 /** A Google Doc to mdast, for callers that want the tree (the round trip). */
-export function documentToMdast(doc: DocsDocument): Root {
-  const context: Context = { doc, footnotes: [], seen: new Set() };
+export function documentToMdast(doc: DocsDocument, options: ConvertOptions = {}): Root {
+  return convertDocument(doc, options).tree;
+}
+
+/**
+ * The same conversion, with what a suggestions view adds to it.
+ *
+ * A document fetched with `suggestionsViewMode=SUGGESTIONS_INLINE` carries both
+ * sides of every pending suggestion at once. The body the dialect describes is
+ * the one the suggestions were made *against*: a suggested insertion is
+ * dropped, a suggested deletion is kept, and the indices stay the live ones
+ * either way — so a patch computed from this text addresses the document as it
+ * really is (ticket 16, MANUAL §7).
+ */
+export function convertDocument(doc: DocsDocument, options: ConvertOptions = {}): Converted {
+  const context: Context = {
+    doc,
+    footnotes: [],
+    seen: new Set(),
+    provenance: options.provenance === true,
+    pending: new Set(),
+    suggestions: new Set(),
+  };
   const children = convertContent(doc.body?.content ?? [], context);
   // GFM puts every definition at the end of the document (MANUAL §6).
-  return { type: 'root', children: [...children, ...context.footnotes] };
+  return {
+    tree: { type: 'root', children: [...children, ...context.footnotes] },
+    suggestions: [...context.suggestions],
+  };
+}
+
+/** One node, with its origin on it when the caller asked for provenance. */
+function mark<T extends RootContent | PhrasingContent | MdTableRow | MdTableCell>(
+  node: T,
+  context: Context,
+  origin: Omit<Origin, 'segmentId'>,
+): T {
+  if (!context.provenance) return node;
+  return {
+    ...node,
+    data: {
+      ...(node.data ?? {}),
+      gdocs: {
+        ...origin,
+        ...(context.segmentId === undefined ? {} : { segmentId: context.segmentId }),
+      },
+    },
+  };
+}
+
+/** The suggestion ids met since the last `takeSuggestions`, in order. */
+function takeSuggestions(context: Context): string[] {
+  const found = [...context.pending];
+  context.pending.clear();
+  return found;
 }
 
 /** A run of structural elements: a body, a footnote, or one table cell. */
@@ -121,10 +226,16 @@ function convertContent(content: readonly StructuralElement[], context: Context)
       while (index < content.length) {
         const paragraph = content[index]?.paragraph;
         if (paragraph?.bullet === undefined) break;
+        const element = content[index];
         items.push({
           level: paragraph.bullet.nestingLevel ?? 0,
           kind: kindOf(context.doc.lists?.[paragraph.bullet.listId ?? ''], paragraph.bullet),
           content: inline(paragraph.elements ?? [], context),
+          origin: {
+            start: element?.startIndex ?? 0,
+            end: element?.endIndex ?? 0,
+            suggestions: takeSuggestions(context),
+          },
         });
         index += 1;
       }
@@ -132,7 +243,7 @@ function convertContent(content: readonly StructuralElement[], context: Context)
       // ends leaves items behind, and they are lists of their own.
       let at = 0;
       while (at < items.length) {
-        const [nodes, next] = listsFrom(items, at);
+        const [nodes, next] = listsFrom(items, at, context);
         out.push(...nodes);
         at = next;
       }
@@ -148,10 +259,10 @@ function convertContent(content: readonly StructuralElement[], context: Context)
 
 /** One structural element that is not a list item. */
 function convertElement(element: StructuralElement, context: Context): RootContent[] {
-  if (element.paragraph !== undefined) return paragraph(element.paragraph, context);
+  if (element.paragraph !== undefined) return paragraph(element.paragraph, context, element);
   if (element.table !== undefined) return table(element, context);
   if (element.tableOfContents !== undefined) {
-    return [blockPlaceholder(context, element.startIndex, 'table-of-contents')];
+    return [blockPlaceholder(context, element, 'table-of-contents')];
   }
   // A section break carries page setup and nothing the dialect can hold.
   return [];
@@ -161,18 +272,33 @@ function convertElement(element: StructuralElement, context: Context): RootConte
  * One paragraph. A page break is an inline element in Docs but a block in the
  * dialect, so the paragraph is cut at every one of them.
  */
-function paragraph(node: Paragraph, context: Context): RootContent[] {
+function paragraph(node: Paragraph, context: Context, element: StructuralElement): RootContent[] {
   const style = node.paragraphStyle?.namedStyleType ?? 'NORMAL_TEXT';
   const out: RootContent[] = [];
 
-  for (const [position, part] of splitAtPageBreaks(node.elements ?? []).entries()) {
-    if (position > 0) out.push({ type: 'html', value: '<!-- docsync:pagebreak -->' });
+  for (const part of splitAtPageBreaks(node.elements ?? [], element)) {
+    if (part.after !== undefined) {
+      out.push(
+        mark({ type: 'html', value: '<!-- docsync:pagebreak -->' }, context, {
+          start: part.after.startIndex ?? 0,
+          end: part.after.endIndex ?? 0,
+        }),
+      );
+    }
 
     // A rule is an inline element in an otherwise empty paragraph.
-    const rules = part.filter((element) => element.horizontalRule !== undefined).length;
-    for (let n = 0; n < rules; n += 1) out.push({ type: 'thematicBreak' });
+    for (const rule of part.elements) {
+      if (rule.horizontalRule === undefined) continue;
+      out.push(
+        mark({ type: 'thematicBreak' }, context, {
+          start: rule.startIndex ?? part.start,
+          end: rule.endIndex ?? part.end,
+        }),
+      );
+    }
 
-    const children = inline(part, context);
+    const children = inline(part.elements, context);
+    const origin = { start: part.start, end: part.end, suggestions: takeSuggestions(context) };
     // An empty paragraph has no Markdown form (MANUAL §6).
     if (children.length === 0) continue;
 
@@ -180,25 +306,55 @@ function paragraph(node: Paragraph, context: Context): RootContent[] {
     if (document !== undefined) {
       out.push(
         { type: 'html', value: `<!-- docsync: style=${document.style} -->` },
-        { type: 'heading', depth: document.depth, children },
+        mark({ type: 'heading', depth: document.depth, children }, context, origin),
       );
       continue;
     }
     const depth = HEADINGS[style];
     out.push(
-      depth === undefined ? { type: 'paragraph', children } : { type: 'heading', depth, children },
+      mark(
+        depth === undefined
+          ? { type: 'paragraph', children }
+          : { type: 'heading', depth, children },
+        context,
+        origin,
+      ),
     );
   }
 
   return out;
 }
 
-/** The paragraph's elements, cut into one group per page break. */
-function splitAtPageBreaks(elements: readonly ParagraphElement[]): ParagraphElement[][] {
-  const parts: ParagraphElement[][] = [[]];
-  for (const element of elements) {
-    if (element.pageBreak !== undefined) parts.push([]);
-    else parts.at(-1)?.push(element);
+/** One stretch of a paragraph between two page breaks, and where it sits. */
+interface Part {
+  elements: ParagraphElement[];
+  /** The page break this part follows, for the comment that stands for it. */
+  after?: ParagraphElement;
+  start: number;
+  end: number;
+}
+
+/**
+ * The paragraph's elements, cut into one group per page break, each carrying
+ * the range it covers: the paragraph's own, up to the first break, and from a
+ * break to the next one. The last part ends where the paragraph does, so it is
+ * the one that owns the newline.
+ */
+function splitAtPageBreaks(
+  elements: readonly ParagraphElement[],
+  element: StructuralElement,
+): Part[] {
+  const start = element.startIndex ?? elements[0]?.startIndex ?? 0;
+  const end = element.endIndex ?? elements.at(-1)?.endIndex ?? start;
+  const parts: Part[] = [{ elements: [], start, end }];
+  for (const one of elements) {
+    if (one.pageBreak !== undefined) {
+      const last = parts.at(-1);
+      if (last !== undefined) last.end = one.startIndex ?? last.end;
+      parts.push({ elements: [], after: one, start: one.endIndex ?? start, end });
+      continue;
+    }
+    parts.at(-1)?.elements.push(one);
   }
   return parts;
 }
@@ -213,7 +369,7 @@ function table(element: StructuralElement, context: Context): RootContent[] {
     ),
   );
   // Merged cells are not supported and make the table a placeholder (MANUAL §6).
-  if (rows.length === 0 || merged) return [blockPlaceholder(context, element.startIndex, 'table')];
+  if (rows.length === 0 || merged) return [blockPlaceholder(context, element, 'table')];
 
   const width = Math.max(
     element.table?.columns ?? 0,
@@ -223,11 +379,25 @@ function table(element: StructuralElement, context: Context): RootContent[] {
     const cells = row.tableCells ?? [];
     const out: MdTableCell[] = [];
     for (let column = 0; column < width; column += 1) {
-      out.push({ type: 'tableCell', children: cellContent(cells[column]?.content ?? [], context) });
+      const cell = cells[column];
+      out.push(
+        mark({ type: 'tableCell', children: cellContent(cell?.content ?? [], context) }, context, {
+          start: cell?.startIndex ?? 0,
+          end: cell?.endIndex ?? 0,
+        }),
+      );
     }
-    return { type: 'tableRow', children: out };
+    return mark({ type: 'tableRow', children: out }, context, {
+      start: row.startIndex ?? 0,
+      end: row.endIndex ?? 0,
+    });
   });
-  return [{ type: 'table', align: [], children }];
+  return [
+    mark({ type: 'table', align: [], children }, context, {
+      start: element.startIndex ?? 0,
+      end: element.endIndex ?? 0,
+    }),
+  ];
 }
 
 /** A cell holds inline formatting only (MANUAL §6), so its blocks are flattened. */
@@ -238,15 +408,14 @@ function cellContent(content: readonly StructuralElement[], context: Context): P
 }
 
 /** The placeholder for a block the dialect cannot express (MANUAL §6). */
-function blockPlaceholder(
-  context: Context,
-  startIndex: number | undefined,
-  type: string,
-): RootContent {
+function blockPlaceholder(context: Context, element: StructuralElement, type: string): RootContent {
   // A Docs structural element has no id of its own, so it is addressed by the
   // document it is in and the index it starts at.
-  const at = `${context.doc.documentId ?? ''}#${startIndex ?? ''}`;
-  return { type: 'html', value: `<!-- docsync:block gdocs:${at} type=${type} -->` };
+  const at = `${context.doc.documentId ?? ''}#${element.startIndex ?? ''}`;
+  return mark({ type: 'html', value: `<!-- docsync:block gdocs:${at} type=${type} -->` }, context, {
+    start: element.startIndex ?? 0,
+    end: element.endIndex ?? 0,
+  });
 }
 
 /** Which of the three lists a `bullet` belongs to (ticket 07 decisions). */
@@ -277,7 +446,11 @@ function glyphKind(level: NestingLevel | undefined): ListKind {
  * level and the kind hold; a change of kind at one level starts a sibling list,
  * and a deeper level becomes a list inside the item above it.
  */
-function listsFrom(items: readonly FlatItem[], start: number): [RootContent[], number] {
+function listsFrom(
+  items: readonly FlatItem[],
+  start: number,
+  context: Context,
+): [RootContent[], number] {
   const out: RootContent[] = [];
   const level = items[start]?.level ?? 0;
   let index = start;
@@ -299,7 +472,7 @@ function listsFrom(items: readonly FlatItem[], start: number): [RootContent[], n
 
       const children: BlockContent[] = [{ type: 'paragraph', children: item.content }];
       if ((items[index]?.level ?? -1) > level) {
-        const [nested, next] = listsFrom(items, index);
+        const [nested, next] = listsFrom(items, index, context);
         children.push(...(nested as BlockContent[]));
         index = next;
       }
@@ -311,7 +484,7 @@ function listsFrom(items: readonly FlatItem[], start: number): [RootContent[], n
         checked: kind === 'checklist' ? false : null,
         children,
       };
-      list.children.push(node);
+      list.children.push(mark(node, context, item.origin));
     }
 
     out.push(list);
@@ -334,8 +507,17 @@ function isEmptyText(node: PhrasingContent | undefined): boolean {
 }
 
 function inlineElement(element: ParagraphElement, context: Context): PhrasingContent[] {
-  if (element.textRun !== undefined)
-    return annotate(element.textRun.content ?? '', element.textRun.textStyle ?? {});
+  if (element.textRun !== undefined) {
+    const run = element.textRun;
+    for (const id of [...(run.suggestedInsertionIds ?? []), ...(run.suggestedDeletionIds ?? [])]) {
+      context.pending.add(id);
+      context.suggestions.add(id);
+    }
+    // A suggested insertion is not in the version the suggestion was made
+    // against, and that version is the base a push diffs from (MANUAL §7).
+    if ((run.suggestedInsertionIds ?? []).length > 0) return [];
+    return annotate(run.content ?? '', run.textStyle ?? {}, context, element.startIndex ?? 0);
+  }
   if (element.footnoteReference !== undefined) return [footnote(element, context)];
   if (element.inlineObjectElement !== undefined) return [inlineObject(element, context)];
   // A rule is emitted as a block by `paragraph`; a page break splits it.
@@ -344,6 +526,8 @@ function inlineElement(element: ParagraphElement, context: Context): PhrasingCon
     objectPlaceholder(
       `${context.doc.documentId ?? ''}#${element.startIndex ?? ''}`,
       kindOfUnknown(element),
+      context,
+      element,
     ),
   ];
 }
@@ -367,29 +551,62 @@ function inlineObject(element: ParagraphElement, context: Context): PhrasingCont
   let type = 'object';
   if (embedded?.imageProperties !== undefined) type = 'image';
   else if (embedded?.embeddedDrawingProperties !== undefined) type = 'drawing';
-  return objectPlaceholder(id, type);
+  return objectPlaceholder(id, type, context, element);
 }
 
-function objectPlaceholder(id: string, type: string): PhrasingContent {
-  return { type: 'html', value: `<!-- docsync:object gdocs:${id} type=${type} -->` };
+/**
+ * One inline element the dialect cannot carry. It is one code unit in the
+ * document and a whole comment in the Markdown, so it is atomic: an edit that
+ * reaches into it takes the object with it (MANUAL §7).
+ */
+function objectPlaceholder(
+  id: string,
+  type: string,
+  context: Context,
+  element: ParagraphElement,
+): PhrasingContent {
+  const value = `<!-- docsync:object gdocs:${id} type=${type} -->`;
+  return mark({ type: 'html', value }, context, {
+    start: element.startIndex ?? 0,
+    end: element.endIndex ?? (element.startIndex ?? 0) + 1,
+    text: value.length,
+    atomic: true,
+  });
 }
 
 /** `[^n]`, with the definition collected for the end of the document. */
 function footnote(element: ParagraphElement, context: Context): PhrasingContent {
   const reference = element.footnoteReference ?? {};
   const identifier = reference.footnoteNumber ?? String(context.footnotes.length + 1);
-  const body = context.doc.footnotes?.[reference.footnoteId ?? ''];
+  const segmentId = reference.footnoteId ?? '';
+  const body = context.doc.footnotes?.[segmentId];
   if (body !== undefined && !context.seen.has(identifier)) {
     context.seen.add(identifier);
-    context.footnotes.push({
-      type: 'footnoteDefinition',
-      identifier,
-      label: identifier,
-      // Docs writes the note with a leading space after the marker.
-      children: trimLeading(convertContent(body.content ?? [], context)) as BlockContent[],
-    });
+    // The body is a document of its own, in a segment of its own, so the
+    // indices inside it are the segment's and are marked as such.
+    const outer = { segmentId: context.segmentId, pending: context.pending };
+    context.segmentId = segmentId;
+    context.pending = new Set();
+    const children = trimLeading(convertContent(body.content ?? [], context)) as BlockContent[];
+    const end = body.content?.at(-1)?.endIndex ?? 1;
+    context.segmentId = segmentId;
+    context.footnotes.push(
+      mark(
+        { type: 'footnoteDefinition', identifier, label: identifier, children },
+        context,
+        // Docs writes the note with a leading space after the marker.
+        { start: 0, end },
+      ),
+    );
+    context.segmentId = outer.segmentId;
+    context.pending = outer.pending;
   }
-  return { type: 'footnoteReference', identifier, label: identifier };
+  return mark({ type: 'footnoteReference', identifier, label: identifier }, context, {
+    start: element.startIndex ?? 0,
+    end: element.endIndex ?? (element.startIndex ?? 0) + 1,
+    text: 0,
+    atomic: true,
+  });
 }
 
 /** Drops the space Docs puts between a footnote's number and its text. */
@@ -397,7 +614,16 @@ function trimLeading(nodes: RootContent[]): RootContent[] {
   const first = nodes[0];
   if (first?.type !== 'paragraph') return nodes;
   const head = first.children[0];
-  if (head?.type === 'text') head.value = head.value.replace(/^\s+/, '');
+  if (head?.type !== 'text') return nodes;
+  const value = head.value.replace(/^\s+/, '');
+  const origin = originOf(head);
+  // The characters that go are characters of the document all the same, so the
+  // run's origin moves with them.
+  if (origin !== undefined) {
+    origin.start += head.value.length - value.length;
+    origin.text = value.length;
+  }
+  head.value = value;
   return nodes;
 }
 
@@ -406,9 +632,14 @@ function trimLeading(nodes: RootContent[]): RootContent[] {
  * The order is fixed — code, underline, strikethrough, italic, bold, link — so
  * that the same styling always produces the same Markdown.
  */
-function annotate(content: string, style: TextStyle): PhrasingContent[] {
+function annotate(
+  content: string,
+  style: TextStyle,
+  context: Context,
+  start: number,
+): PhrasingContent[] {
   if (content === '') return [];
-  let nodes = textNodes(content, style);
+  let nodes = textNodes(content, style, context, start);
   if (style.underline === true && style.link?.url === undefined) {
     nodes = [{ type: 'html', value: '<u>' }, ...nodes, { type: 'html', value: '</u>' }];
   }
@@ -425,16 +656,43 @@ function annotate(content: string, style: TextStyle): PhrasingContent[] {
  * trailing spaces and a newline (MANUAL §6); the newline Docs ends every
  * paragraph with is not content and goes the same way, into nothing.
  */
-function textNodes(content: string, style: TextStyle): PhrasingContent[] {
+function textNodes(
+  content: string,
+  style: TextStyle,
+  context: Context,
+  start: number,
+): PhrasingContent[] {
   const text = content.replace(/\n$/, '');
   const font = style.weightedFontFamily?.fontFamily?.toLowerCase() ?? '';
-  if (CODE_FONT_SET.has(font)) return text === '' ? [] : [{ type: 'inlineCode', value: text }];
+  if (CODE_FONT_SET.has(font)) {
+    return text === ''
+      ? []
+      : [
+          mark({ type: 'inlineCode', value: text }, context, {
+            start,
+            end: start + text.length,
+            text: text.length,
+          }),
+        ];
+  }
 
-  return text
-    .split(VERTICAL_TAB)
-    .flatMap((line, index) =>
-      index === 0
-        ? [{ type: 'text' as const, value: line }]
-        : [{ type: 'break' as const }, { type: 'text' as const, value: line }],
+  const out: PhrasingContent[] = [];
+  let at = start;
+  for (const [index, line] of text.split(VERTICAL_TAB).entries()) {
+    // A soft line break is the one code unit the vertical tab occupies, and
+    // one character of the block's text (MANUAL §6).
+    if (index > 0) {
+      out.push(mark({ type: 'break' }, context, { start: at, end: at + 1, text: 1 }));
+      at += 1;
+    }
+    out.push(
+      mark({ type: 'text', value: line }, context, {
+        start: at,
+        end: at + line.length,
+        text: line.length,
+      }),
     );
+    at += line.length;
+  }
+  return out;
 }
