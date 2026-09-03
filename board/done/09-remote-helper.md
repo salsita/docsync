@@ -83,3 +83,35 @@ talks to Notion or Drive itself.
 `pnpm check` green with the thirteen end-to-end cases passing on macOS and
 Linux in CI (Windows is ticket 12), and manual §7 says what the push
 pre-flight does.
+
+## Outcome
+
+Landed 2026-09-03. Eight agent commits (the first agent's `50f83a1` plus the
+Fable agent's `1ff424f`…`15cb0e2`, after repeated API overloads killed the
+Opus runs) plus the landing commit.
+
+- **Modules as planned** in `src/helper/`: `git.ts` (plumbing, one function
+  per call), `tree.ts` (flat tree ↔ nested tree objects), `index-file.ts`,
+  `protocol.ts` (the wire loop over an injected `Commands`), `fetch.ts`
+  (`fetchCommit`), `changes.ts` (`planChanges`, pure: every §6/§7 refusal),
+  `push.ts` (`pushRef`, the six steps), `run.ts` and `main.ts` (wiring),
+  `src/skill.ts` (`refreshSkillFiles` no-op for ticket 11). `src/source.ts`
+  holds the `Source` interface and the shared types.
+- **Harness:** an in-memory fake `Source` (`fake-source.mock.ts`) injected
+  as the registry for both names, backed by a JSON file store for the
+  end-to-end runs; `e2e.test.ts` builds the helper with `tsc` into a cache
+  directory and puts a shell shim on `PATH`. Fifteen cases (the thirteen plus
+  missing credential and bad manifest), about 14 s. Skipped on Windows with a
+  note (ticket 12).
+- **Protocol findings:** git passes the URL with the `docsync::` prefix; a
+  helper that fails during `list` must close stdin or git hangs; `--quiet`
+  sends `option verbosity 0`; a non-fast-forward is rejected by git itself
+  before the helper sees it, so the helper's ancestor check is defence in
+  depth; the post-push commit arrives on the next `git pull`.
+- **Deviations:** case 5 follows the §6 frontmatter rule from ticket 08 (a
+  new `.md` needs frontmatter to become a Notion page). A rename across
+  roots is a delete plus an add. The author falls back to docsync when no
+  changed document names an editor.
+- **Manual changes at landing:** §7 `Update the index` follow-up and the
+  `--quiet` note; §9 a clone needs an absolute manifest path.
+- **Not covered:** `src/remote-helper.ts` itself, four process-level lines.

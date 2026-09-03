@@ -546,7 +546,12 @@ Git sends the commits between `origin/main` and your branch. The helper:
    form differs from what was pushed (new ids, source-side normalization), it
    writes one more commit on top of `origin/main`. Your branch is then one
    fast-forward behind. `docsync push` fast-forwards for you when the working
-   tree is clean; after plain `git push`, run `git pull`.
+   tree is clean; after plain `git push`, run `git pull`. When the source only
+   re-stamped edit times, that follow-up commit is `Update the index`.
+
+The helper reports progress and the list of trashed documents on stderr as
+the push runs. `git push --quiet` silences it; prefer `docsync push`, which
+prints the report properly.
 
 ### Force push
 
@@ -622,7 +627,9 @@ The remote URL is `docsync::<manifest>`, where `<manifest>` is one of:
 | `gdocs:<id>`, `notion:<id>` | **later**: the manifest is itself a document at the source.                          |
 
 `git clone docsync::/abs/path/manifest.yaml my-docs` is a normal clone. The
-helper writes the skill file during it.
+helper writes the skill file during it. A clone needs an absolute manifest
+path: a relative one would resolve against the empty directory git has just
+made, where no manifest exists yet.
 
 Several checkouts can share one manifest. Manifest history, if you want it, is
 the history of whatever git repo the manifest file lives in.
