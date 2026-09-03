@@ -15,7 +15,7 @@ the sidecar is read-only and a modified one is refused on push.
 |---|---|---|
 | Where | `<title>.comments.md` beside `<title>.md`, only when the document has at least one thread or suggestion. Removed when the last one goes away | The owner wants the body clean. A sidecar diffs on pull like any file, so `git pull` shows new comments as a diff. |
 | Format | Markdown: a frontmatter with `document: <ref>` and `fetched:`; then one `## ` heading per open thread in source order: `## <id> — comment`; `## <id> — suggestion` (Docs only). Under the heading the anchor, then one `**Author** · <ISO time>` line and the body per entry. Deleted entries omitted | Readable without a tool, greppable, stable order, small diffs when one thread changes. |
-| Anchor, comments | The quoted text as a blockquote, then `in: <nearest heading path in the body>` when the quoted text is found in the fetched Markdown, `in: (not found)` otherwise. Docs: `quotedFileContent`. Notion: the first line of the anchored block, and `in:` from the block position | The anchor bytes are opaque (Docs) or a block id (Notion). Quoted text plus heading path is what a reader needs. |
+| Anchor, comments | The paragraph (or list item, heading, table cell) that contains the anchored text, quoted as a blockquote with the anchored part wrapped in `==…==`, then `in: <nearest heading in the body>`. Docs: the anchored text is `quotedFileContent`, searched in the fetched Markdown; the first paragraph containing it wins; when it is found nowhere the quote is the bare anchored text and `in:` says `(not found)`. Notion: the whole block is the anchor (the API has no range), quoted without marks | The Drive anchor id is opaque and absent from the Docs response; a full paragraph gives a reader the context, and the marks show the exact words. |
 | Anchor, suggestions | The paragraph as it stands and as it would read with the suggestion accepted, in a ```diff fence (`-` line, `+` line). Pure formatting suggestions render as `> quoted` with `formatting only` | A suggestion is an edit; a diff is the honest rendering. |
 | Which body | Docs: `documents.get` with `suggestionsViewMode=SUGGESTIONS_INLINE`, once. The body is derived by dropping runs with `suggestedInsertionIds` and keeping runs with `suggestedDeletionIds`, i.e. the document as it stands with no suggestion applied. The sidecar is derived from the same response | One request; ticket 16 needs the same response for its index math. |
 | Resolved threads | Not in the file. A thread disappears from the sidecar when resolved (Docs: `resolved` flag; Notion: no longer returned) | The owner: resolved threads are not interesting. |
@@ -38,7 +38,8 @@ the sidecar is read-only and a modified one is refused on push.
 
 - `format.ts` snapshot for a fixture with all thread kinds.
 - `locate.ts`: found under a nested heading, found before any heading, not
-  found, found twice (first match, noted).
+  found, found in two paragraphs (first wins), found in a list item and a
+  table cell (the whole item or cell is quoted).
 - Body derivation from a `SUGGESTIONS_INLINE` response: insertion dropped,
   deletion kept, mixed run.
 - Fetch produces the sidecar for both fixtures; a document without threads
