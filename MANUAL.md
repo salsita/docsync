@@ -675,6 +675,10 @@ only what you author and push. File format to be designed when we get there.
 - Manifest stored at the source: `docsync::gdocs:<id>`.
 - Notion databases.
 - Writable Sheets and Slides, if a lossless path exists.
+- A per-root `format: html` option as an alternative to Markdown. It would
+  carry colours, fonts, alignment and merged cells, at the cost of noisier
+  diffs and harder agent edits. Diff-based write-back (phase 3) removes most
+  of the reason for it, so it waits until then.
 
 ---
 
