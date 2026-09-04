@@ -718,9 +718,13 @@ What is lost, per source:
   a comment that overlaps an edit; a pending suggestion in a paragraph you
   edited, which is overwritten as plain text and named in the push report. A
   paragraph you moved, and one rewritten so far that the diff cannot pair it,
-  are written afresh where they land. Horizontal rules and images cannot be
-  created by the dialect, so a new one in your Markdown is dropped; an
-  existing one in text you did not touch survives. A table that gained or
+  are written afresh where they land. A horizontal rule cannot be created
+  by the dialect, so a new one in your Markdown is dropped; an existing one
+  in text you did not touch survives. An image is created from its file in
+  `<title>.assets/`, inline where its link sits; an image whose file is not
+  there is dropped and named in the push report. The alt text of an image
+  cannot be written, so an edit that changes only an alt sends nothing and
+  is reverted by the fetch after the push. A table that gained or
   lost a column is rewritten whole; a row added or removed leaves the other
   rows alone. A list item you nested deeper is written afresh at the level
   it lands in. A fenced code block is written as Courier New paragraphs and
