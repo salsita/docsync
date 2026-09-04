@@ -34,6 +34,7 @@ import type {
   Root,
   RootContent,
 } from 'mdast';
+import { linkToAsset } from '../assets.js';
 import { stringifyMarkdown } from '../markdown.js';
 import type {
   DocsDocument,
@@ -96,6 +97,9 @@ interface FlatItem {
 
 /** The conversion in progress: the document, and the footnotes met so far. */
 interface Context {
+  /** Where the inline images went, and what to write them relative to. */
+  assets?: ReadonlyMap<string, string>;
+  from?: string;
   doc: DocsDocument;
   /** Footnote definitions in the order their references appeared. */
   footnotes: FootnoteDefinition[];
@@ -140,6 +144,14 @@ export function originOf(node: { data?: unknown } | undefined): Origin | undefin
 export interface ConvertOptions {
   /** Record every node's origin under `data.gdocs`, for the patch. */
   provenance?: boolean;
+  /**
+   * Where the document's inline images were written, by object id (MANUAL §12
+   * phase 2). An image in here is linked into `<title>.assets/`; one that is
+   * not — because nothing downloaded it — keeps the placeholder it had.
+   */
+  assets?: ReadonlyMap<string, string>;
+  /** Repo-relative path of the document, for those relative links. */
+  from?: string;
 }
 
 /** What a conversion learned about the document beyond the tree itself. */
@@ -150,8 +162,8 @@ export interface Converted {
 }
 
 /** A Google Doc to canonical Markdown text. */
-export function documentToMarkdown(doc: DocsDocument): string {
-  return stringifyMarkdown(documentToMdast(doc));
+export function documentToMarkdown(doc: DocsDocument, options: ConvertOptions = {}): string {
+  return stringifyMarkdown(documentToMdast(doc, options));
 }
 
 /** A Google Doc to mdast, for callers that want the tree (the round trip). */
@@ -177,6 +189,8 @@ export function convertDocument(doc: DocsDocument, options: ConvertOptions = {})
     provenance: options.provenance === true,
     pending: new Set(),
     suggestions: new Set(),
+    ...(options.assets === undefined ? {} : { assets: options.assets }),
+    ...(options.from === undefined ? {} : { from: options.from }),
   };
   const children = convertContent(doc.body?.content ?? [], context);
   // GFM puts every definition at the end of the document (MANUAL §6).
@@ -541,13 +555,37 @@ function kindOfUnknown(element: ParagraphElement): string {
 }
 
 /**
- * An image is a placeholder carrying its object id until ticket 14 downloads
- * it (MANUAL §6). It stays inline, so an image in the middle of a sentence
- * does not cut the sentence in two.
+ * An inline object. An image the fetch downloaded is an `![alt](path)` link
+ * into `<title>.assets/`; anything else — a drawing, an image nobody
+ * downloaded — is the placeholder carrying its object id (MANUAL §6, §12
+ * phase 2).
+ *
+ * Either way it stays inline, so an image in the middle of a sentence does not
+ * cut the sentence in two, and either way it is **atomic**: one code unit in
+ * the document, all of it or none of it in the Markdown.
  */
 function inlineObject(element: ParagraphElement, context: Context): PhrasingContent {
   const id = element.inlineObjectElement?.inlineObjectId ?? '';
   const embedded = context.doc.inlineObjects?.[id]?.inlineObjectProperties?.embeddedObject;
+  const asset = context.assets?.get(id);
+  if (asset !== undefined && embedded?.imageProperties !== undefined) {
+    // Docs keeps the alt text in two fields; the description is the one the
+    // editor's "Alt text" box writes, and the title is the older one.
+    const alt = embedded.description ?? embedded.title ?? '';
+    const node: PhrasingContent = {
+      type: 'image',
+      url: linkToAsset(context.from ?? '', asset),
+      alt,
+    };
+    return mark(node, context, {
+      start: element.startIndex ?? 0,
+      end: element.endIndex ?? (element.startIndex ?? 0) + 1,
+      // What the block's plain text says at this offset is the alt text: that
+      // is what `plain` and `inlineRuns` count (`src/diff/`).
+      text: alt.length,
+      atomic: true,
+    });
+  }
   let type = 'object';
   if (embedded?.imageProperties !== undefined) type = 'image';
   else if (embedded?.embeddedDrawingProperties !== undefined) type = 'drawing';

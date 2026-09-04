@@ -19,6 +19,11 @@
  * The inline copy is written only when it differs from the plain one, so a
  * document with no pending suggestion costs no second fixture.
  *
+ * An inline image of a Google Doc is recorded twice as well: the document's
+ * JSON, whose `contentUri` is good for about half an hour, and the *bytes*
+ * behind it, saved as `asset-<objectId><ext>` (ticket 14). The bytes are what
+ * the fetch tests compare against, so a stale URI costs nothing.
+ *
  * Re-run only deliberately.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -136,6 +141,41 @@ const commented: string[] = [];
 let requests = 0;
 const binaries: { id: string; file: string }[] = [];
 const exports: { id: string; file: string }[] = [];
+const assets: { doc: string; object: string; uri: string; file: string }[] = [];
+
+/** The extension a content type implies, for an object that carries no name. */
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+  'image/bmp': '.bmp',
+};
+
+/**
+ * The bytes behind every inline image of one Doc. Read-only: one authenticated
+ * `GET` of a URI the Docs API itself handed us, and nothing else.
+ */
+async function recordImages(docId: string, document: unknown): Promise<void> {
+  const objects = (document as { inlineObjects?: Record<string, Record<string, never>> })
+    .inlineObjects;
+  for (const [objectId, object] of Object.entries(objects ?? {})) {
+    const embedded = (
+      object as {
+        inlineObjectProperties?: { embeddedObject?: { imageProperties?: { contentUri?: string } } };
+      }
+    ).inlineObjectProperties?.embeddedObject;
+    const uri = embedded?.imageProperties?.contentUri;
+    if (uri === undefined) continue;
+    const response = await get(uri);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
+    const file = `asset-${objectId.replaceAll('.', '-')}${IMAGE_EXTENSIONS[type] ?? ''}`;
+    await writeBytes(file, bytes);
+    assets.push({ doc: docId, object: objectId, uri, file });
+  }
+}
 
 async function record(folderId: string, path: string): Promise<void> {
   const files = await listFolder(folderId);
@@ -159,6 +199,7 @@ async function record(folderId: string, path: string): Promise<void> {
       requests += 3;
       docs.push(file.id);
       await write(`doc-${file.id}`, document);
+      await recordImages(file.id, document);
       // Every response echoes the view it was asked for, which is the one
       // difference a document with no pending suggestion has.
       const same = (value: unknown): string =>
@@ -209,5 +250,6 @@ await write('index', {
   commented,
   binaries,
   exports,
+  assets,
 });
 console.log(`${requests} document and comment requests for ${docs.length} Docs`);

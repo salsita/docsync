@@ -17,6 +17,17 @@ function load<T>(name: string): T {
   return JSON.parse(readFileSync(join(HERE, `${name}.json`), 'utf8')) as T;
 }
 
+/** One image a recorded Doc holds, saved as bytes beside the JSON. */
+export interface FixtureAsset {
+  /** The Doc that holds it. */
+  doc: string;
+  /** The inline object id. */
+  object: string;
+  /** The `contentUri` it was recorded from. Long expired; the key, not a link. */
+  uri: string;
+  file: string;
+}
+
 interface Index {
   rootId: string;
   rootName: string;
@@ -28,6 +39,8 @@ interface Index {
   commented: string[];
   binaries: { id: string; file: string }[];
   exports: { id: string; file: string }[];
+  /** The inline images, with the bytes recorded for each. */
+  assets?: FixtureAsset[];
 }
 
 const index = load<Index>('index');
@@ -40,6 +53,16 @@ export const DOC_IDS = index.docs;
 
 /** The folder ids, root first. */
 export const FOLDER_IDS = index.folders;
+
+/** Every inline image the recorded tree holds, with the bytes saved for it. */
+export const ASSETS: FixtureAsset[] = index.assets ?? [];
+
+/** The recorded bytes of one inline image, by its object id. */
+export function fixtureAssetBytes(objectId: string): Uint8Array {
+  const found = ASSETS.find((one) => one.object === objectId);
+  if (found === undefined) throw new Error(`no recorded bytes for object ${objectId}`);
+  return new Uint8Array(readFileSync(join(HERE, found.file)));
+}
 
 /** One recorded Doc, as `documents.get` answered it. */
 export function fixtureDocument(id: string): DocsDocument {
@@ -105,6 +128,14 @@ export function fixtureApi(): GDriveApi {
     async download(id) {
       return fixtureBytes(id);
     },
+    async downloadUri(uri) {
+      const found = ASSETS.find((one) => one.uri === uri);
+      if (found === undefined) throw new Error(`no recorded bytes for ${uri.split('?', 1)[0]}`);
+      return {
+        bytes: new Uint8Array(readFileSync(join(HERE, found.file))),
+        contentType: found.file.endsWith('.png') ? 'image/png' : 'application/octet-stream',
+      };
+    },
     async export(id) {
       return fixtureBytes(id);
     },
@@ -137,6 +168,8 @@ export function countingApi(backing: GDriveApi = fixtureApi()): CountedApi {
       getDocument: (id, mode) => count('getDocument', id, backing.getDocument(id, mode)),
       comments: (id) => count('comments', id, backing.comments(id)),
       download: (id) => count('download', id, backing.download(id)),
+      downloadUri: (uri) =>
+        count('downloadUri', uri.split('?', 1)[0] ?? uri, backing.downloadUri(uri)),
       export: (id, mimeType) => count('export', id, backing.export(id, mimeType)),
     },
   };

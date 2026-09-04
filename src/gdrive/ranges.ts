@@ -24,7 +24,7 @@ import type { PhrasingContent, Root, RootContent } from 'mdast';
 import { type DiffBlock, flattenBlocks } from '../diff/blocks.js';
 import { stringifyMarkdown } from '../markdown.js';
 import type { DocsDocument } from './api.js';
-import { convertDocument, type Origin, originOf } from './to-markdown.js';
+import { type ConvertOptions, convertDocument, type Origin, originOf } from './to-markdown.js';
 
 /** One piece of a block's text, and where the document keeps it. */
 export interface Piece extends Origin {
@@ -70,8 +70,8 @@ export interface LiveDocument {
 }
 
 /** The live document read as the version a push diffs against (MANUAL §7). */
-export function readLive(doc: DocsDocument): LiveDocument {
-  const { tree, suggestions } = convertDocument(doc, { provenance: true });
+export function readLive(doc: DocsDocument, options: ConvertOptions = {}): LiveDocument {
+  const { tree, suggestions } = convertDocument(doc, { ...options, provenance: true });
   return {
     markdown: stringifyMarkdown(tree),
     tree,

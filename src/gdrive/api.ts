@@ -267,6 +267,13 @@ export interface GDriveApi {
   comments(id: string): Promise<DriveComment[]>;
   /** A binary file's bytes, as stored. */
   download(id: string): Promise<Uint8Array>;
+  /**
+   * The bytes behind a URI the Docs API handed us: an inline image's
+   * `contentUri`, which is authenticated and good for about half an hour
+   * (MANUAL §12 phase 2). The content type comes back with them, because it is
+   * the only thing that says what the file is called.
+   */
+  downloadUri(uri: string): Promise<{ bytes: Uint8Array; contentType: string }>;
   /** A Google-native file converted to `mimeType` (Sheets, Slides, Drawings). */
   export(id: string, mimeType: string): Promise<Uint8Array>;
   /** One document, one batch, one reply per request (MANUAL §7). */
@@ -401,6 +408,14 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
 
     async download(id) {
       return bytes(`${DRIVE_ENDPOINT}/files/${id}?alt=media&supportsAllDrives=true`);
+    },
+
+    async downloadUri(uri) {
+      const response = await call(uri);
+      return {
+        bytes: new Uint8Array(await response.arrayBuffer()),
+        contentType: (response.headers.get('content-type') ?? '').split(';', 1)[0]?.trim() ?? '',
+      };
     },
 
     async export(id, mimeType) {

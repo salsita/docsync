@@ -26,6 +26,7 @@ import type {
 } from '../source.js';
 import type { SourceRef } from '../source-ref.js';
 import { createGDriveApi, type DriveUser, type GDriveApi } from './api.js';
+import { fetchDocumentAssets, keptAssets } from './assets.js';
 import { threadsOf } from './comments.js';
 import { documentToMarkdown } from './to-markdown.js';
 import { EXPORTS, FOLDER_MIME, type SkippedObject, type WalkedFile, walkRoot } from './walk.js';
@@ -76,7 +77,11 @@ export async function fetchRoot(
 
   // What the index remembers about Drive files anywhere in the checkout: their
   // paths, which keep names stable, and what they looked like last time.
-  const known = [...previous.values()].filter((one) => one.src.source === 'gdocs');
+  // Files only: an asset has no listing of its own and moves with the document
+  // that holds it (MANUAL §12 phase 2).
+  const known = [...previous.values()].filter(
+    (one) => one.src.source === 'gdocs' && one.type !== 'asset',
+  );
   const paths = new Map(known.map((one): [string, string] => [one.src.id, one.path]));
   const before = new Map(known.map((one): [string, IndexEntry] => [one.src.id, one]));
 
@@ -87,7 +92,9 @@ export async function fetchRoot(
     refuseSidecar(file.path);
     // Comments are opt-in per root, because reading them costs a request per
     // document on every fetch (MANUAL §4, §7).
-    files.push(...(await toFiles(file, api, before.get(file.id), fetched, root.comments === true)));
+    files.push(
+      ...(await toFiles(file, api, before.get(file.id), fetched, root.comments === true, previous)),
+    );
   }
 
   return {
@@ -159,7 +166,11 @@ export async function changedSince(
   options: FetchOptions = {},
 ): Promise<string[]> {
   const api = options.api ?? (await gdriveApi(provider, options.fetch));
-  const known = [...previous.values()].filter((entry) => entry.src.source === 'gdocs');
+  // Files only: an asset has no listing of its own and moves with its document
+  // (MANUAL §12 phase 2).
+  const known = [...previous.values()].filter(
+    (entry) => entry.src.source === 'gdocs' && entry.type !== 'asset',
+  );
   const walked = await walkRoot(
     api,
     root,
@@ -206,6 +217,7 @@ async function toFiles(
   previous: IndexEntry | undefined,
   fetched: string,
   comments: boolean,
+  index: ReadonlyMap<string, IndexEntry>,
 ): Promise<FetchedFile[]> {
   const entry: IndexEntry = {
     path: file.path,
@@ -242,8 +254,12 @@ async function toFiles(
   // With comments off, a Doc costs what it did before ticket 17: its body when
   // it changed, and not one request more (MANUAL §7).
   if (!comments) {
-    if (!changed) return [{ ...common, entry }];
-    const body = documentToMarkdown(await api.getDocument(file.id, 'inline'));
+    // A document that did not change downloads nothing at all, images
+    // included; the files it already has are carried over (MANUAL §12).
+    if (!changed) return [{ ...common, entry }, ...keptAssets(index, file.path)];
+    const document = await api.getDocument(file.id, 'inline');
+    const assets = await fetchDocumentAssets(api, document, file.path, index);
+    const body = documentToMarkdown(document, { assets: assets.links, from: file.path });
     return [
       {
         ...common,
@@ -251,6 +267,7 @@ async function toFiles(
         text: serializeDocument({ id: file.ref, title: file.title }, body),
         body,
       },
+      ...assets.files,
     ];
   }
 
@@ -260,11 +277,16 @@ async function toFiles(
   const threadList = await api.comments(file.id);
   const open = threadList.filter((one) => one.resolved !== true && one.deleted !== true);
   if (!changed && open.length === 0 && previous?.suggested !== true) {
-    return [{ ...common, entry }];
+    return [{ ...common, entry }, ...keptAssets(index, file.path)];
   }
 
   const document = await api.getDocument(file.id, 'inline');
-  const body = documentToMarkdown(document);
+  // An unchanged document that owes a sidecar keeps the files it has: it is
+  // read for the anchors, not for its images (MANUAL §12 phase 2).
+  const assets = changed
+    ? await fetchDocumentAssets(api, document, file.path, index)
+    : { files: keptAssets(index, file.path), links: linksOf(index, file.path) };
+  const body = documentToMarkdown(document, { assets: assets.links, from: file.path });
   const threads = threadsOf(document, threadList, body);
   const suggested = threads.some((thread) => thread.kind === 'suggestion');
 
@@ -277,15 +299,30 @@ async function toFiles(
       ? { text: serializeDocument({ id: file.ref, title: file.title }, body), body }
       : {}),
   };
-  if (threads.length === 0) return [document_];
+  if (threads.length === 0) return [document_, ...assets.files];
   return [
     document_,
+    ...assets.files,
     {
       path: sidecarPathOf(file.path),
       text: formatSidecar({ document: file.ref, fetched, threads }),
       changed: true,
     },
   ];
+}
+
+/** The links an unchanged document's images already have, by object id. */
+function linksOf(
+  index: ReadonlyMap<string, IndexEntry>,
+  documentPath: string,
+): Map<string, string> {
+  const links = new Map<string, string>();
+  for (const entry of index.values()) {
+    if (entry.type === 'asset' && entry.document === documentPath) {
+      links.set(entry.src.id, entry.path);
+    }
+  }
+  return links;
 }
 
 /** Drive's last modifying user as the editor of the commit a fetch writes. */

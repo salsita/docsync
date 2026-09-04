@@ -33,6 +33,7 @@ function stubApi(
     getDocument: refuse('getDocument'),
     comments: refuse('comments'),
     download: refuse('download'),
+    downloadUri: refuse('downloadUri'),
     export: refuse('export'),
   };
 }

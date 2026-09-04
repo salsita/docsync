@@ -31,6 +31,8 @@ export interface FakeFile {
 export interface FakeDrive extends GDriveApi {
   /** Every file, by id, including the ones a push made. */
   files: Map<string, FakeFile>;
+  /** Bytes by URI, for the images a document already holds. */
+  hosted: Map<string, Uint8Array>;
   /** Every operation, in order: `createFile Notes`, `trash doc1`, … */
   calls: string[];
   /** One document's body as Markdown, for asserting what a push wrote. */
@@ -43,6 +45,7 @@ const DOCUMENT = 'application/vnd.google-apps.document';
 export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDrive {
   const files = new Map<string, FakeFile>();
   const documents = new Map<string, DocsModel>();
+  const hosted = new Map<string, Uint8Array>();
   const calls: string[] = [];
   let made = 0;
 
@@ -86,6 +89,14 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
   return {
     files,
     calls,
+    hosted,
+
+    async downloadUri(uri) {
+      calls.push(`downloadUri ${uri}`);
+      const bytes = hosted.get(uri);
+      if (bytes === undefined) throw new Error(`nothing hosted at ${uri}`);
+      return { bytes, contentType: 'image/png' };
+    },
 
     markdown(id) {
       const model = documents.get(id);

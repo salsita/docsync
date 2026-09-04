@@ -33,9 +33,10 @@ describe('fetchRoot', () => {
   it('answers one file per checked-out document, with its index entry', async () => {
     const result = await fetchRoot(root, provider, new Map(), options);
 
-    // Ten documents and no sidecar: comments are off unless the root asks
-    // for them (MANUAL §4).
-    expect(result.files).toHaveLength(10);
+    // Ten documents, the one image the Elements Doc holds, and no sidecar:
+    // comments are off unless the root asks for them (MANUAL §4, §12 phase 2).
+    expect(result.files).toHaveLength(11);
+    expect(result.files.filter((file) => file.entry?.type === 'asset')).toHaveLength(1);
     expect(result.entries).toEqual(documents(result.files).map((file) => file.entry));
     expect(result.files.filter((file) => file.entry === undefined)).toHaveLength(0);
     expect(result.skipped).toEqual([]);
@@ -386,8 +387,10 @@ describe('changedSince', () => {
   it('calls every path changed when there is no previous index', async () => {
     const first = await fetchRoot(root, provider, new Map(), options);
 
+    // Documents only: an image moves with the Doc that holds it (§12 phase 2).
     expect(await changedSince(root, provider, new Map(), options)).toEqual(
       documents(first.files)
+        .filter((file) => file.entry.type !== 'asset')
         .map((file) => file.path)
         .sort(),
     );

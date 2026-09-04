@@ -187,7 +187,7 @@ async function pushWith(
     }
 
     if (isDoc && change.text !== undefined) {
-      const plan = await patchDocument(api, writer, id, change, document.body);
+      const plan = await patchDocument(api, writer, id, change, document.body, known);
       report.push({
         path: change.path,
         title: wanted,
@@ -225,6 +225,7 @@ async function patchDocument(
   id: string,
   change: FileChange,
   body: MdastRoot,
+  known: ReadonlyMap<string, IndexEntry>,
 ): Promise<PatchPlan> {
   if (change.previousText === undefined) {
     throw new PushError(
@@ -233,7 +234,19 @@ async function patchDocument(
     );
   }
 
-  const live = readLive(await api.getDocument(id, 'inline'));
+  // The live body has to be read the way the file was written, images and
+  // all, or the base check below would call every document with an image
+  // changed (MANUAL §12 phase 2).
+  const links = new Map<string, string>();
+  for (const entry of known.values()) {
+    if (entry.type === 'asset' && entry.document === change.path) {
+      links.set(entry.src.id, entry.path);
+    }
+  }
+  const live = readLive(await api.getDocument(id, 'inline'), {
+    assets: links,
+    from: change.path,
+  });
   const base = parseDocument(change.previousText).body;
   // Both sides go through the one pipeline before they are compared, so that a
   // spelling the dialect accepts either way is not read as someone else's edit.
