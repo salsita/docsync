@@ -88,6 +88,31 @@ describe('parseIndex', () => {
     expect(parseIndex(serializeIndex([ASSET])).get(ASSET.path)).toEqual(ASSET);
   });
 
+  it('accepts an inline object id on a Docs asset, which is no file id', () => {
+    // Docs names an inline image `kix.<short>`: shorter than a file id and
+    // holding a dot. The first fetch wrote it; the second has to read it.
+    const image: IndexEntry = {
+      ...ASSET,
+      path: 'Specs/Auth.assets/image-1.png',
+      src: { source: 'gdocs', id: 'kix.237gfdkhknqt' },
+      lastEditedTime: '',
+    };
+    expect(parseIndex(serializeIndex([image])).get(image.path)).toEqual(image);
+  });
+
+  it('still holds a document to a real file id', () => {
+    expect(() =>
+      parseIndex(
+        '- path: a.md\n  src: gdocs:kix.237gfdkhknqt\n  type: gdoc\n  lastEditedTime: t\n',
+      ),
+    ).toThrow(/entry 1.*src/);
+    expect(() =>
+      parseIndex(
+        '- path: a.png\n  src: dropbox:kix.237gfdkhknqt\n  type: asset\n  lastEditedTime: t\n',
+      ),
+    ).toThrow(/entry 1.*src/);
+  });
+
   it('reads an empty file and an empty list as no entries', () => {
     expect(parseIndex('').size).toBe(0);
     expect(parseIndex('[]\n').size).toBe(0);

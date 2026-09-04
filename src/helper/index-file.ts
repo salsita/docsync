@@ -9,7 +9,7 @@
  */
 import { parse as parseYaml, Scalar, stringify as stringifyYaml } from 'yaml';
 import type { DocumentIndex, DocumentType, IndexEntry } from '../index-file.js';
-import { formatSourceRef, parseSourceRef } from '../source-ref.js';
+import { formatSourceRef, parseSourceRef, type SourceRef } from '../source-ref.js';
 
 export type { DocumentIndex, DocumentType, Editor, IndexEntry } from '../index-file.js';
 
@@ -51,6 +51,18 @@ export function serializeIndex(entries: Iterable<IndexEntry>): string {
   return stringifyYaml(rows, { lineWidth: 0 });
 }
 
+/**
+ * An asset's `src` names the object inside its document, not a file: Notion
+ * gives a block id, Google Docs an inline object id such as `kix.237gfdkhknqt`,
+ * which is no file id at all. Only the source has to be one docsync knows.
+ */
+function parseAssetRef(text: string): SourceRef | undefined {
+  const match = /^(notion|gdocs):(\S+)$/.exec(text.trim());
+  return match === null
+    ? undefined
+    : { source: match[1] as SourceRef['source'], id: match[2] ?? '' };
+}
+
 function fail(what: string): never {
   throw new Error(`${INDEX_PATH}: ${what}`);
 }
@@ -69,11 +81,16 @@ export function parseIndex(text: string): DocumentIndex {
     const fields = row as Record<string, unknown>;
     const path = fields.path;
     if (typeof path !== 'string') fail(`${where}: path must be a string`);
-    const src = typeof fields.src === 'string' ? parseSourceRef(fields.src) : undefined;
-    if (src === undefined) fail(`${where}: src must be a source ref`);
     if (typeof fields.type !== 'string' || !TYPES.has(fields.type)) {
       fail(`${where}: type must be one of ${[...TYPES].join(', ')}`);
     }
+    const src =
+      typeof fields.src === 'string'
+        ? fields.type === 'asset'
+          ? parseAssetRef(fields.src)
+          : parseSourceRef(fields.src)
+        : undefined;
+    if (src === undefined) fail(`${where}: src must be a source ref`);
     if (typeof fields.lastEditedTime !== 'string') {
       fail(`${where}: lastEditedTime must be a string`);
     }
