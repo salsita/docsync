@@ -32,3 +32,32 @@ verified with Claude Code on a checkout that has no real source behind it.
 
 `pnpm check` green; the Claude Code run passes twice; the owner tries Codex
 and Cursor on a checkout after landing and feeds back what they get wrong.
+
+## Outcome
+
+Landed as `4f13175` and `6f00e53`. `skill/SKILL.md` is 105 lines; every
+dialect rule was checked against §6, which corrected two points of the
+brief: empty paragraphs exist and must be left alone, and an attribute
+comment needs a blank line before its block. `src/skill.ts` refreshes the
+three copies byte-for-byte, finds `info/exclude` through
+`git rev-parse --git-path` so a linked worktree works, and reports on stderr
+without failing the command. `init` reuses `SKILL_PATHS`.
+
+Beyond the ticket: a fake `docsync` binary for the e2e PATH
+(`src/cli/fake-cli.mock.ts`), since the skill tells the agent to run
+`docsync pull` and `docsync status`; and the fake helper build now lays out
+`src/` and `skill/` like the package, because the real refresh runs on every
+fetch and the flat layout pointed at nothing. The CLI harness no longer stubs
+the refresh, so the command tests exercise it.
+
+Not done: the two Claude Code runs. `claude -p` cannot authenticate from a
+nested session on this machine ("OAuth session expired"), for the agent and
+for the reviewer alike. The test itself was proven with a scripted stand-in
+on PATH that follows the skill's loop, which found two harness bugs, both
+fixed. The owner runs it after `claude` `/login`:
+
+    DOCSYNC_SKILL_TEST=1 corepack pnpm vitest run src/skill.claude.test.ts
+
+Until then the skill's wording is unvalidated by a model, and the Codex and
+Cursor trial is the owner's after landing. Manual §10 gained the sentence on
+a refresh that cannot write.

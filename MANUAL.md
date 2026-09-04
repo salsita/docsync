@@ -816,7 +816,10 @@ They are plain copies, excluded from git via `.git/info/exclude`. Every
 `docsync` command and every helper run compares them with the bundled copy of
 the installed version and overwrites them when they differ, so upgrading
 docsync updates every checkout the next time it is touched. Do not edit them;
-your edits will be overwritten.
+your edits will be overwritten. A refresh that cannot write, on a read-only
+checkout say, says so on stderr and never fails the command that ran it. The
+same run adds the three paths to `.git/info/exclude` when they are missing,
+so a checkout made by an older version gets them.
 
 ### The loop
 
