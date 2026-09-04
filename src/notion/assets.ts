@@ -207,12 +207,20 @@ export async function uploadAssets(
 /**
  * The block body that points an existing media block at a new upload: the same
  * block, the same id, the same comments, a different file (MANUAL §7).
+ *
+ * `type` is not in it. A *create* request names which of `external`,
+ * `file_upload` and `file` it is sending; an update is refused for saying so —
+ * "body.image.type should be not present" — which is what the smoke script
+ * found. The caption is carried over, because an update replaces the whole
+ * type-specific body and would otherwise drop it.
  */
-export function fileUploadBody(type: string, uploadId: string, name: string): RawObject {
+export function fileUploadBody(block: NotionBlock, uploadId: string, name: string): RawObject {
+  const body = bodyOf(block);
+  const type = block.type;
   return {
     [type]: {
-      type: 'file_upload',
       file_upload: { id: uploadId },
+      ...(Array.isArray(body.caption) ? { caption: body.caption } : {}),
       ...(type === 'image' ? {} : { name }),
     },
   };

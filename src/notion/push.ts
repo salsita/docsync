@@ -216,7 +216,7 @@ async function pushWith(
     const upload = result.uploads.get(change.path);
     if (upload === undefined) continue;
     const name = change.path.slice(change.path.lastIndexOf('/') + 1);
-    await api.updateBlock(entry.src.id, fileUploadBody(block.type, upload, name));
+    await api.updateBlock(entry.src.id, fileUploadBody(block, upload, name));
     if (!report.some((one) => one.path === document)) {
       report.push({ path: document, title: titleFromPath(document), action: 'updated' });
     }
@@ -303,7 +303,9 @@ function assetLinks(index: DocumentIndex, documentPath: string): Map<string, str
   const links = new Map<string, string>();
   for (const entry of index.values()) {
     if (entry.type === 'asset' && entry.document === documentPath) {
-      links.set(entry.src.id, entry.path);
+      // `to-markdown.ts` looks a block up by its undashed id, and an index
+      // written by hand may well hold the dashed one Notion answers with.
+      links.set(bareId(entry.src.id), entry.path);
     }
   }
   return links;
