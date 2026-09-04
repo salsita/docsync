@@ -22,6 +22,30 @@ describe('createGit', () => {
     expect([...(await repo.git.catBlob(sha))]).toEqual([...bytes]);
   });
 
+  it('survives a git that exits before reading the input it was handed', async () => {
+    // Most plumbing commands never read stdin, and an input this size cannot
+    // fit in the pipe buffer, so the write lands on a pipe the child has
+    // already closed. That is EPIPE on the child's stdin, and with nothing
+    // listening for it there it became an unhandled 'error' event that killed
+    // the whole helper mid-protocol — git then reported exit 128 (ticket 22).
+    // The command's own exit code is the only answer that matters here; a
+    // broken input pipe is the normal end of the race, not a failure of ours.
+    const uncaught: unknown[] = [];
+    const collect = (error: unknown): void => {
+      uncaught.push(error);
+    };
+    process.on('uncaughtException', collect);
+    try {
+      const exits = createGit(repo.gitDir, process.execPath);
+      const big = Buffer.alloc(4 * 1024 * 1024, 0x61);
+      await expect(exits.raw(['-e', ''], { input: big })).resolves.toBeDefined();
+      await new Promise((done) => setTimeout(done, 100));
+    } finally {
+      process.off('uncaughtException', collect);
+    }
+    expect(uncaught).toEqual([]);
+  });
+
   it('round-trips a tree with nested directories and a unicode name', async () => {
     const leaf = await repo.git.hashObject(Buffer.from('hello\n'));
     const inner = await repo.git.mktree([

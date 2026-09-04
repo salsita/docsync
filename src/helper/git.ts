@@ -105,6 +105,13 @@ export function createGit(gitDir: string, gitBinary = 'git'): Git {
           else resolve(stdout);
         },
       );
+      // Most of the commands here never read stdin, and git is free to exit
+      // before the input is handed over: the write then lands on a closed pipe
+      // and raises EPIPE on the child's stdin. That is the normal end of the
+      // race and not a failure — the exit code above is the answer — but an
+      // 'error' with no listener is an unhandled event that takes the whole
+      // helper down mid-protocol, which git reports as exit 128 (ticket 22).
+      child.stdin?.on('error', () => {});
       child.stdin?.end(options.input ?? Buffer.alloc(0));
     });
   }

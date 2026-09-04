@@ -8,7 +8,7 @@ process.env.TZ = 'UTC';
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   addObject,
   editObject,
@@ -16,7 +16,7 @@ import {
   type FakeState,
   fakeId,
 } from '../helper/fake-source.mock.js';
-import { createWorld, fakeHelperBin, type World } from './harness.mock.js';
+import { createWorld, type World } from './harness.mock.js';
 
 const SPECS = fakeId('notion', 1);
 const AUTH = fakeId('notion', 2);
@@ -101,10 +101,6 @@ async function checkout(w: World, ...refs: string[]): Promise<string> {
 describe.skipIf(process.platform === 'win32')(
   'the docsync commands',
   () => {
-    beforeAll(() => {
-      fakeHelperBin();
-    }, 120_000);
-
     afterEach(() => {
       for (const one of worlds.splice(0)) one.remove();
     });

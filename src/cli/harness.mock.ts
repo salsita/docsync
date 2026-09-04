@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { createFakeCredentialProvider } from '../auth/provider.js';
 import type { Identity } from '../auth/types.js';
-import { buildFakeHelper } from '../helper/fake-bin.mock.js';
+import { HELPER_BIN } from '../helper/fake-bin.mock.js';
 import {
   createFakeRegistry,
   createFileStore,
@@ -58,12 +58,9 @@ export interface World {
   remove(): void;
 }
 
-let bin: string | undefined;
-
-/** Builds the fake helper once per test file and answers its directory. */
+/** Where the fake helper the global setup built is, to put on PATH. */
 export function fakeHelperBin(): string {
-  bin ??= buildFakeHelper('docsync-cli');
-  return bin;
+  return HELPER_BIN;
 }
 
 export function createWorld(state: FakeState): World {

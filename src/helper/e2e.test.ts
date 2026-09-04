@@ -1,15 +1,15 @@
 /**
  * The helper end to end: real `git`, the built helper on PATH under the name
  * git discovers, the fake `Source` behind a JSON file. Each case starts from a
- * fresh temporary directory. `buildFakeHelper` compiles it once per run of
- * this file.
+ * fresh temporary directory. The helper is compiled once for the whole run by
+ * vitest's global setup; `HELPER_BIN` is where it lands.
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { buildFakeHelper } from './fake-bin.mock.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { HELPER_BIN } from './fake-bin.mock.js';
 import {
   addObject,
   createFileStore,
@@ -20,8 +20,6 @@ import {
   fakeId,
 } from './fake-source.mock.js';
 import { parseIndex } from './index-file.js';
-
-let BIN = '';
 
 const NOTION_ROOT = fakeId('notion', 1);
 const AUTH = fakeId('notion', 2);
@@ -125,7 +123,7 @@ function world(options: { signedIn?: string; manifest?: string; state?: FakeStat
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    PATH: `${BIN}${delimiter}${process.env.PATH ?? ''}`,
+    PATH: `${HELPER_BIN}${delimiter}${process.env.PATH ?? ''}`,
     DOCSYNC_FAKE_STORE: storePath,
     ...(options.signedIn === undefined ? {} : { DOCSYNC_FAKE_SIGNED_IN: options.signedIn }),
     GIT_CONFIG_GLOBAL: '/dev/null',
@@ -190,10 +188,6 @@ const frontmatter = (id: string, title: string, body: string): string =>
 describe.skipIf(process.platform === 'win32')(
   'git-remote-docsync',
   () => {
-    beforeAll(() => {
-      BIN = buildFakeHelper('docsync-e2e');
-    }, 120_000);
-
     afterEach(() => {
       for (const one of worlds.splice(0)) rmSync(one.dir, { recursive: true, force: true });
     });
@@ -507,6 +501,37 @@ describe.skipIf(process.platform === 'win32')(
       const gone = w.tryGit(w.dir, 'clone', 'docsync::nowhere.yaml', 'checkout2');
       expect(gone.status).not.toBe(0);
       expect(gone.stderr).toContain('nowhere.yaml: no such file');
+    });
+
+    it('16. the helper exits quietly when git stops reading its replies', async () => {
+      const w = world();
+      w.git(w.dir, 'init', '--quiet', 'reader');
+      const helper = spawn(
+        join(HELPER_BIN, 'git-remote-docsync'),
+        ['origin', `docsync::${w.manifest}`],
+        {
+          cwd: join(w.dir, 'reader'),
+          env: { ...w.env, GIT_DIR: join(w.dir, 'reader', '.git') },
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      );
+      let stderr = '';
+      helper.stderr.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      // git dies, or stops caring, before the reply lands: the read end of the
+      // helper's stdout is gone while the helper still has lines to write.
+      helper.stdout.destroy();
+      helper.stdin.on('error', () => {});
+      helper.stdin.end('capabilities\nlist\n\n');
+
+      const code = await new Promise<number | null>((done) => helper.on('close', done));
+
+      // A closed pipe is git's way of saying it is done, not a crash: no
+      // unhandled 'error', no stack, and nothing for git to report as 128.
+      expect(stderr).not.toContain('EPIPE');
+      expect(stderr).not.toContain('Unhandled');
+      expect(code).toBe(0);
     });
   },
   60_000,
