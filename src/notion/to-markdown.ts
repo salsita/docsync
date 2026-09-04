@@ -446,7 +446,13 @@ function mention(part: RichText, options: ToMarkdownOptions): PhrasingContent[] 
     const id =
       typeof target === 'object' && target !== null ? String((target as RawObject).id ?? '') : '';
     const path = kind === 'page' ? pathTo(id, options) : undefined;
-    return link(path ?? `https://www.notion.so/${bareId(id)}`);
+    if (path === undefined) return link(`https://www.notion.so/${bareId(id)}`);
+    // The API labels a mention with the page's title — except inside a table
+    // cell, where it says "Untitled" for a page that has one. The page is in
+    // the checkout, so its file name, which came from that title, stands in.
+    // The same rule runs on the live page at push time, so both sides agree.
+    const text = label === '' || label === 'Untitled' ? stemOf(path) : label;
+    return [{ type: 'link', url: path, children: [{ type: 'text', value: text }] }];
   }
   if (kind === 'user') {
     const user = body.user;
@@ -469,6 +475,12 @@ function mention(part: RichText, options: ToMarkdownOptions): PhrasingContent[] 
 }
 
 /** The relative link to a page in the checkout, if it is in the checkout. */
+/** The file name of a page's path without its extension: `Specs/Auth.md` → `Auth`. */
+function stemOf(path: string): string {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  return name.endsWith('.md') ? name.slice(0, -3) : name;
+}
+
 function pathTo(id: string, options: ToMarkdownOptions): string | undefined {
   const target = options.pages?.get(bareId(id));
   if (target === undefined) return undefined;

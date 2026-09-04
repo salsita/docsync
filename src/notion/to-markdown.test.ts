@@ -392,6 +392,25 @@ describe('rich text', () => {
     ).toBe('[Leaf](Leaf.md)\n');
   });
 
+  it('names a mention the API left "Untitled" after the page it points at', () => {
+    // Inside a table cell the API labels a page mention "Untitled" whatever
+    // the page is called; the file name carries the title.
+    const mention: RichText = {
+      type: 'mention',
+      mention: { type: 'page', page: { id: '3cf715cb-eb08-819d-b888-c032d7bb60de' } },
+      plain_text: 'Untitled',
+      href: 'https://app.notion.com/p/3cf715cbeb08819db888c032d7bb60de',
+    };
+    const pages = new Map([[LEAF_ID, 'Docsync test/Lead Qualification.md']]);
+    expect(
+      markdown([block('paragraph', { rich_text: [mention] })], 'Docsync test/Blocks.md', pages),
+    ).toBe('[Lead Qualification](<Lead Qualification.md>)\n');
+    // Outside the checkout there is nothing better to call it.
+    expect(inlineMarkdown([mention])).toBe(
+      '[Untitled](https://www.notion.so/3cf715cbeb08819db888c032d7bb60de)',
+    );
+  });
+
   it('a mention of a page outside the checkout', () => {
     const mention: RichText = {
       type: 'mention',
