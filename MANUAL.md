@@ -89,7 +89,8 @@ A team can share one app per source. The ai-starter setup can drop a
 pre-filled `oauth-apps.yaml` in place from the team's secret store.
 
 `docsync auth <source>` also verifies an existing token and prints who you are
-signed in as. `docsync auth <source> --logout` removes the token. Every command
+signed in as, and says so: to sign in again, or to pick Notion pages again,
+run `docsync auth <source> --logout` first, which removes the token. Every command
 that needs a credential fails immediately and clearly when one is missing,
 with the command to run. Only `docsync auth` ever opens the editor; a token
 renewal during another command fails with a pointer to the apps file instead.
@@ -598,6 +599,11 @@ For each root, the helper lists documents at the source and compares last-edit
 metadata with what it recorded last time. Only changed documents are downloaded.
 For a binary file on Drive the checksum is compared too, since its modified
 time can move without the content moving.
+As it runs, the helper reports progress on stderr: one line naming each root
+it is listing, one line per document it downloads, numbered against the
+total on Google Drive, where the walk has already counted them, and numbered
+alone on Notion, whose tree is discovered as it is walked, and one per
+document whose comments are read. `git fetch --quiet` silences it.
 If anything changed, it writes one commit to `origin/main`:
 
 - author: the source's last editor, with their source email if available
@@ -656,9 +662,10 @@ Git sends the commits between `origin/main` and your branch. The helper:
    tree is clean; after plain `git push`, run `git pull`. When the source only
    re-stamped edit times, that follow-up commit is `Update the index`.
 
-The helper reports progress and the list of trashed documents on stderr as
-the push runs. `git push --quiet` silences it; prefer `docsync push`, which
-prints the report properly.
+The helper reports progress on stderr as the push runs: one line per
+document before its requests go out, one per file it uploads, and the list
+of trashed documents. `git push --quiet` silences it; prefer `docsync push`,
+which prints the report properly.
 
 ### Force push
 
@@ -793,6 +800,10 @@ made, where no manifest exists yet.
 
 Several checkouts can share one manifest. Manifest history, if you want it, is
 the history of whatever git repo the manifest file lives in.
+
+The helper honours git's `option verbosity`: `--quiet` silences every
+progress line, on fetch and push alike. Progress is never stored; the report
+files under `.git/docsync/` are the record.
 
 ---
 

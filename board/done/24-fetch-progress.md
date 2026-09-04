@@ -34,3 +34,20 @@ is doing inside `fetchRoot` or `pushRoot`.
 
 `pnpm check` green; `docsync pull` on the Drive fixture prints one line per
 changed document while it runs, and the report after.
+
+## Outcome
+
+Landed as `14ede90`. `fetchRoot` and `pushRoot` take an optional `progress`
+in the options object both adapters already had, so no call site changed to
+compile; the helper passes its `log`, and `option verbosity 0` silences it
+with the summary. A Drive pull of the fixture prints `listing drive/`, then
+`1/10 drive/Elements.md` … `10/10 drive/Sub/Nested.md`, then the summary; a
+second pull prints the listing line and `gdocs: unchanged`. Push prints
+`<n>/<total> <path>` before a document's requests and `upload <path>` per
+file. The fake source emits the same shapes, so the CLI harness proves the
+relay end to end.
+
+Deviations: no `asset <path>` line on fetch (the hook would land after the
+bytes were down); Notion numbers changed pages only, without a total, since
+its walk downloads every page whether it moved or not and the listing line
+stands for the walk. Manual §7 fetch and push and §9 gained the wording.
