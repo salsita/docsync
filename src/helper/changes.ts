@@ -10,6 +10,7 @@
  * index, an edit to a read-only export, a copy of a document, a plain file
  * under Notion. Pure over an injected blob reader.
  */
+import { isAssetPath } from '../assets.js';
 import { isSidecarPath } from '../comments/format.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
@@ -200,8 +201,12 @@ async function added(
   const raw = bytes ?? (await read(path));
   const notion = root.src.source === 'notion';
   if (!path.endsWith('.md')) {
-    if (notion)
+    // A file in `<title>.assets/` is an attachment of that document, and both
+    // sources hold those (MANUAL §12 phase 2). Anything else under a Notion
+    // root is a file Notion has nowhere to put.
+    if (notion && !isAssetPath(path)) {
       throw new Error(`${path}: Notion holds no files; only .md pages go under a Notion root`);
+    }
     return { kind: 'added', path, bytes: raw };
   }
 

@@ -40,6 +40,10 @@ const index = new Map(
     entry('Files/notes.md', 'drive-file'),
     entry('Files/Rates.xlsx', 'drive-file', { readOnly: true }),
     entry('notes/roadmap.md', 'gdoc'),
+    entry('Specs/Auth.assets/photo.png', 'asset', {
+      document: 'Specs/Auth.md',
+      checksum: 'a'.repeat(64),
+    }),
   ].map((one) => [one.path, one]),
 );
 
@@ -61,6 +65,9 @@ const blobs: Record<string, string> = {
   'notes/roadmap/Child.md': FRONT,
   'README.md': 'outside\n',
   'Specs/comments.md': FRONT,
+  'Specs/Auth.assets/photo.png': 'PNGBYTES',
+  'Specs/Auth.assets/new.png': 'NEWPNG',
+  'Files/Plan.assets/shot.png': 'SHOT',
 };
 const read = async (path: string): Promise<Uint8Array> => {
   const text = blobs[path];
@@ -306,6 +313,52 @@ describe('planChanges', () => {
 
     it('ignores one deleted outside every root, which is `docsync remove`', async () => {
       expect(await plan(D('gone/Auth.comments.md'))).toEqual([]);
+    });
+  });
+
+  describe('assets (MANUAL §12 phase 2)', () => {
+    it('carries a new asset under a Notion root as bytes, where a plain file is refused', async () => {
+      expect(await plan(A('Specs/Auth.assets/new.png'))).toEqual([
+        {
+          root: NOTION,
+          changes: [
+            { kind: 'added', path: 'Specs/Auth.assets/new.png', bytes: Buffer.from('NEWPNG') },
+          ],
+        },
+      ]);
+      await expect(plan(A('Specs/pic.png'))).rejects.toThrow(/Notion holds no files/);
+    });
+
+    it('carries changed asset bytes, with no base text to diff them against', async () => {
+      expect(await plan(M('Specs/Auth.assets/photo.png'))).toEqual([
+        {
+          root: NOTION,
+          changes: [
+            {
+              kind: 'modified',
+              path: 'Specs/Auth.assets/photo.png',
+              bytes: Buffer.from('PNGBYTES'),
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('passes a deleted asset to its root', async () => {
+      expect(await plan(D('Specs/Auth.assets/photo.png'))).toEqual([
+        { root: NOTION, changes: [{ kind: 'deleted', path: 'Specs/Auth.assets/photo.png' }] },
+      ]);
+    });
+
+    it('carries an asset under a Drive root too', async () => {
+      expect(await plan(A('Files/Plan.assets/shot.png'))).toEqual([
+        {
+          root: DRIVE,
+          changes: [
+            { kind: 'added', path: 'Files/Plan.assets/shot.png', bytes: Buffer.from('SHOT') },
+          ],
+        },
+      ]);
     });
   });
 

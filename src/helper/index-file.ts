@@ -16,7 +16,12 @@ export type { DocumentIndex, DocumentType, Editor, IndexEntry } from '../index-f
 /** Where the index lives in the tree, repo-relative. */
 export const INDEX_PATH = '.docsync/index.yaml';
 
-const TYPES: ReadonlySet<string> = new Set<DocumentType>(['notion-page', 'gdoc', 'drive-file']);
+const TYPES: ReadonlySet<string> = new Set<DocumentType>([
+  'notion-page',
+  'gdoc',
+  'drive-file',
+  'asset',
+]);
 
 function quoted(text: string): Scalar {
   const scalar = new Scalar(text);
@@ -37,6 +42,10 @@ export function serializeIndex(entries: Iterable<IndexEntry>): string {
     // as a number.
     ...(entry.md5 === undefined ? {} : { md5: quoted(entry.md5) }),
     ...(entry.suggested === undefined ? {} : { suggested: entry.suggested }),
+    // An asset belongs to a document and is compared by its bytes (MANUAL §12).
+    ...(entry.document === undefined ? {} : { document: entry.document }),
+    // Quoted for the same reason an MD5 is: a hex digest can be all digits.
+    ...(entry.checksum === undefined ? {} : { checksum: quoted(entry.checksum) }),
   }));
   // `lineWidth: 0` so that a long path is never folded onto a second line.
   return stringifyYaml(rows, { lineWidth: 0 });
@@ -77,6 +86,12 @@ export function parseIndex(text: string): DocumentIndex {
     if (fields.suggested !== undefined && typeof fields.suggested !== 'boolean') {
       fail(`${where}: suggested must be true or false`);
     }
+    if (fields.document !== undefined && typeof fields.document !== 'string') {
+      fail(`${where}: document must be a string`);
+    }
+    if (fields.checksum !== undefined && typeof fields.checksum !== 'string') {
+      fail(`${where}: checksum must be a string`);
+    }
     entries.set(path, {
       path,
       src,
@@ -85,6 +100,8 @@ export function parseIndex(text: string): DocumentIndex {
       ...(fields.readOnly === undefined ? {} : { readOnly: fields.readOnly }),
       ...(fields.md5 === undefined ? {} : { md5: fields.md5 }),
       ...(fields.suggested === undefined ? {} : { suggested: fields.suggested }),
+      ...(fields.document === undefined ? {} : { document: fields.document }),
+      ...(fields.checksum === undefined ? {} : { checksum: fields.checksum }),
     });
   }
   return entries;

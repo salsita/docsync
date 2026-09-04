@@ -16,6 +16,14 @@ const SHEET: IndexEntry = {
   readOnly: true,
   md5: 'd41d8cd98f00b204e9800998ecf8427e',
 };
+const ASSET: IndexEntry = {
+  path: 'Specs/Auth.assets/photo.png',
+  src: { source: 'notion', id: 'b'.repeat(32) },
+  type: 'asset',
+  lastEditedTime: '2026-01-02T03:04:05.000Z',
+  document: 'Specs/Auth.md',
+  checksum: 'c'.repeat(64),
+};
 
 describe('serializeIndex', () => {
   it('writes one mapping per entry, sorted by path, fields in a fixed order', () => {
@@ -49,6 +57,20 @@ describe('serializeIndex', () => {
     expect(serializeIndex([])).toBe('[]\n');
   });
 
+  it('writes an asset with the document it belongs to and its checksum', () => {
+    expect(serializeIndex([ASSET])).toBe(
+      [
+        '- path: Specs/Auth.assets/photo.png',
+        `  src: notion:${'b'.repeat(32)}`,
+        '  type: asset',
+        '  lastEditedTime: 2026-01-02T03:04:05.000Z',
+        '  document: Specs/Auth.md',
+        `  checksum: '${'c'.repeat(64)}'`,
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('names the file the helper writes', () => {
     expect(INDEX_PATH).toBe('.docsync/index.yaml');
   });
@@ -60,6 +82,10 @@ describe('parseIndex', () => {
     expect([...parsed.keys()]).toEqual(['Contracts/Rates.xlsx', 'Specs/Auth.md']);
     expect(parsed.get('Specs/Auth.md')).toEqual(PAGE);
     expect(parsed.get('Contracts/Rates.xlsx')).toEqual(SHEET);
+  });
+
+  it('round-trips an asset entry', () => {
+    expect(parseIndex(serializeIndex([ASSET])).get(ASSET.path)).toEqual(ASSET);
   });
 
   it('reads an empty file and an empty list as no entries', () => {
@@ -94,5 +120,15 @@ describe('parseIndex', () => {
         '- path: a.md\n  src: gdocs:1AbCdEfGhIjKlMnOpQrStUv\n  type: gdoc\n  lastEditedTime: t\n  md5: 5\n',
       ),
     ).toThrow(/entry 1.*md5/);
+    expect(() =>
+      parseIndex(
+        `- path: a.png\n  src: notion:${'b'.repeat(32)}\n  type: asset\n  lastEditedTime: t\n  document: 3\n`,
+      ),
+    ).toThrow(/entry 1.*document/);
+    expect(() =>
+      parseIndex(
+        `- path: a.png\n  src: notion:${'b'.repeat(32)}\n  type: asset\n  lastEditedTime: t\n  checksum: 3\n`,
+      ),
+    ).toThrow(/entry 1.*checksum/);
   });
 });

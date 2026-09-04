@@ -37,6 +37,12 @@ export const EDITORCONFIG = [
 ].join('\n');
 
 /**
+ * `.gitattributes`, so that a diff of a checkout stays readable: the files a
+ * source hosts are bytes, not text (MANUAL §12 phase 2).
+ */
+export const GITATTRIBUTES = '*.assets/** binary\n';
+
+/**
  * What git must not see (MANUAL §5 step 4, §6, §10): the manifest, the three
  * skill files, and the two formatter files. They belong to the checkout, not
  * to the documents, and every one of them is rewritten by docsync itself.
@@ -48,6 +54,7 @@ export const EXCLUDED = [
   '.cursor/skills/docsync/SKILL.md',
   '.prettierrc',
   '.editorconfig',
+  '.gitattributes',
 ];
 
 /** Whether a directory can become a checkout: empty, or an empty git repo. */
@@ -116,6 +123,7 @@ export async function init(context: Context, args: readonly string[]): Promise<n
   await context.refresh(root);
   await writeFile(join(directory, '.prettierrc'), PRETTIERRC);
   await writeFile(join(directory, '.editorconfig'), EDITORCONFIG);
+  await writeFile(join(directory, '.gitattributes'), GITATTRIBUTES);
 
   if (specs.length > 0) {
     const added = await appendRoots(inside, empty, manifestPath, specs);

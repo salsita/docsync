@@ -12,7 +12,7 @@ import type { SourceRef } from './source-ref.js';
  * in its own frontmatter as well; a binary file has nowhere to put it, which is
  * what the index is for.
  */
-export type DocumentType = 'notion-page' | 'gdoc' | 'drive-file';
+export type DocumentType = 'notion-page' | 'gdoc' | 'drive-file' | 'asset';
 
 /** One checked-out document. */
 export interface IndexEntry {
@@ -39,6 +39,18 @@ export interface IndexEntry {
    * still owes a sidecar without downloading it to find out.
    */
   suggested?: boolean;
+  /**
+   * The document this file is an attachment of, repo-relative (MANUAL §12
+   * phase 2). Set on an `asset` entry and on nothing else: it is what makes a
+   * file in `<title>.assets/` belong to `<title>.md`, so a push knows which
+   * document to patch and a rename takes the assets with it.
+   */
+  document?: string;
+  /**
+   * The sha-256 of an asset's bytes, hex. Change detection for a file the
+   * source stamps no time on, and what says whether a push must upload.
+   */
+  checksum?: string;
 }
 
 /**
