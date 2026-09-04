@@ -140,8 +140,6 @@ export function createWorld(state: FakeState): World {
         }),
         auth,
         now: () => new Date('2026-09-03T10:12:00Z'),
-        // The skill files are ticket 11; the call site is here either way.
-        refresh: async () => undefined,
       });
       const code = await runCli(argv, context);
       return { code, out, err, all: `${out}${err}` };

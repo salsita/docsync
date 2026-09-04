@@ -4,5 +4,5 @@
     "declaration": false,
     "sourceMap": false
   },
-  "include": ["src/helper/fake-helper.mock.ts"]
+  "include": ["src/helper/fake-helper.mock.ts", "src/cli/fake-cli.mock.ts"]
 }

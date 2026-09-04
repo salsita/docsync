@@ -12,6 +12,7 @@ import { join, resolve as resolvePath } from 'node:path';
 import { readFetchReport } from '../../helper/report.js';
 import { serializeManifest } from '../../manifest/index.js';
 import type { Manifest } from '../../manifest/types.js';
+import { SKILL_PATHS } from '../../skill.js';
 import { CliError, type Context, inDirectory, say, sayBlock } from '../context.js';
 import { formatFetchReport } from '../print.js';
 import { appendRoots, looksLikeSource, parseSpec } from './add.js';
@@ -49,9 +50,7 @@ export const GITATTRIBUTES = '*.assets/** binary\n';
  */
 export const EXCLUDED = [
   MANIFEST_NAME,
-  '.agents/skills/docsync/SKILL.md',
-  '.claude/skills/docsync/SKILL.md',
-  '.cursor/skills/docsync/SKILL.md',
+  ...SKILL_PATHS,
   '.prettierrc',
   '.editorconfig',
   '.gitattributes',
