@@ -3,6 +3,7 @@ import { createFakeCredentialProvider } from '../auth/index.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import type { NotionBlock } from './api.js';
+import { MAX_UPLOAD_BYTES } from './assets.js';
 import { createFakeApi, type FakeApi } from './fake-api.mock.js';
 import { markdownToBlocks } from './from-markdown.js';
 import { type FileChange, pushRoot } from './push.js';
@@ -462,5 +463,244 @@ describe('pushRoot', () => {
     await expect(pushRoot(root, [], createFakeCredentialProvider())).rejects.toThrow(
       /docsync auth notion/,
     );
+  });
+
+  describe('attachments (MANUAL §12 phase 2)', () => {
+    const PATH = 'notion/Docsync test/Blocks.md';
+    const ASSET = 'notion/Docsync test/Blocks.assets/photo.png';
+    const PDF = 'notion/Docsync test/Blocks.assets/spec.pdf';
+    const bytes = (value: string) => new TextEncoder().encode(value);
+
+    /** The index a fetch of a page with one attachment would have left. */
+    function withAsset(blockId: string): DocumentIndex {
+      return new Map([
+        ...index,
+        [
+          ASSET,
+          {
+            path: ASSET,
+            src: { source: 'notion', id: blockId },
+            type: 'asset',
+            lastEditedTime: '',
+            document: PATH,
+            checksum: 'old',
+          } as IndexEntry,
+        ],
+      ]);
+    }
+
+    it('uploads a new image and makes an image block pointing at the upload', async () => {
+      const api = fake();
+      const base = await given(api, BLOCKS_ID, 'One paragraph.\n');
+
+      const report = await push(api, [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(BLOCKS_ID, 'Blocks', `${base}\n![A photo](Blocks.assets/photo.png)\n`),
+          previousText: file(BLOCKS_ID, 'Blocks', base),
+          assets: new Map([[ASSET, bytes('PNG')]]),
+        },
+      ]);
+
+      expect(api.calls.filter((call) => call.startsWith('upload:'))).toEqual([
+        'upload:fu1:photo.png:3:image/png',
+      ]);
+      const body = api.appends[0]?.[0] as Record<string, Record<string, unknown>>;
+      expect(body.type).toBe('image');
+      expect(body.image?.file_upload).toEqual({ id: 'fu1' });
+      expect(report[0]?.uploaded).toBe(1);
+    });
+
+    it('makes a pdf block from a .pdf link and a file block from anything else', async () => {
+      const api = fake();
+      const base = await given(api, BLOCKS_ID, 'One paragraph.\n');
+      await push(api, [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(BLOCKS_ID, 'Blocks', `${base}\n[Spec](Blocks.assets/spec.pdf)\n`),
+          previousText: file(BLOCKS_ID, 'Blocks', base),
+          assets: new Map([[PDF, bytes('%PDF')]]),
+        },
+      ]);
+      const body = api.appends[0]?.[0] as Record<string, Record<string, unknown>>;
+      expect(body.type).toBe('pdf');
+      expect(body.pdf?.name).toBe('spec.pdf');
+    });
+
+    it('patches the block in place when only the bytes changed', async () => {
+      const api = fake();
+      await given(api, BLOCKS_ID, 'One paragraph.\n');
+      const block = api.bodyOf(BLOCKS_ID)[0];
+      if (block === undefined) throw new Error('no block');
+
+      const report = await pushRoot(
+        root,
+        [{ kind: 'modified', path: ASSET, bytes: bytes('NEWPNG') }],
+        provider,
+        withAsset(block.id),
+        { api },
+      );
+
+      expect(api.calls.filter((call) => call.startsWith('upload:'))).toHaveLength(1);
+      const update = api.calls.find((call) => call.startsWith(`update:${block.id}`));
+      expect(update).toContain('"file_upload":{"id":"fu1"}');
+      expect(report).toEqual([{ path: PATH, title: 'Blocks', action: 'updated', uploaded: 1 }]);
+    });
+
+    it('refuses a link whose file is not in the checkout, naming the path', async () => {
+      const api = fake();
+      const base = await given(api, BLOCKS_ID, 'One paragraph.\n');
+      await expect(
+        push(api, [
+          {
+            kind: 'modified',
+            path: PATH,
+            text: file(BLOCKS_ID, 'Blocks', `${base}\n![A photo](Blocks.assets/photo.png)\n`),
+            previousText: file(BLOCKS_ID, 'Blocks', base),
+          },
+        ]),
+      ).rejects.toThrow(/Blocks\.assets\/photo\.png: this link points at a file that is not/);
+    });
+
+    /** A page holding one image Notion hosts, as a fetch would have found it. */
+    function withImage(): FakeApi {
+      return createFakeApi({
+        pages: [
+          {
+            id: BLOCKS_ID,
+            title: 'Blocks',
+            parentId: ROOT_ID,
+            blocks: [
+              {
+                object: 'block',
+                id: 'img1',
+                type: 'image',
+                last_edited_time: '',
+                image: {
+                  type: 'file',
+                  file: { url: 'https://s3/photo.png' },
+                  caption: [text('A photo')],
+                },
+              },
+              {
+                object: 'block',
+                id: 'p1',
+                type: 'paragraph',
+                paragraph: { rich_text: [text('After.')], color: 'default' },
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    const IMAGE_BODY = '![A photo](Blocks.assets/photo.png)\n\nAfter.\n';
+
+    it('reads the live page through its attachments, so nothing looks changed', async () => {
+      const api = withImage();
+      const report = await pushRoot(
+        root,
+        [
+          {
+            kind: 'modified',
+            path: PATH,
+            text: file(BLOCKS_ID, 'Blocks', IMAGE_BODY.replace('After.', 'After, edited.')),
+            previousText: file(BLOCKS_ID, 'Blocks', IMAGE_BODY),
+          },
+        ],
+        provider,
+        withAsset('img1'),
+        { api },
+      );
+      expect(report[0]?.blocks).toEqual({ kept: 1, updated: 1, inserted: 0, deleted: 0 });
+    });
+
+    it('refuses a file deleted while the document still links it', async () => {
+      const api = withImage();
+      await expect(
+        pushRoot(
+          root,
+          [
+            { kind: 'deleted', path: ASSET },
+            {
+              kind: 'modified',
+              path: PATH,
+              text: file(BLOCKS_ID, 'Blocks', `${IMAGE_BODY}\nAnd more.\n`),
+              previousText: file(BLOCKS_ID, 'Blocks', IMAGE_BODY),
+            },
+          ],
+          provider,
+          withAsset('img1'),
+          { api },
+        ),
+      ).rejects.toThrow(/the file is gone but notion\/Docsync test\/Blocks\.md still links it/);
+      expect(api.calls).toEqual([]);
+    });
+
+    it('lets a file go when the link went with it', async () => {
+      const api = withImage();
+      const report = await pushRoot(
+        root,
+        [
+          { kind: 'deleted', path: ASSET },
+          {
+            kind: 'modified',
+            path: PATH,
+            text: file(BLOCKS_ID, 'Blocks', 'After.\n'),
+            previousText: file(BLOCKS_ID, 'Blocks', IMAGE_BODY),
+          },
+        ],
+        provider,
+        withAsset('img1'),
+        { api },
+      );
+      expect(report[0]?.blocks?.deleted).toBe(1);
+      expect(api.calls).toContain('delete:img1');
+      expect(api.calls.filter((call) => call.startsWith('upload:'))).toEqual([]);
+    });
+
+    it('reports a file over the limit and uploads nothing for it', async () => {
+      const api = fake();
+      const base = await given(api, BLOCKS_ID, 'One paragraph.\n');
+      const huge = { length: MAX_UPLOAD_BYTES + 1 } as unknown as Uint8Array;
+
+      const report = await push(api, [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(BLOCKS_ID, 'Blocks', `${base}\n![A photo](Blocks.assets/photo.png)\n`),
+          previousText: file(BLOCKS_ID, 'Blocks', base),
+          assets: new Map([[ASSET, huge]]),
+        },
+      ]);
+
+      expect(api.calls.filter((call) => call.startsWith('upload:'))).toEqual([]);
+      expect(report[0]?.skippedFiles?.[0]?.path).toBe(ASSET);
+      expect(report[0]?.skippedFiles?.[0]?.reason).toMatch(/limit/);
+    });
+
+    it('reports a file the source refused and still writes the rest', async () => {
+      const api = fake();
+      const base = await given(api, BLOCKS_ID, 'One paragraph.\n');
+      api.upload = async () => {
+        throw new Error('file size over the plan limit');
+      };
+
+      const report = await push(api, [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(BLOCKS_ID, 'Blocks', `${base}\n![A photo](Blocks.assets/photo.png)\n`),
+          previousText: file(BLOCKS_ID, 'Blocks', base),
+          assets: new Map([[ASSET, bytes('PNG')]]),
+        },
+      ]);
+
+      // The block cannot be written without an upload, so the link is refused
+      // block-side; what matters is that the push said which file it was.
+      expect(report[0]?.skippedFiles?.[0]?.reason).toMatch(/plan limit/);
+    });
   });
 });

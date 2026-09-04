@@ -105,6 +105,14 @@ export function formatPushReport(report: PushReportFile | undefined): string {
   // A pending suggestion inside an edited paragraph was written over as plain
   // text (MANUAL §7); the ids are what lets someone find it in the Doc's
   // history.
+  // A file the source would not take is named, so nobody has to guess which
+  // of a document's attachments did not arrive (MANUAL §12 phase 2).
+  for (const one of report.documents) {
+    for (const file of one.skippedFiles ?? []) {
+      lines.push(`  ${file.path}: not uploaded — ${file.reason}`);
+    }
+  }
+
   for (const one of rest) {
     if (one.suggestions !== undefined && one.suggestions.length > 0) {
       lines.push(
@@ -128,13 +136,19 @@ export function formatPushReport(report: PushReportFile | undefined): string {
  */
 function actionRow(document: PushedDocument): string[] {
   const blocks = document.blocks;
-  if (blocks === undefined) return [document.action, document.path];
+  // Files the source now hosts itself (MANUAL §12 phase 2).
+  const files =
+    document.uploaded === undefined || document.uploaded === 0
+      ? ''
+      : `uploaded ${plural(document.uploaded, 'file')}`;
+  if (blocks === undefined) {
+    return files === ''
+      ? [document.action, document.path]
+      : [document.action, document.path, `(${files})`];
+  }
   const changed = blocks.updated + blocks.inserted + blocks.deleted;
-  return [
-    document.action,
-    document.path,
-    `(${plural(changed, 'block')} changed, ${blocks.kept} kept)`,
-  ];
+  const counts = `${plural(changed, 'block')} changed, ${blocks.kept} kept`;
+  return [document.action, document.path, `(${counts}${files === '' ? '' : `, ${files}`})`];
 }
 
 function plural(count: number, noun: string): string {

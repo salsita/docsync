@@ -106,11 +106,30 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
     return out;
   }
 
+  /**
+   * A block body that points at a file upload, as Notion stores it once the
+   * upload has landed: a hosted file with a URL of its own (MANUAL §12 phase
+   * 2). The bytes are registered under that URL, so a fetch reads them back.
+   */
+  function hostFileUpload(body: RawObject): RawObject {
+    const upload = body.file_upload as { id?: string } | undefined;
+    if (upload?.id === undefined) return body;
+    const uploaded = uploads.get(upload.id);
+    const url = `https://fake-files/${upload.id}`;
+    if (uploaded !== undefined) hosted.set(url, uploaded.bytes);
+    const out: RawObject = { ...body, type: 'file', file: { url, expiry_time: '' } };
+    delete out.file_upload;
+    if (out.name === undefined && uploaded !== undefined) out.name = uploaded.name;
+    return out;
+  }
+
   /** Turns one request payload into stored blocks, children and all. */
   function create(payload: RawObject): NotionBlock {
     nextBlock += 1;
     const type = String(payload.type);
-    const sent = withComputed({ ...((payload[type] as RawObject | undefined) ?? {}) });
+    const sent = hostFileUpload(
+      withComputed({ ...((payload[type] as RawObject | undefined) ?? {}) }),
+    );
     const nested = Array.isArray(sent.children) ? (sent.children as RawObject[]) : [];
     delete sent.children;
 
@@ -218,8 +237,10 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
       if (!found) throw new Error(`no block ${id}`);
       const block = found.list[found.index] as NotionBlock;
       // The API replaces the type-specific body and cannot change the type.
-      const sent = withComputed((body[block.type] ?? {}) as RawObject);
+      const sent = hostFileUpload(withComputed((body[block.type] ?? {}) as RawObject));
       block[block.type] = { ...((block[block.type] ?? {}) as RawObject), ...sent };
+      // A block that now points at an upload no longer points at what it did.
+      if (sent.type === 'file') delete (block[block.type] as RawObject).external;
       return { object: 'block', id };
     },
 

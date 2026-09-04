@@ -8,14 +8,16 @@
  */
 import type { Link, Root as MdastRoot } from 'mdast';
 import { visit } from 'unist-util-visit';
+import { assetLinksOf, documentOfAssetsDir, isAssetPath } from '../assets.js';
 import type { CredentialProvider } from '../auth/index.js';
-import { type BlockCounts, diffBlocks } from '../diff/blocks.js';
+import { type BlockCounts, type BlockOp, diffBlocks } from '../diff/blocks.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import { type FileChange, PushError, type PushReport } from '../push-types.js';
 import type { NotionApi } from './api.js';
+import { fileUploadBody, uploadAssets } from './assets.js';
 import { mdastToBlocks, resolvePath } from './from-markdown.js';
 import { notionApi } from './index.js';
 import { planPatch } from './patch.js';
@@ -48,11 +50,34 @@ export async function pushRoot(
 async function pushWith(
   api: NotionApi,
   root: Root,
-  changes: readonly FileChange[],
+  all: readonly FileChange[],
   index: DocumentIndex,
 ): Promise<PushReport> {
+  let changes: readonly FileChange[] = all;
   const writer = createNotionWriter(api);
   const report: PushReport = [];
+  // What this push uploaded, and what it would not, per document, so that the
+  // report can say `uploaded <n> files` on the line it belongs to (§12).
+  const uploaded = new Map<string, number>();
+  const skippedFiles = new Map<string, { path: string; reason: string }[]>();
+  const count = (path: string, result: { uploads: Map<string, string>; skipped: unknown[] }) => {
+    uploaded.set(path, (uploaded.get(path) ?? 0) + result.uploads.size);
+    if (result.skipped.length > 0) {
+      skippedFiles.set(path, [
+        ...(skippedFiles.get(path) ?? []),
+        ...(result.skipped as { path: string; reason: string }[]),
+      ]);
+    }
+  };
+
+  // A file in `<title>.assets/` is not a document: it is an attachment of one,
+  // and what a push does with it depends on the block that points at it
+  // (MANUAL §12 phase 2). The two are sorted apart here so that nothing below
+  // mistakes one for a page.
+  const assetChanges = all.filter((change) => isAssetPath(change.path));
+  const documentChanges = all.filter((change) => !isAssetPath(change.path));
+  refuseOrphanedLinks(assetChanges, documentChanges, index);
+  changes = documentChanges;
 
   // Page ids by path, for the mentions. It grows as pages are created, which
   // is exactly why creations come first.
@@ -67,6 +92,8 @@ async function pushWith(
     pages.set(bareId(entry.src.id), entry.path);
   }
 
+  /** The uploads each document already made, so pass two does not repeat them. */
+  const uploadsFor = new Map<string, ReadonlyMap<string, string>>();
   const added = changes.filter((change) => change.kind === 'added');
   const creating = new Set(added.map((change) => change.path));
 
@@ -77,7 +104,22 @@ async function pushWith(
     const document = read(change);
     const parent = parentId(change.path, root, ids);
     const title = document.frontmatter?.title ?? titleFromPath(change.path);
-    const blocks = mdastToBlocks(document.body, { from: change.path, ids });
+    // A new page brings its files with it: every one it links has to be
+    // uploaded before a block can point at it (MANUAL §12 phase 2).
+    const result = await uploadAssets(
+      api,
+      assetLinksOf(document.body.children, change.path),
+      change.assets ?? new Map(),
+      change.path,
+    );
+    count(change.path, result);
+    const blocks = mdastToBlocks(document.body, {
+      from: change.path,
+      ids,
+      uploads: result.uploads,
+      skippedAssets: new Set(result.skipped.map((one) => one.path)),
+    });
+    uploadsFor.set(change.path, result.uploads);
 
     const id = bareId(await writer.createPage(parent, title, blocks));
     ids.set(change.path, id);
@@ -92,7 +134,14 @@ async function pushWith(
     const document = read(change);
     const id = ids.get(change.path);
     if (id === undefined) continue;
-    await writer.replaceBody(id, mdastToBlocks(document.body, { from: change.path, ids }));
+    await writer.replaceBody(
+      id,
+      mdastToBlocks(document.body, {
+        from: change.path,
+        ids,
+        uploads: uploadsFor.get(change.path) ?? new Map(),
+      }),
+    );
   }
 
   for (const change of changes) {
@@ -125,10 +174,19 @@ async function pushWith(
           : undefined;
     if (wanted !== undefined) await writer.renamePage(id, wanted);
 
-    const blocks =
+    const patched =
       change.text === undefined
         ? undefined
-        : await patchPage(api, writer, id, change, document.body, { ids, pages });
+        : await patchPage(api, writer, id, change, document.body, {
+            ids,
+            pages,
+            assets: assetLinks(index, change.previousPath ?? change.path),
+          });
+    const blocks = patched?.counts;
+    if (patched !== undefined) {
+      count(change.path, patched);
+      uploadsFor.set(change.path, patched.uploads);
+    }
 
     report.push({
       path: change.path,
@@ -138,7 +196,77 @@ async function pushWith(
     });
   }
 
-  return report;
+  // Bytes that changed under a block nothing else rewrote: the same block, the
+  // same id, the same comments, a new file (MANUAL §7, §12 phase 2).
+  for (const change of assetChanges) {
+    if (change.kind === 'deleted' || change.bytes === undefined) continue;
+    const entry = index.get(change.previousPath ?? change.path);
+    if (entry?.type !== 'asset') continue;
+    const document = entry.document ?? documentOfAssetsDir(change.path) ?? '';
+    if (uploadsFor.get(document)?.has(change.path) === true) continue;
+
+    const block = await api.block(entry.src.id);
+    const result = await uploadAssets(
+      api,
+      [change.path],
+      new Map([[change.path, change.bytes]]),
+      document,
+    );
+    count(document, result);
+    const upload = result.uploads.get(change.path);
+    if (upload === undefined) continue;
+    const name = change.path.slice(change.path.lastIndexOf('/') + 1);
+    await api.updateBlock(entry.src.id, fileUploadBody(block.type, upload, name));
+    if (!report.some((one) => one.path === document)) {
+      report.push({ path: document, title: titleFromPath(document), action: 'updated' });
+    }
+  }
+
+  // The counts go on the line of the document they belong to (MANUAL §12).
+  return report.map((one) => ({
+    ...one,
+    ...((uploaded.get(one.path) ?? 0) === 0 ? {} : { uploaded: uploaded.get(one.path) }),
+    ...(skippedFiles.has(one.path) ? { skippedFiles: skippedFiles.get(one.path) } : {}),
+  }));
+}
+
+/**
+ * A file deleted while the document still links it (MANUAL §12 phase 2).
+ *
+ * The link would point at nothing, and a push that let it through would leave
+ * the page pointing at a file the checkout no longer has. It is refused before
+ * anything is written, naming the path — as is the reverse case, a file
+ * deleted for a document this push does not touch at all, which cannot have
+ * dropped the link.
+ */
+function refuseOrphanedLinks(
+  assetChanges: readonly FileChange[],
+  documentChanges: readonly FileChange[],
+  index: DocumentIndex,
+): void {
+  const texts = new Map<string, string>();
+  for (const change of documentChanges) {
+    if (change.text !== undefined) texts.set(change.path, change.text);
+  }
+  const deletedDocuments = new Set(
+    documentChanges.filter((one) => one.kind === 'deleted').map((one) => one.path),
+  );
+
+  for (const change of assetChanges) {
+    if (change.kind !== 'deleted') continue;
+    const document = index.get(change.path)?.document ?? documentOfAssetsDir(change.path) ?? '';
+    if (deletedDocuments.has(document)) continue;
+    const text = texts.get(document);
+    if (text !== undefined) {
+      const links = assetLinksOf(parseDocument(text).body.children, document);
+      if (!links.has(change.path)) continue;
+    }
+    throw new PushError(
+      `${change.path}: the file is gone but ${document} still links it; ` +
+        'delete the link as well, or restore the file',
+      change.path,
+    );
+  }
 }
 
 /**
@@ -156,8 +284,16 @@ async function patchPage(
   id: string,
   change: FileChange,
   body: MdastRoot,
-  maps: { ids: ReadonlyMap<string, string>; pages: ReadonlyMap<string, string> },
-): Promise<BlockCounts> {
+  maps: {
+    ids: ReadonlyMap<string, string>;
+    pages: ReadonlyMap<string, string>;
+    assets: ReadonlyMap<string, string>;
+  },
+): Promise<{
+  counts: BlockCounts;
+  uploads: Map<string, string>;
+  skipped: { path: string; reason: string }[];
+}> {
   if (change.previousText === undefined) {
     throw new PushError(
       'there is no base version of this file to patch the page from; fetch, merge and push again',
@@ -168,10 +304,14 @@ async function patchPage(
   const live = await api.blockTree(id);
   const base = parseDocument(change.previousText).body;
   const from = change.path;
+  // The live page has to be read the way the file was written, files and all,
+  // or a page with an attachment would look changed to the check below
+  // (MANUAL §12 phase 2).
+  const assets = maps.assets;
   // Both sides go through the one pipeline before they are compared, so that a
   // spelling the dialect accepts either way — the escaped callout marker
   // (MANUAL §6) — is not mistaken for someone else's edit.
-  const liveBody = parseMarkdown(blocksToMarkdown(live, { pages: maps.pages, from }));
+  const liveBody = parseMarkdown(blocksToMarkdown(live, { pages: maps.pages, from, assets }));
   if (stringifyMarkdown(liveBody) !== stringifyMarkdown(base)) {
     throw new PushError(
       'the source changed: the Notion page is not the version this push started from; fetch, merge and push again',
@@ -179,13 +319,48 @@ async function patchPage(
     );
   }
 
-  const plan = planPatch(id, live, diffBlocks(base, body), {
+  const ops = diffBlocks(base, body);
+  // Only the blocks this push writes need a file upload behind them: a block
+  // it keeps already points at the file Notion has (MANUAL §12 phase 2).
+  const needed = new Set<string>();
+  for (const path of createdLinks(ops, from)) needed.add(path);
+  const result = await uploadAssets(api, needed, change.assets ?? new Map(), from);
+
+  const plan = planPatch(id, live, ops, {
     from,
     ids: maps.ids,
     path: from,
+    uploads: result.uploads,
+    skippedAssets: new Set(result.skipped.map((one) => one.path)),
   });
   await writer.patchBody(plan.operations);
-  return plan.counts;
+  return { counts: plan.counts, uploads: result.uploads, skipped: result.skipped };
+}
+
+/** Where a document's attachments live, by the block id that points at them. */
+function assetLinks(index: DocumentIndex, documentPath: string): Map<string, string> {
+  const links = new Map<string, string>();
+  for (const entry of index.values()) {
+    if (entry.type === 'asset' && entry.document === documentPath) {
+      links.set(entry.src.id, entry.path);
+    }
+  }
+  return links;
+}
+
+/** The assets linked by the blocks a set of ops creates or rewrites. */
+function createdLinks(ops: readonly BlockOp[], from: string): Set<string> {
+  const out = new Set<string>();
+  const walk = (list: readonly BlockOp[]): void => {
+    for (const op of list) {
+      if (op.op === 'insert' || op.op === 'move' || op.op === 'update') {
+        for (const path of assetLinksOf(op.next.source, from)) out.add(path);
+      }
+      if (op.op === 'keep' || op.op === 'update') walk(op.children);
+    }
+  };
+  walk(ops);
+  return out;
 }
 
 /** The file as frontmatter and body. A change with no text has an empty body. */

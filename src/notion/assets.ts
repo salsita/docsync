@@ -12,8 +12,9 @@
  * `last_edited_time`; if it has not moved and the index already names the file,
  * nothing goes on the wire (MANUAL §7).
  */
-import { type AssetHint, assignAssetNames, checksumOf } from '../assets.js';
+import { type AssetHint, assignAssetNames, checksumOf, mimeTypeOf } from '../assets.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
+import { PushError } from '../push-types.js';
 import type { FetchedFile } from '../source.js';
 import { DownloadError, type NotionApi, type NotionBlock, type RawObject } from './api.js';
 import { bareId } from './to-markdown.js';
@@ -148,4 +149,71 @@ export async function fetchPageAssets(
     links.set(id, path);
   }
   return { files, links };
+}
+
+/**
+ * The largest file Notion will take, whatever the workspace plan allows above
+ * it. A file over this is reported and skipped, never partially uploaded
+ * (MANUAL §12 phase 2).
+ */
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
+
+/** What one push's uploads came to. */
+export interface UploadResult {
+  /** The file upload id per repo-relative asset path. */
+  uploads: Map<string, string>;
+  /** What was not uploaded, and why. */
+  skipped: { path: string; reason: string }[];
+}
+
+/**
+ * Uploads the files a push has to point a block at (MANUAL §12 phase 2).
+ *
+ * A file over the limit, or one the source refuses, is reported and left
+ * alone rather than failing the push: the rest of the document still goes.
+ */
+export async function uploadAssets(
+  api: NotionApi,
+  paths: Iterable<string>,
+  bytesOf: ReadonlyMap<string, Uint8Array>,
+  path: string,
+): Promise<UploadResult> {
+  const uploads = new Map<string, string>();
+  const skipped: { path: string; reason: string }[] = [];
+  for (const one of paths) {
+    const bytes = bytesOf.get(one);
+    if (bytes === undefined) {
+      throw new PushError(
+        `${one}: this link points at a file that is not in the checkout; add the file or remove the link`,
+        path,
+      );
+    }
+    if (bytes.length > MAX_UPLOAD_BYTES) {
+      skipped.push({ path: one, reason: `over Notion's ${MAX_UPLOAD_BYTES} byte limit` });
+      continue;
+    }
+    const name = one.slice(one.lastIndexOf('/') + 1);
+    try {
+      uploads.set(one, await api.upload(name, bytes, mimeTypeOf(name)));
+    } catch (error) {
+      // Notion refuses a file the workspace plan has no room for. That is
+      // one file's problem, not the document's.
+      skipped.push({ path: one, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { uploads, skipped };
+}
+
+/**
+ * The block body that points an existing media block at a new upload: the same
+ * block, the same id, the same comments, a different file (MANUAL §7).
+ */
+export function fileUploadBody(type: string, uploadId: string, name: string): RawObject {
+  return {
+    [type]: {
+      type: 'file_upload',
+      file_upload: { id: uploadId },
+      ...(type === 'image' ? {} : { name }),
+    },
+  };
 }

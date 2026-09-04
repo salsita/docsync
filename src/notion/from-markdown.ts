@@ -72,6 +72,12 @@ export interface FromMarkdownOptions {
    * upload is refused, since a block cannot point at a path.
    */
   uploads?: ReadonlyMap<string, string>;
+  /**
+   * Asset paths this push would not upload — over the source's limit, or
+   * refused by it. A link to one produces no block at all: the file was
+   * reported and skipped, never half-written (MANUAL §12 phase 2).
+   */
+  skippedAssets?: ReadonlySet<string>;
 }
 
 const DEFAULT_COLOR = 'default';
@@ -242,7 +248,7 @@ function convertBlock(
 ): BlockInput[] {
   switch (node.type) {
     case 'paragraph':
-      return [paragraph(node, attributes, options)];
+      return toList(paragraph(node, attributes, options));
     case 'heading':
       return [headingBlock(node, attributes, options)];
     case 'list':
@@ -283,12 +289,13 @@ function paragraph(
   node: Paragraph,
   attributes: Attributes,
   options: FromMarkdownOptions,
-): BlockInput {
+): BlockInput | undefined {
   const only = node.children.length === 1 ? node.children[0] : undefined;
 
   if (only?.type === 'image') {
     const asset = assetBlock(only.url, 'image', captionOf(only.alt), options);
     if (asset !== undefined) return asset;
+    if (resolveAssetPath(options.from ?? '', only.url) !== undefined) return undefined;
     return {
       type: 'image',
       image: {
@@ -302,6 +309,7 @@ function paragraph(
     const caption = inline(only.children, options);
     const asset = assetBlock(only.url, undefined, caption, options);
     if (asset !== undefined) return asset;
+    if (resolveAssetPath(options.from ?? '', only.url) !== undefined) return undefined;
     if (isAbsolute(only.url)) {
       return {
         type: 'file',
@@ -311,6 +319,11 @@ function paragraph(
   }
 
   return body('paragraph', { rich_text: inline(node.children, options) }, attributes);
+}
+
+/** A block, or nothing at all when the push had nothing to write. */
+function toList(block: BlockInput | undefined): BlockInput[] {
+  return block === undefined ? [] : [block];
 }
 
 /** An alt text as the caption Notion keeps for a media block. */
@@ -337,6 +350,9 @@ function assetBlock(
   if (path === undefined) return undefined;
   const upload = options.uploads?.get(path);
   if (upload === undefined) {
+    // Reported and skipped: the file is named in the push report and the block
+    // is simply not written (MANUAL §12 phase 2).
+    if (options.skippedAssets?.has(path) === true) return undefined;
     throw new PushError(
       `${path}: this link points at a file that is not in the checkout; add the file or remove the link`,
       options.from,

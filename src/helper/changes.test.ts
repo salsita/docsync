@@ -110,6 +110,9 @@ describe('planChanges', () => {
             path: 'Specs/Auth.md',
             text: blobs['Specs/Auth.md'],
             previousText: BASE_AUTH,
+            // The document's own `<title>.assets/`, as the pushed tree holds
+            // it: a push may have to upload one of them (MANUAL §12 phase 2).
+            assets: new Map([['Specs/Auth.assets/photo.png', Buffer.from('PNGBYTES')]]),
           },
         ],
       },
@@ -348,6 +351,23 @@ describe('planChanges', () => {
       expect(await plan(D('Specs/Auth.assets/photo.png'))).toEqual([
         { root: NOTION, changes: [{ kind: 'deleted', path: 'Specs/Auth.assets/photo.png' }] },
       ]);
+    });
+
+    it('hands a changed document the bytes of every file in its assets directory', async () => {
+      const [notion] = await plan(M('Specs/Auth.md'), A('Specs/Auth.assets/new.png'));
+      expect([...(notion?.changes[0]?.assets ?? new Map()).keys()]).toEqual([
+        'Specs/Auth.assets/new.png',
+        'Specs/Auth.assets/photo.png',
+      ]);
+    });
+
+    it('leaves out a file this push deleted', async () => {
+      const [notion] = await plan(M('Specs/Auth.md'), D('Specs/Auth.assets/photo.png'));
+      expect(notion?.changes[0]?.assets).toBeUndefined();
+      expect(notion?.changes[1]).toEqual({
+        kind: 'deleted',
+        path: 'Specs/Auth.assets/photo.png',
+      });
     });
 
     it('carries an asset under a Drive root too', async () => {

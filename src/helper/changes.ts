@@ -10,7 +10,7 @@
  * index, an edit to a read-only export, a copy of a document, a plain file
  * under Notion. Pure over an injected blob reader.
  */
-import { isAssetPath } from '../assets.js';
+import { assetsDirOf, documentOfAssetsDir, isAssetPath } from '../assets.js';
 import { isSidecarPath } from '../comments/format.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
@@ -49,6 +49,50 @@ export async function planChanges(
   read: BlobReader,
   readBase: BaseReader = async () => undefined,
 ): Promise<PlannedPush[]> {
+  /** Every asset path the push added or modified, and every one it removed. */
+  const live = new Set<string>();
+  const gone = new Set<string>();
+  for (const entry of diff) {
+    if (!isAssetPath(entry.path) && !isAssetPath(entry.previousPath ?? '')) continue;
+    if (entry.status[0] === 'D') gone.add(entry.path);
+    else {
+      live.add(entry.path);
+      if (entry.previousPath !== undefined) gone.add(entry.previousPath);
+    }
+  }
+
+  /**
+   * The files in one document's `<title>.assets/`, as the pushed tree holds
+   * them (MANUAL §12 phase 2): the ones this push touched, and the ones the
+   * last fetch left, which are still there and which the adapter may have to
+   * upload for a block it is about to create. A path the pushed tree does not
+   * hold — one this push deleted — is simply not in the answer.
+   */
+  const assetsOf = async (
+    path: string,
+    previousPath: string | undefined,
+  ): Promise<Pick<FileChange, 'assets'>> => {
+    const directory = `${assetsDirOf(path)}/`;
+    const candidates = new Set<string>();
+    for (const one of live) if (one.startsWith(directory)) candidates.add(one);
+    // What the index knows, moved to wherever the document is now: a renamed
+    // document takes its assets directory with it (MANUAL §12 phase 2).
+    for (const entry of index.values()) {
+      if (entry.type !== 'asset' || entry.document !== (previousPath ?? path)) continue;
+      candidates.add(`${directory}${entry.path.slice(entry.path.lastIndexOf('/') + 1)}`);
+    }
+    const assets = new Map<string, Uint8Array>();
+    for (const one of [...candidates].sort()) {
+      if (gone.has(one)) continue;
+      try {
+        assets.set(one, await read(one));
+      } catch {
+        // Not in the pushed tree: the file was deleted, and the adapter is
+        // told by the deletion itself.
+      }
+    }
+    return assets.size === 0 ? {} : { assets };
+  };
   const planned = new Map<Root, FileChange[]>();
   const add = (root: Root, ...changes: FileChange[]): void => {
     const list = planned.get(root) ?? [];
@@ -100,6 +144,7 @@ export async function planChanges(
             await content(previous, entry.path, read),
             // A renamed document diffs against the file under its old path.
             await base(previous, entry.previousPath, readBase),
+            isDocument(previous) ? await assetsOf(entry.path, entry.previousPath) : {},
           );
         }
         add(root, change);
@@ -138,7 +183,19 @@ export async function planChanges(
       path: entry.path,
       ...(wasDocument ? { text: Buffer.from(bytes).toString('utf8') } : { bytes }),
       ...(await base(known, entry.path, readBase)),
+      ...(wasDocument ? await assetsOf(entry.path, undefined) : {}),
     });
+  }
+
+  // A document that gained or lost a file needs the whole of its assets
+  // directory, even when the document itself did not change: the adapter has
+  // to point a block at the bytes (MANUAL §12 phase 2).
+  for (const [root, changes] of planned) {
+    for (const change of changes) {
+      if (change.text === undefined || change.assets !== undefined) continue;
+      Object.assign(change, await assetsOf(change.path, change.previousPath));
+    }
+    void root;
   }
 
   return roots.flatMap((root) => {

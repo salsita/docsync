@@ -237,3 +237,25 @@ function baseType(contentType: string): string {
 function encodeSegment(segment: string): string {
   return encodeURIComponent(segment).replaceAll('%2F', '/');
 }
+
+/**
+ * Every file in `<title>.assets/` one Markdown tree links, by repo-relative
+ * path (MANUAL §12 phase 2). An image link and a plain link both count; an
+ * absolute URL and a link to another document do not.
+ */
+export function assetLinksOf(nodes: readonly unknown[], documentPath: string): Set<string> {
+  const out = new Set<string>();
+  const walk = (list: readonly unknown[]): void => {
+    for (const node of list) {
+      if (typeof node !== 'object' || node === null) continue;
+      const one = node as { type?: string; url?: string; children?: unknown[] };
+      if ((one.type === 'image' || one.type === 'link') && typeof one.url === 'string') {
+        const path = resolveAssetPath(documentPath, one.url);
+        if (path !== undefined) out.add(path);
+      }
+      if (Array.isArray(one.children)) walk(one.children);
+    }
+  };
+  walk(nodes);
+  return out;
+}

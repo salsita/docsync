@@ -102,6 +102,16 @@ export interface FileChange {
    * diffed against.
    */
   previousText?: string;
+  /**
+   * The bytes of the files in this document's `<title>.assets/`, as the pushed
+   * tree holds them, by repo-relative path (MANUAL §12 phase 2).
+   *
+   * Present on an added or modified Markdown document that has any. A push
+   * uploads a file the source does not have yet, and only the adapter can say
+   * which those are, so it is given all of them — the ones this push changed
+   * and the ones that were already there — rather than only the diff's.
+   */
+  assets?: ReadonlyMap<string, Uint8Array>;
 }
 
 /** What a push did to one document, for the CLI to print. */
@@ -121,6 +131,13 @@ export interface PushedDocument {
    * suggested range resolves it by overwriting it.
    */
   suggestions?: string[];
+  /** Files this push uploaded to the source (MANUAL §12 phase 2). */
+  uploaded?: number;
+  /**
+   * Files it would not upload, with the reason: over the source's limit, or a
+   * kind of file the source cannot hold. Never partially uploaded.
+   */
+  skippedFiles?: { path: string; reason: string }[];
 }
 
 export type PushReport = PushedDocument[];
