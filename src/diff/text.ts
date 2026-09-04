@@ -50,7 +50,21 @@ export interface InlineStyle {
 export interface StyledRun {
   text: string;
   style: InlineStyle;
+  /**
+   * Set on the one-character run an image is: the URL it points at, so that an
+   * adapter writing the run back creates the object rather than the character
+   * (ticket 23).
+   */
+  image?: string;
 }
+
+/**
+ * What an image is in a block's plain text: one object replacement character,
+ * whatever its alt says. One character is what Google Docs counts an inline
+ * object as, and counting the alt instead hid an empty-alt image from the diff
+ * altogether (ticket 23).
+ */
+export const OBJECT_REPLACEMENT = '￼';
 
 /** A style disagreement over kept text, at an offset in the **new** text. */
 export interface StyleChange {
@@ -270,7 +284,9 @@ function walk(nodes: readonly PhrasingContent[], style: InlineStyle, out: Styled
         walk(node.children, { ...current, link: node.url }, out);
         break;
       case 'image':
-        out.push({ text: node.alt ?? node.url, style: { ...current, link: node.url } });
+        // Atomic, and no link: the run stands for the object itself, which an
+        // adapter creates from `image` rather than from the character.
+        out.push({ text: OBJECT_REPLACEMENT, style: current, image: node.url });
         break;
       case 'html': {
         const tag = node.value.trim();

@@ -31,6 +31,7 @@ import type {
 } from 'mdast';
 import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import { similarity } from './similarity.js';
+import { OBJECT_REPLACEMENT } from './text.js';
 
 /** One block of a document, as both sources hold blocks. */
 export interface DiffBlock {
@@ -565,7 +566,10 @@ function plain(nodes: readonly PhrasingContent[]): string {
         return node.value;
       }
       if (node.type === 'break') return '\n';
-      if (node.type === 'image') return node.alt ?? node.url;
+      // An image is one object, and its alt is no part of the text: an image
+      // added or removed has to move the text even when its alt is empty. Its
+      // URL and its alt are in the block's `markdown`, which is its identity.
+      if (node.type === 'image') return OBJECT_REPLACEMENT;
       if (node.type === 'html') return /^<\/?(u|span)\b/.test(node.value.trim()) ? '' : node.value;
       return 'children' in node ? plain(node.children as PhrasingContent[]) : '';
     })

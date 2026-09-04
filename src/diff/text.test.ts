@@ -105,6 +105,44 @@ describe('plainOf', () => {
   });
 });
 
+describe('an inline image', () => {
+  const IMAGE = 'See the chart. ![](X.assets/chart.png)';
+
+  it('is one object replacement character, whatever its alt says', () => {
+    expect(plainOf(phrasing(IMAGE))).toBe('See the chart. ￼');
+    expect(plainOf(phrasing('See the chart. ![a chart](X.assets/chart.png)'))).toBe(
+      'See the chart. ￼',
+    );
+  });
+
+  it('carries the URL of the image it stands for, for the adapter', () => {
+    expect(inlineRuns(phrasing(IMAGE)).at(-1)).toEqual({
+      text: '￼',
+      style: style({}),
+      image: 'X.assets/chart.png',
+    });
+  });
+
+  it('is one inserted character when an empty-alt image is added', () => {
+    const { spans } = diffInline(phrasing('See the chart.'), phrasing(IMAGE));
+    expect(shape(spans)).toEqual(['=See the chart.', '+ ￼']);
+  });
+
+  it('is one deleted character when an empty-alt image goes', () => {
+    const { spans } = diffInline(phrasing(IMAGE), phrasing('See the chart.'));
+    expect(shape(spans)).toEqual(['=See the chart.', '- ￼']);
+  });
+
+  it('is unchanged text when only the alt changed, which no API can write', () => {
+    const { spans, styles } = diffInline(
+      phrasing(IMAGE),
+      phrasing('See the chart. ![a chart](X.assets/chart.png)'),
+    );
+    expect(shape(spans)).toEqual(['=See the chart. ￼']);
+    expect(styles).toEqual([]);
+  });
+});
+
 describe('diffInline', () => {
   it('says nothing changed when only the formatting did', () => {
     const { spans, styles } = diffInline(phrasing('one two three'), phrasing('one **two** three'));

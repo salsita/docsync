@@ -580,9 +580,10 @@ function inlineObject(element: ParagraphElement, context: Context): PhrasingCont
     return mark(node, context, {
       start: element.startIndex ?? 0,
       end: element.endIndex ?? (element.startIndex ?? 0) + 1,
-      // What the block's plain text says at this offset is the alt text: that
-      // is what `plain` and `inlineRuns` count (`src/diff/`).
-      text: alt.length,
+      // One object is one character of the block's plain text, the object
+      // replacement character: what `plain` and `inlineRuns` count
+      // (`src/diff/`), and what the document counts here too (ticket 23).
+      text: 1,
       atomic: true,
     });
   }

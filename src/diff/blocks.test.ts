@@ -217,6 +217,30 @@ describe('diffBlocks', () => {
     ]);
   });
 
+  it('sees an empty-alt image added to a paragraph of text', () => {
+    // The alt is empty, so before ticket 23 the text of the block did not
+    // move and the paragraph was kept: the image was never written.
+    const ops = diff('See the chart.\n', 'See the chart. ![](X.assets/chart.png)\n');
+    expect(shape(ops)).toEqual(['update paragraph: See the chart. ￼']);
+  });
+
+  it('sees an empty-alt image removed from a paragraph of text', () => {
+    const ops = diff('See the chart. ![](X.assets/chart.png)\n', 'See the chart.\n');
+    expect(shape(ops)).toEqual(['update paragraph: See the chart.']);
+  });
+
+  it('has the URL and the alt of an image in the block’s identity', () => {
+    const [block] = flattenBlocks(parseMarkdown('See it. ![a chart](X.assets/chart.png)\n'));
+    expect(block?.markdown).toBe('See it. ![a chart](X.assets/chart.png)');
+    expect(block?.text).toBe('See it. ￼');
+    // A changed alt is a changed block, so the diff pairs the two as an edit.
+    const ops = diff(
+      'See it. ![a chart](X.assets/chart.png)\n',
+      'See it. ![the chart](X.assets/chart.png)\n',
+    );
+    expect(shape(ops)).toEqual(['update paragraph: See it. ￼']);
+  });
+
   it('carries the whole block, children included, for an insertion', () => {
     const ops = diff('A.\n', 'A.\n\n- new\n  - deep\n');
     const inserted = ops.find((op) => op.op === 'insert');

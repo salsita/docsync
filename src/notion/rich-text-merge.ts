@@ -14,7 +14,7 @@
  * it with its text, because half a mention is not a mention.
  */
 import type { PhrasingContent } from 'mdast';
-import { diffInline, type StyleChange } from '../diff/text.js';
+import { diffInline, plainOf, type StyleChange } from '../diff/text.js';
 import type { RawObject } from './api.js';
 import { type FromMarkdownOptions, inline } from './from-markdown.js';
 import { plain, type RichText } from './to-markdown.js';
@@ -61,7 +61,13 @@ export function mergeRichText(
   options: FromMarkdownOptions = {},
 ): RawObject[] {
   const fresh = inline(next, options) as unknown as RichText[];
-  if (plain(live) !== plain(inline(base, options) as unknown as RichText[])) {
+  const runs = inline(base, options) as unknown as RichText[];
+  // The spans below are offsets into the *diff's* text, and they are used to
+  // cut the live runs: the merge is only sound while the two agree. An inline
+  // image is where they part — one object character in the diff (ticket 23),
+  // its link's text in Notion, which has no inline image (MANUAL §6) — so a
+  // block holding one is written whole, as phase 1 wrote everything.
+  if (plain(live) !== plain(runs) || plain(runs) !== plainOf(base)) {
     return output(sliceRuns(fresh, 0, plain(fresh).length));
   }
 

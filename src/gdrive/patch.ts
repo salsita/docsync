@@ -22,6 +22,7 @@
  * dialect owns, so a colour on the text around an edit survives it.
  */
 import type { PhrasingContent, Root } from 'mdast';
+import { resolveAssetPath } from '../assets.js';
 import { type BlockCounts, type BlockOp, type DiffBlock, diffBlocks } from '../diff/blocks.js';
 import {
   DEFAULT_STYLE,
@@ -281,6 +282,11 @@ export function planPatch(
    * which is what a colour or a size around the edit needs; the attributes the
    * dialect owns are set only where the new text disagrees with what it landed
    * in.
+   *
+   * An image is not text: the run that stands for one is one object
+   * replacement character in the span, and what goes out for it is
+   * `insertInlineImage` at the index it reached — one code unit, the same
+   * width the character had (ticket 23).
    */
   function insertSpan(
     span: Span,
@@ -289,31 +295,66 @@ export function planPatch(
     nextRuns: readonly StyledRun[],
     segmentId?: string,
   ): void {
-    const requests: DocsWriteRequest[] = [
-      {
+    const requests: DocsWriteRequest[] = [];
+    const styles: DocsWriteRequest[] = [];
+    const inherited = styleAt(baseRuns, span.base === 0 ? 0 : span.base - 1);
+
+    // Where the next character goes, and the text still to be written as one
+    // request: an image splits the span, since it is written as an object.
+    let cursor = at;
+    let pending = '';
+    let pendingAt = at;
+    const flush = (): void => {
+      if (pending === '') return;
+      requests.push({
         insertText: {
-          location: location(at, segmentId),
+          location: location(pendingAt, segmentId),
           // A line break inside one block is a vertical tab, never a newline:
           // a newline would cut the paragraph in two (MANUAL §6).
-          text: span.text.replaceAll('\n', VERTICAL_TAB),
+          text: pending.replaceAll('\n', VERTICAL_TAB),
         },
-      },
-    ];
-    const inherited = styleAt(baseRuns, span.base === 0 ? 0 : span.base - 1);
-    let offset = 0;
+      });
+      pending = '';
+    };
+
     for (const run of slice(nextRuns, span.next, span.next + span.text.length)) {
-      const from = at + offset;
-      offset += run.text.length;
-      if (run.text === '' || sameStyle(run.style, inherited)) continue;
-      requests.push({
+      if (run.image !== undefined) {
+        flush();
+        const uri = imageUri(run.image);
+        // An image whose file nobody staged cannot be created, and is dropped
+        // rather than written as the character standing in for it.
+        if (uri === undefined) {
+          dropped.push('image');
+          continue;
+        }
+        requests.push({ insertInlineImage: { location: location(cursor, segmentId), uri } });
+        cursor += 1;
+        pendingAt = cursor;
+        continue;
+      }
+      if (run.text === '') continue;
+      if (pending === '') pendingAt = cursor;
+      pending += run.text;
+      const from = cursor;
+      cursor += run.text.length;
+      if (sameStyle(run.style, inherited)) continue;
+      styles.push({
         updateTextStyle: {
-          range: range(from, at + offset, segmentId),
+          range: range(from, cursor, segmentId),
           textStyle: textStyle(run.style),
           fields: TEXT_FIELDS,
         },
       });
     }
-    emit(at, INSERT, requests);
+    flush();
+    // The style of text can only be set once the text is there.
+    emit(at, INSERT, [...requests, ...styles]);
+  }
+
+  /** The public URI an image link is created from, if the push staged one. */
+  function imageUri(url: string): string | undefined {
+    const path = resolveAssetPath(options.path ?? '', url);
+    return path === undefined ? undefined : options.images?.get(path);
   }
 
   /** One block's text replaced whole, its paragraph and its newline kept. */
@@ -327,12 +368,19 @@ export function planPatch(
     emit(ranged.start, INSERT, runRequests(inlineRuns(next), ranged.start, segmentId));
   }
 
-  /** The text of a run of styled text, written at an index from nothing. */
+  /**
+   * The text of a run of styled text, written at an index from nothing. An
+   * image is not text and is not written here — a whole-block rewrite and a
+   * fresh table cell both go through this — so it is dropped and named, never
+   * written as the character that stands for it (ticket 23).
+   */
   function runRequests(
-    runs: readonly StyledRun[],
+    all: readonly StyledRun[],
     at: number,
     segmentId?: string,
   ): DocsWriteRequest[] {
+    const runs = all.filter((run) => run.image === undefined);
+    for (const run of all) if (run.image !== undefined) dropped.push('image');
     const text = runs
       .map((run) => run.text)
       .join('')
@@ -709,7 +757,14 @@ function slice(runs: readonly StyledRun[], from: number, to: number): StyledRun[
   for (const run of runs) {
     const start = Math.max(from, at);
     const end = Math.min(to, at + run.text.length);
-    if (end > start) out.push({ text: run.text.slice(start - at, end - at), style: run.style });
+    if (end > start) {
+      out.push({
+        text: run.text.slice(start - at, end - at),
+        style: run.style,
+        // An image is one character, so a slice that keeps any of it keeps it.
+        ...(run.image === undefined ? {} : { image: run.image }),
+      });
+    }
     at += run.text.length;
   }
   return out;

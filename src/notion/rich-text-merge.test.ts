@@ -171,6 +171,20 @@ describe('mergeRichText', () => {
     expect(shape(merged)).toEqual([{ text: 'new' }]);
   });
 
+  it('writes a block holding an inline image whole, and never the object character', () => {
+    // Notion has no inline image: the link's text is what it stores, while the
+    // diff counts one object character (ticket 23). The two do not line up, so
+    // the block is written whole rather than cut at offsets that do not mean
+    // the same thing.
+    const merged = mergeRichText(
+      [run('See a chart here')],
+      phrasing('See ![a chart](X.assets/c.png) here'),
+      phrasing('See ![a chart](X.assets/c.png) there'),
+    );
+    expect(merged.map((one) => (one.text as RawObject).content).join('')).toBe('See a chart there');
+    expect(JSON.stringify(merged)).not.toContain('￼');
+  });
+
   it('answers the live runs unchanged when nothing changed', () => {
     const live = [run('unchanged '), run('text', { bold: true })];
     expect(

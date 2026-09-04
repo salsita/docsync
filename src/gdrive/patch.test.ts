@@ -12,30 +12,49 @@ import { diffBlocks } from '../diff/blocks.js';
 import { parseMarkdown } from '../markdown.js';
 import type { DocsDocument, DocsWriteRequest } from './api.js';
 import { createDocsModel } from './docs-model.mock.js';
-import { markdownToRequests } from './from-markdown.js';
+import { mdastToRequests } from './from-markdown.js';
 import { planPatch } from './patch.js';
 import { readLive } from './ranges.js';
 import { documentToMarkdown } from './to-markdown.js';
 import { footnoteRequests } from './write.js';
 
+const PATH = 'drive/Doc.md';
+
+/** What a document with an inline image needs on both sides of the trip. */
+interface Media {
+  /** The public URI of each asset, which is what creates an image (§12). */
+  images?: ReadonlyMap<string, string>;
+  /** The file each inline object was downloaded to, which is what reads one. */
+  assets?: ReadonlyMap<string, string>;
+}
+
+function convertOptions(media: Media) {
+  return { from: PATH, ...(media.assets === undefined ? {} : { assets: media.assets }) };
+}
+
+function patchOptions(media: Media) {
+  return { path: PATH, ...(media.images === undefined ? {} : { images: media.images }) };
+}
+
 /** A live document holding exactly what the Markdown says. */
-function document(markdown: string): DocsDocument {
+function document(markdown: string, media: Media = {}): DocsDocument {
   const model = createDocsModel('doc', 'Doc');
-  const plan = markdownToRequests(markdown);
+  const plan = mdastToRequests(parseMarkdown(markdown), {
+    from: PATH,
+    ...(media.images === undefined ? {} : { images: media.images }),
+  });
   const replies = model.apply(plan.requests);
   model.apply(footnoteRequests(plan.footnotes, replies, 0, model.document()));
   // The fixture of the test is the round trip: if the document does not say
   // what the base says, the test is measuring the generator, not the patch.
-  expect(documentToMarkdown(model.document())).toBe(markdown);
+  expect(documentToMarkdown(model.document(), convertOptions(media))).toBe(markdown);
   return model.document();
 }
 
-function plan(base: string, next: string, doc = document(base)) {
-  const live = readLive(doc);
+function plan(base: string, next: string, doc = document(base), media: Media = {}) {
+  const live = readLive(doc, convertOptions(media));
   expect(live.markdown).toBe(base);
-  return planPatch(live, diffBlocks(parseMarkdown(base), parseMarkdown(next)), {
-    path: 'drive/Doc.md',
-  });
+  return planPatch(live, diffBlocks(parseMarkdown(base), parseMarkdown(next)), patchOptions(media));
 }
 
 /** The kind of each request, in the order the batch sends them. */
@@ -61,16 +80,19 @@ function indices(requests: readonly DocsWriteRequest[]): number[] {
 }
 
 /** The document the plan leaves behind, as Markdown. */
-function applied(markdown: string, next: string): string {
+function applied(markdown: string, next: string, media: Media = {}): string {
   const model = createDocsModel('doc', 'Doc');
-  const first = markdownToRequests(markdown);
+  const first = mdastToRequests(parseMarkdown(markdown), {
+    from: PATH,
+    ...(media.images === undefined ? {} : { images: media.images }),
+  });
   const replies = model.apply(first.requests);
   model.apply(footnoteRequests(first.footnotes, replies, 0, model.document()));
 
-  const patch = plan(markdown, next, model.document());
+  const patch = plan(markdown, next, model.document(), media);
   const answers = model.apply(patch.requests);
   model.apply(footnoteRequests(patch.footnotes, answers, 0, model.document()));
-  return documentToMarkdown(model.document());
+  return documentToMarkdown(model.document(), convertOptions(media));
 }
 
 describe('an edited paragraph', () => {
@@ -299,6 +321,60 @@ describe('a placeholder', () => {
     expect(patch.requests[0]?.deleteContentRange).toEqual({
       range: { startIndex: 1, endIndex: 2 },
     });
+  });
+});
+
+describe('an image inside a paragraph of text', () => {
+  const ASSET = 'drive/Doc.assets/chart.png';
+  const URI = 'https://drive.test/chart.png';
+  const media = {
+    images: new Map([[ASSET, URI]]),
+    assets: new Map([['kix.img1', ASSET]]),
+  };
+  const text = 'See the chart.\n';
+  const withImage = 'See the chart. ![](Doc.assets/chart.png)\n';
+
+  it('is inserted as the object it is, not as text', () => {
+    const patch = plan(text, withImage, document(text, media), media);
+
+    expect(kinds(patch.requests)).toEqual(['insertText', 'insertInlineImage']);
+    expect(patch.requests[1]?.insertInlineImage).toEqual({ location: { index: 16 }, uri: URI });
+    expect(patch.counts).toEqual({ kept: 0, updated: 1, inserted: 0, deleted: 0 });
+    expect(applied(text, withImage, media)).toBe(withImage);
+  });
+
+  it('is deleted as one range covering the object', () => {
+    const patch = plan(withImage, text, document(withImage, media), media);
+
+    expect(kinds(patch.requests)).toEqual(['deleteContentRange']);
+    expect(patch.requests[0]?.deleteContentRange).toEqual({
+      range: { startIndex: 15, endIndex: 17 },
+    });
+    expect(applied(withImage, text, media)).toBe(text);
+  });
+
+  it('is left alone when only its alt changed, which the API cannot set', () => {
+    const next = 'See the chart. ![a chart](Doc.assets/chart.png)\n';
+    const patch = plan(withImage, next, document(withImage, media), media);
+
+    expect(patch.requests).toEqual([]);
+    expect(patch.counts).toEqual({ kept: 0, updated: 1, inserted: 0, deleted: 0 });
+  });
+
+  it('is dropped, not written as a character, when nothing staged the file', () => {
+    const patch = plan(text, withImage, document(text, media), { assets: media.assets });
+
+    expect(patch.dropped).toEqual(['image']);
+    expect(JSON.stringify(patch.requests)).not.toContain('￼');
+  });
+
+  it('leaves an image on a line of its own the block it always was', () => {
+    const base = `Text.\n\n![](Doc.assets/chart.png)\n`;
+    const patch = plan(base, 'Text.\n', document(base, media), media);
+
+    expect(kinds(patch.requests)).toEqual(['deleteContentRange']);
+    expect(applied(base, 'Text.\n', media)).toBe('Text.\n');
+    expect(applied('Text.\n', base, media)).toBe(base);
   });
 });
 
