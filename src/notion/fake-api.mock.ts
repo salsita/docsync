@@ -22,12 +22,18 @@ export interface FakeApi extends NotionApi {
   /** The children each append was asked to create, as sent. */
   appends: RawObject[][];
   pages: Map<string, FakePage>;
+  /** The bytes of every file upload, by the id the fake handed out. */
+  uploads: Map<string, { name: string; contentType: string; bytes: Uint8Array }>;
+  /** What a hosted URL serves, so a fetch after a push can read it back. */
+  hosted: Map<string, Uint8Array>;
   /** The block tree of a page, for a test that wants to look at the result. */
   bodyOf(pageId: string): NotionBlock[];
 }
 
 export interface FakeApiOptions {
   pages?: FakePage[];
+  /** Bytes by URL, for the blocks a fixture page already hosts. */
+  hosted?: Record<string, Uint8Array>;
 }
 
 /** A fake whose ids are predictable: `b1`, `b2`, … and `page1`, `page2`, … */
@@ -36,9 +42,12 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
   const appends: RawObject[][] = [];
   const pages = new Map<string, FakePage>();
   for (const page of options.pages ?? []) pages.set(page.id, { ...page });
+  const uploads = new Map<string, { name: string; contentType: string; bytes: Uint8Array }>();
+  const hosted = new Map<string, Uint8Array>(Object.entries(options.hosted ?? {}));
 
   let nextBlock = 0;
   let nextPage = 0;
+  let nextUpload = 0;
 
   /** The block with this id, and the list it lives in. */
   function find(id: string): { list: NotionBlock[]; index: number } | undefined {
@@ -120,6 +129,32 @@ export function createFakeApi(options: FakeApiOptions = {}): FakeApi {
     calls,
     appends,
     pages,
+    uploads,
+    hosted,
+
+    async block(id) {
+      calls.push(`block:${id}`);
+      const found = find(id);
+      const block = found === undefined ? undefined : found.list[found.index];
+      if (block === undefined) throw new Error(`no block ${id}`);
+      return block;
+    },
+
+    async download(url) {
+      calls.push(`download:${url}`);
+      const bytes = hosted.get(url);
+      if (bytes === undefined) throw new Error(`nothing hosted at ${url}`);
+      return bytes;
+    },
+
+    async upload(name, bytes, contentType) {
+      nextUpload += 1;
+      const id = `fu${nextUpload}`;
+      calls.push(`upload:${id}:${name}:${bytes.length}:${contentType}`);
+      uploads.set(id, { name, contentType, bytes });
+      return id;
+    },
+
     bodyOf(pageId) {
       return pages.get(pageId)?.blocks ?? [];
     },

@@ -17,6 +17,12 @@ import { Client } from '@notionhq/client';
  */
 export const NOTION_VERSION = '2025-09-03';
 
+/**
+ * Bytes per `file_uploads` request. Notion takes a file of up to this size in
+ * one part; anything larger goes up in parts of this size (MANUAL §12 phase 2).
+ */
+export const UPLOAD_PART_BYTES = 20 * 1024 * 1024;
+
 /** How many times a 429 is retried before the error reaches the caller. */
 const MAX_RETRIES = 3;
 
@@ -63,7 +69,28 @@ export interface NotionComment extends RawObject {
  * The slice of the SDK this adapter uses. Narrow on purpose: a test passes a
  * plain object, and the real `Client` satisfies it structurally.
  */
+/** One file upload, as `POST /v1/file_uploads` answers it. */
+export interface FileUpload extends RawObject {
+  id: string;
+  status?: string;
+  filename?: string | null;
+}
+
 export interface NotionClient {
+  fileUploads: {
+    create(args: {
+      mode?: string;
+      filename?: string;
+      content_type?: string;
+      number_of_parts?: number;
+    }): Promise<unknown>;
+    send(args: {
+      file_upload_id: string;
+      file: { filename?: string; data: Blob };
+      part_number?: string;
+    }): Promise<unknown>;
+    complete(args: { file_upload_id: string }): Promise<unknown>;
+  };
   pages: {
     retrieve(args: { page_id: string }): Promise<unknown>;
     create(args: {
@@ -79,6 +106,8 @@ export interface NotionClient {
   };
   blocks: {
     delete(args: { block_id: string }): Promise<unknown>;
+    /** One block, re-read. A hosted file's URL is signed and expires (§12). */
+    retrieve(args: { block_id: string }): Promise<unknown>;
     /**
      * The type-specific body of one block, replaced. The API will not change a
      * block's *type*, which is why a type change is a delete and an insert
@@ -109,6 +138,24 @@ export interface NotionApi {
   comments(blockId: string): Promise<NotionComment[]>;
   /** The direct children of a block, paginated, without recursing. */
   children(id: string): Promise<NotionBlock[]>;
+  /**
+   * One block on its own. A fetch already has the block from the tree; this is
+   * for the one case where that is not enough — the signed URL of a file
+   * Notion hosts expires after an hour, so a download that comes back 403 is
+   * retried against a freshly read block (MANUAL §12 phase 2).
+   */
+  block(id: string): Promise<NotionBlock>;
+  /**
+   * The bytes behind a URL the API handed us. No authorization header: a
+   * Notion file URL is a signed S3 link that refuses one.
+   */
+  download(url: string): Promise<Uint8Array>;
+  /**
+   * Bytes into a file upload, whose id a block then points at (MANUAL §12
+   * phase 2). One request up to `UPLOAD_PART_BYTES`, several above it, and the
+   * completion call the multi-part mode needs.
+   */
+  upload(name: string, bytes: Uint8Array, contentType: string): Promise<string>;
   /** Archives one block. Deleting a `child_page` block archives the page. */
   deleteBlock(id: string): Promise<void>;
   /**
@@ -128,6 +175,8 @@ export interface NotionApi {
 export interface NotionApiOptions {
   /** Injected so the retry test does not wait. Default: real time. */
   sleep?: (ms: number) => Promise<void>;
+  /** Injected so the download test needs no socket. Default: the global one. */
+  fetch?: typeof fetch;
 }
 
 /** A client for the real API, with the version pinned and SDK retries off. */
@@ -150,6 +199,7 @@ const OPAQUE = new Set(['child_page', 'child_database']);
 
 export function createNotionApi(client: NotionClient, options: NotionApiOptions = {}): NotionApi {
   const sleep = options.sleep ?? realSleep;
+  const fetchImpl = options.fetch ?? fetch;
   const users = new Map<string, RawObject | undefined>();
 
   /** Runs one call, retrying a 429 for as long as the policy allows. */
@@ -202,6 +252,45 @@ export function createNotionApi(client: NotionClient, options: NotionApiOptions 
     async children(id) {
       return (await listChildren(id)) as NotionBlock[];
     },
+    async block(id) {
+      return (await call(() => client.blocks.retrieve({ block_id: id }))) as NotionBlock;
+    },
+
+    async download(url) {
+      const response = await fetchImpl(url);
+      if (!response.ok) {
+        throw new DownloadError(`Notion file ${response.status} on ${url.split('?', 1)[0]}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    },
+
+    async upload(name, bytes, contentType) {
+      const parts = Math.max(1, Math.ceil(bytes.length / UPLOAD_PART_BYTES));
+      const created = (await call(() =>
+        client.fileUploads.create({
+          filename: name,
+          content_type: contentType,
+          ...(parts === 1 ? {} : { mode: 'multi_part', number_of_parts: parts }),
+        }),
+      )) as FileUpload;
+      const id = String(created.id);
+
+      for (let part = 0; part < parts; part += 1) {
+        const slice = bytes.slice(part * UPLOAD_PART_BYTES, (part + 1) * UPLOAD_PART_BYTES);
+        await call(() =>
+          client.fileUploads.send({
+            file_upload_id: id,
+            file: { filename: name, data: new Blob([slice], { type: contentType }) },
+            ...(parts === 1 ? {} : { part_number: String(part + 1) }),
+          }),
+        );
+      }
+      // Only a multi-part upload has to be told it is finished; a single-part
+      // one is `uploaded` the moment its bytes land.
+      if (parts > 1) await call(() => client.fileUploads.complete({ file_upload_id: id }));
+      return id;
+    },
+
     async deleteBlock(id) {
       await call(() => client.blocks.delete({ block_id: id }));
     },
@@ -265,6 +354,12 @@ export function createNotionApi(client: NotionClient, options: NotionApiOptions 
     },
   };
 }
+
+/**
+ * A file's bytes could not be read. Its own class because an expired signed
+ * URL is worth re-reading the block for, and nothing else is (§12 phase 2).
+ */
+export class DownloadError extends Error {}
 
 /** Whether an error is Notion saying "too many requests". */
 function isRateLimited(error: unknown): boolean {

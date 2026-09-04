@@ -24,6 +24,7 @@ import type {
   RootContent,
   Table,
 } from 'mdast';
+import { extensionOf, MEDIA_EXTENSIONS, resolveAssetPath } from '../assets.js';
 import { parseMarkdown } from '../markdown.js';
 import { PushError } from '../push-types.js';
 import type { RawObject } from './api.js';
@@ -64,6 +65,13 @@ export interface FromMarkdownOptions {
   ids?: ReadonlyMap<string, string>;
   /** Repo-relative path of the file being converted, for those relative links. */
   from?: string;
+  /**
+   * The file upload each asset was sent to Notion as, by repo-relative path
+   * (MANUAL §12 phase 2). A link into `<title>.assets/` becomes an image, file,
+   * PDF or video block pointing at the upload; one whose file the push did not
+   * upload is refused, since a block cannot point at a path.
+   */
+  uploads?: ReadonlyMap<string, string>;
 }
 
 const DEFAULT_COLOR = 'default';
@@ -279,6 +287,8 @@ function paragraph(
   const only = node.children.length === 1 ? node.children[0] : undefined;
 
   if (only?.type === 'image') {
+    const asset = assetBlock(only.url, 'image', captionOf(only.alt), options);
+    if (asset !== undefined) return asset;
     return {
       type: 'image',
       image: {
@@ -288,18 +298,64 @@ function paragraph(
       },
     };
   }
-  if (only?.type === 'link' && mention(only.url, options) === undefined && isAbsolute(only.url)) {
-    return {
-      type: 'file',
-      file: {
-        type: 'external',
-        external: { url: only.url },
-        caption: inline(only.children, options),
-      },
-    };
+  if (only?.type === 'link' && mention(only.url, options) === undefined) {
+    const caption = inline(only.children, options);
+    const asset = assetBlock(only.url, undefined, caption, options);
+    if (asset !== undefined) return asset;
+    if (isAbsolute(only.url)) {
+      return {
+        type: 'file',
+        file: { type: 'external', external: { url: only.url }, caption },
+      };
+    }
   }
 
   return body('paragraph', { rich_text: inline(node.children, options) }, attributes);
+}
+
+/** An alt text as the caption Notion keeps for a media block. */
+function captionOf(alt: string | null | undefined): RichTextInput[] {
+  return alt ? [textRun(alt, NO_ANNOTATIONS)] : [];
+}
+
+/**
+ * A link into the document's own `<title>.assets/` as the block that carries
+ * the file (MANUAL §12 phase 2).
+ *
+ * `force` is the block type an `![]()` link takes whatever the extension says;
+ * a `[]()` link is a PDF, a video or a plain file, by its extension. A link
+ * into the assets directory whose file the push did not upload is refused by
+ * name: there is nothing to point the block at.
+ */
+function assetBlock(
+  url: string,
+  force: string | undefined,
+  caption: RichTextInput[],
+  options: FromMarkdownOptions,
+): BlockInput | undefined {
+  const path = resolveAssetPath(options.from ?? '', url);
+  if (path === undefined) return undefined;
+  const upload = options.uploads?.get(path);
+  if (upload === undefined) {
+    throw new PushError(
+      `${path}: this link points at a file that is not in the checkout; add the file or remove the link`,
+      options.from,
+    );
+  }
+  const ext = extensionOf(path).toLowerCase();
+  const type =
+    force ??
+    (MEDIA_EXTENSIONS.pdf.has(ext) ? 'pdf' : MEDIA_EXTENSIONS.video.has(ext) ? 'video' : 'file');
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  return {
+    type,
+    [type]: {
+      type: 'file_upload',
+      file_upload: { id: upload },
+      caption,
+      ...(type === 'image' ? {} : { name }),
+    },
+  };
 }
 
 /** A URL with a scheme, which is what makes a link a link and not a path. */

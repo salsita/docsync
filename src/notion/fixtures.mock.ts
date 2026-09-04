@@ -17,10 +17,22 @@ function load<T>(name: string): T {
   return JSON.parse(readFileSync(join(HERE, `${name}.json`), 'utf8')) as T;
 }
 
+/** One file Notion hosts, recorded as bytes beside the block's JSON. */
+export interface FixtureAsset {
+  /** The block that holds it, undashed. */
+  block: string;
+  type: string;
+  /** The signed URL it was recorded from. Long expired; the key, not a link. */
+  url: string;
+  /** The file in `__fixtures__/` holding the bytes. */
+  file: string;
+}
+
 interface Index {
   rootId: string;
   notionVersion: string;
   pageIds: string[];
+  assets?: FixtureAsset[];
 }
 
 const index = load<Index>('index');
@@ -30,6 +42,16 @@ export const ROOT_ID = index.rootId;
 
 /** Every recorded page id, root first, in the order the walk found them. */
 export const PAGE_IDS = index.pageIds;
+
+/** Every file the recorded tree hosts itself, with the bytes saved for it. */
+export const ASSETS: FixtureAsset[] = index.assets ?? [];
+
+/** The recorded bytes of one hosted file, by the block that holds it. */
+export function fixtureAssetBytes(blockId: string): Uint8Array {
+  const found = ASSETS.find((one) => one.block === bare(blockId));
+  if (found === undefined) throw new Error(`no recorded bytes for block ${blockId}`);
+  return new Uint8Array(readFileSync(join(HERE, found.file)));
+}
 
 /** The page object for one recorded page. */
 export function fixturePage(id: string): RawObject {
@@ -84,7 +106,29 @@ export function fixtureApi(): NotionApi {
       comments.set(bare(blockId), on);
     }
   }
+  /** Every recorded block of every recorded page, by id: what `block` answers. */
+  const blocks = new Map<string, NotionBlock>();
+  const collect = (list: readonly NotionBlock[]): void => {
+    for (const block of list) {
+      blocks.set(bare(block.id), block);
+      if (block.children !== undefined) collect(block.children);
+    }
+  };
+  for (const pageId of PAGE_IDS) collect(fixtureBlocks(pageId));
+
   return {
+    async block(id) {
+      const found = blocks.get(bare(id));
+      if (found === undefined) throw new Error(`no recorded block ${id}`);
+      return found;
+    },
+
+    async download(url) {
+      const found = ASSETS.find((one) => one.url === url);
+      if (found === undefined) throw new Error(`no recorded bytes for ${url.split('?', 1)[0]}`);
+      return new Uint8Array(readFileSync(join(HERE, found.file)));
+    },
+
     async comments(blockId) {
       const found = comments.get(bare(blockId));
       if (found === undefined) throw new Error(`no recorded comments for ${blockId}`);
@@ -136,6 +180,8 @@ export function countingApi(backing: NotionApi = fixtureApi()): CountedApi {
     api: {
       ...backing,
       page: (id) => count('page', id, backing.page(id)),
+      block: (id) => count('block', id, backing.block(id)),
+      download: (url) => count('download', url.split('?', 1)[0] ?? url, backing.download(url)),
       blockTree: (id) => count('blockTree', id, backing.blockTree(id)),
       children: (id) => count('children', id, backing.children(id)),
       comments: (id) => count('comments', id, backing.comments(id)),
@@ -153,7 +199,7 @@ export function countingApi(backing: NotionApi = fixtureApi()): CountedApi {
 /** The write half, which a fixture-backed API has no business performing. */
 function readOnly(): Pick<
   NotionApi,
-  'deleteBlock' | 'append' | 'createPage' | 'updatePage' | 'updateBlock'
+  'deleteBlock' | 'append' | 'createPage' | 'updatePage' | 'updateBlock' | 'upload'
 > {
   const refuse = (name: string) => async (): Promise<never> => {
     throw new Error(`the fixture API is read-only: ${name}`);
@@ -162,6 +208,7 @@ function readOnly(): Pick<
     deleteBlock: refuse('deleteBlock'),
     updateBlock: refuse('updateBlock'),
     append: refuse('append'),
+    upload: refuse('upload'),
     createPage: refuse('createPage'),
     updatePage: refuse('updatePage'),
   };

@@ -98,6 +98,10 @@ function shapeBody(body: RawObject): RawObject {
   if ('has_column_header' in body) shaped.has_column_header = body.has_column_header === true;
   if ('has_row_header' in body) shaped.has_row_header = body.has_row_header === true;
   if ('external' in body) shaped.url = (body.external as RawObject | null)?.url;
+  // A file Notion hosts is the same file whether the round trip reads it back
+  // as a signed URL or writes it as an upload: what a push controls is that
+  // there is one, not where Notion keeps it (MANUAL §12 phase 2).
+  if ('file' in body || 'file_upload' in body) shaped.hosted = true;
   // Notion writes `icon: null` on a block that has none; we simply omit it.
   const icon = body.icon as RawObject | null | undefined;
   if (icon) shaped.icon = icon.emoji;
@@ -200,10 +204,49 @@ async function fixtures() {
     (file): file is (typeof fetched.files)[number] & { entry: IndexEntry; body: string } =>
       file.entry !== undefined && file.body !== undefined,
   );
-  const entries = files.map((file) => file.entry);
+  const documents = files.filter((file) => file.entry.type === 'notion-page');
+  const hosted = fetched.files.filter((file) => file.entry?.type === 'asset');
+  const entries = documents.map((file) => file.entry);
   const pages = new Map(entries.map((entry): [string, string] => [entry.src.id, entry.path]));
   const ids = new Map(entries.map((entry): [string, string] => [entry.path, entry.src.id]));
-  return { files, pages, ids };
+  // Every file the tree hosts, as the push would have uploaded it: a stub id
+  // per asset path, and the link every conversion has to write (§12 phase 2).
+  const uploads = new Map(
+    hosted.map((file): [string, string] => [file.path, `fu-${file.entry?.src.id ?? ''}`]),
+  );
+  const assets = new Map(
+    hosted.map((file): [string, string] => [file.entry?.src.id ?? '', file.path]),
+  );
+  return { files: documents, pages, ids, uploads, assets };
+}
+
+/**
+ * The blocks a push sends, as Notion hands them back: every block given an id,
+ * and every block that points at a file upload mapped to the asset that upload
+ * came from — which is what the next fetch links by (MANUAL §12 phase 2).
+ */
+function stamp(
+  blocks: readonly NotionBlock[],
+  uploads: ReadonlyMap<string, string>,
+): { blocks: NotionBlock[]; assets: Map<string, string> } {
+  const pathOf = new Map([...uploads].map(([path, id]): [string, string] => [id, path]));
+  const assets = new Map<string, string>();
+  let next = 0;
+  const walk = (list: readonly NotionBlock[]): NotionBlock[] =>
+    list.map((block) => {
+      next += 1;
+      const id = `stamped${next}`;
+      const body = (block[block.type] ?? {}) as RawObject;
+      const upload = (body.file_upload as RawObject | undefined)?.id;
+      const path = typeof upload === 'string' ? pathOf.get(upload) : undefined;
+      if (path !== undefined) assets.set(id, path);
+      return {
+        ...block,
+        id,
+        ...(block.children === undefined ? {} : { children: walk(block.children) }),
+      };
+    });
+  return { blocks: walk(blocks), assets };
 }
 
 /** The frontmatter a fetch writes, with no title so that no page is read. */
@@ -292,22 +335,29 @@ describe('the 15 patch, over the whole fixture tree', () => {
 
 describe('the 05 + 06 round trip', () => {
   it('converts every fixture page back to the blocks it came from', async () => {
-    const { files, pages, ids } = await fixtures();
+    const { files, pages, ids, uploads, assets } = await fixtures();
     expect(files.length).toBeGreaterThan(1);
 
     for (const file of files) {
       const from = file.path;
       const original = fixtureBlocks(file.entry.src.id) as NotionBlock[];
-      const parsed = markdownToBlocks(file.body, { from, ids });
+      const parsed = markdownToBlocks(file.body, { from, ids, uploads });
 
       // Markdown is canonical: what a fetch would show after this push is the
-      // body we started from, minus the blocks a push drops.
-      const after = blocksToMarkdown(parsed as NotionBlock[], { pages, from });
-      expect(after).toBe(blocksToMarkdown(pruned(original), { pages, from }));
+      // body we started from, minus the blocks a push drops. Notion gives the
+      // blocks a push creates ids of its own, and the next fetch links a
+      // hosted file by that id, so the ids are stamped on here the way Notion
+      // would (MANUAL §12 phase 2).
+      const stamped = stamp(parsed as NotionBlock[], uploads);
+      const after = blocksToMarkdown(stamped.blocks, { pages, from, assets: stamped.assets });
+      expect(after).toBe(blocksToMarkdown(pruned(original), { pages, from, assets }));
 
       // And it is a fixed point: pushing that again changes nothing at all.
-      const again = markdownToBlocks(after, { from, ids });
-      expect(blocksToMarkdown(again as NotionBlock[], { pages, from })).toBe(after);
+      const again = stamp(
+        markdownToBlocks(after, { from, ids, uploads }) as NotionBlock[],
+        uploads,
+      );
+      expect(blocksToMarkdown(again.blocks, { pages, from, assets: again.assets })).toBe(after);
 
       // The blocks themselves are the ones Notion holds, modulo what a push
       // cannot say.

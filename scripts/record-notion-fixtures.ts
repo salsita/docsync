@@ -14,8 +14,12 @@
  * that block, because `GET /v1/comments?block_id=<page>` answers only the
  * page-level ones: a block comment needs a request of its own (ticket 17).
  *
- * Re-run only deliberately. File URLs inside the recorded JSON are signed and
- * expire within the hour; that is fine, nothing downloads them.
+ * A file Notion hosts is recorded twice: the block's JSON, whose signed URL
+ * expires within the hour, and the *bytes* behind it, saved as
+ * `asset-<blockId><ext>` (ticket 14). The bytes are what the fetch tests
+ * compare against, so a stale URL costs nothing.
+ *
+ * Re-run only deliberately.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -31,6 +35,7 @@ const api = createNotionApi(createNotionClient(token));
 
 const users = new Map();
 const pageIds = [];
+const assets = [];
 let commentRequests = 0;
 
 /**
@@ -81,6 +86,64 @@ function collectUsers(value) {
   for (const item of Object.values(record)) collectUsers(item);
 }
 
+/** Block types that can hold a file Notion hosts (MANUAL §6). */
+const MEDIA = new Set(['image', 'file', 'pdf', 'video']);
+
+/** The extension a name or a URL carries, or the one a content type implies. */
+const TYPE_EXTENSIONS = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+  'application/pdf': '.pdf',
+  'text/plain': '.txt',
+  'text/markdown': '.md',
+  'application/json': '.json',
+  'video/mp4': '.mp4',
+};
+
+function extensionOf(name) {
+  const base = String(name ?? '').split(/[?#]/, 1)[0];
+  const cut = base.slice(base.lastIndexOf('/') + 1);
+  const dot = cut.lastIndexOf('.');
+  return dot > 0 ? cut.slice(dot) : '';
+}
+
+/**
+ * The bytes behind one hosted block, saved beside the JSON. Read-only: one
+ * `GET` of a signed URL Notion itself handed us, and nothing else.
+ */
+async function recordAsset(block) {
+  const body = block[block.type] ?? {};
+  if (body.type !== 'file') return;
+  const url = body.file?.url;
+  if (typeof url !== 'string') return;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${response.status} on the file of block ${block.id}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const ext =
+    extensionOf(body.name) ||
+    extensionOf(url) ||
+    TYPE_EXTENSIONS[(response.headers.get('content-type') ?? '').split(';')[0].trim()] ||
+    '';
+  const file = `asset-${block.id.replaceAll('-', '')}${ext}`;
+  await writeFile(join(OUT, file), bytes);
+  console.log(`  ${file} (${bytes.length} bytes)`);
+  assets.push({ block: block.id.replaceAll('-', ''), type: block.type, url, file });
+}
+
+/** Every block of a page that could hold a hosted file, the tree flattened. */
+function media(blocks) {
+  const out = [];
+  for (const block of blocks) {
+    if (block.type === 'child_page' || block.type === 'child_database') continue;
+    if (MEDIA.has(block.type)) out.push(block);
+    if (block.children !== undefined) out.push(...media(block.children));
+  }
+  return out;
+}
+
 async function write(name, value) {
   await writeFile(join(OUT, `${name}.json`), `${JSON.stringify(value, null, 2)}\n`);
   console.log(`  ${name}.json`);
@@ -105,6 +168,9 @@ async function record(id) {
   }
   await write(`comments-${id}`, comments);
 
+  // The bytes of everything this page hosts itself (ticket 14).
+  for (const block of media(blocks)) await recordAsset(block);
+
   for (const block of blocks) {
     if (block.type === 'child_page') await record(block.id.replaceAll('-', ''));
     if (block.type === 'child_database') console.log(`  (skipped database ${block.id})`);
@@ -118,5 +184,5 @@ await record(ROOT_ID);
 for (const id of [...users.keys()])
   users.set(id, (await api.user(id)) ?? { id, unavailable: true });
 await write('users', Object.fromEntries(users));
-await write('index', { rootId: ROOT_ID, notionVersion: NOTION_VERSION, pageIds });
+await write('index', { rootId: ROOT_ID, notionVersion: NOTION_VERSION, pageIds, assets });
 console.log(`${commentRequests} comment requests for ${pageIds.length} pages`);

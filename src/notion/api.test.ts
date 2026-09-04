@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createNotionApi, createNotionClient, NOTION_VERSION, type NotionClient } from './api.js';
+import {
+  createNotionApi,
+  createNotionClient,
+  DownloadError,
+  NOTION_VERSION,
+  type NotionClient,
+  UPLOAD_PART_BYTES,
+} from './api.js';
 
 /** A block as the API hands it back, with only the fields the wrapper reads. */
 function block(id: string, type: string, hasChildren = false): Record<string, unknown> {
@@ -79,7 +86,32 @@ function fakeClient(options: FakeOptions = {}) {
         return user;
       },
     },
+    fileUploads: {
+      async create(args) {
+        calls.push(`upload.create:${JSON.stringify(args)}`);
+        maybeFail();
+        return { object: 'file_upload', id: 'fu1', status: 'pending' };
+      },
+      async send({ file_upload_id, file, part_number }) {
+        calls.push(
+          `upload.send:${file_upload_id}:${file.filename ?? ''}:${file.data.size}` +
+            `${part_number === undefined ? '' : `:part=${part_number}`}`,
+        );
+        maybeFail();
+        return { object: 'file_upload', id: file_upload_id, status: 'uploaded' };
+      },
+      async complete({ file_upload_id }) {
+        calls.push(`upload.complete:${file_upload_id}`);
+        maybeFail();
+        return { object: 'file_upload', id: file_upload_id, status: 'uploaded' };
+      },
+    },
     blocks: {
+      async retrieve({ block_id }) {
+        calls.push(`retrieve:${block_id}`);
+        maybeFail();
+        return block(block_id, 'image');
+      },
       async delete({ block_id }) {
         calls.push(`delete:${block_id}`);
         maybeFail();
@@ -373,6 +405,67 @@ describe('createNotionApi', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('reads one block on its own, for a URL that expired', async () => {
+    const { client, calls } = fakeClient({});
+    expect((await createNotionApi(client, noSleep).block('b1')).type).toBe('image');
+    expect(calls).toEqual(['retrieve:b1']);
+  });
+
+  it('downloads a file URL with no authorization header of ours', async () => {
+    const seen: RequestInit[] = [];
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      seen.push(init ?? {});
+      return new Response(new Uint8Array([1, 2, 3]));
+    }) as unknown as typeof fetch;
+    const { client } = fakeClient({});
+
+    const bytes = await createNotionApi(client, { ...noSleep, fetch: fetchImpl }).download(
+      'https://s3/file.png?sig=1',
+    );
+
+    expect([...bytes]).toEqual([1, 2, 3]);
+    expect(seen[0]?.headers).toBeUndefined();
+  });
+
+  it('says a download failed in its own error, without the signature', async () => {
+    const fetchImpl = (async () => new Response('no', { status: 403 })) as unknown as typeof fetch;
+    const { client } = fakeClient({});
+    const api = createNotionApi(client, { ...noSleep, fetch: fetchImpl });
+    await expect(api.download('https://s3/file.png?sig=secret')).rejects.toBeInstanceOf(
+      DownloadError,
+    );
+    await expect(api.download('https://s3/file.png?sig=secret')).rejects.toThrow(
+      /403 on https:\/\/s3\/file\.png$/,
+    );
+  });
+
+  it('uploads a small file in one part and does not complete it', async () => {
+    const { client, calls } = fakeClient({});
+    const id = await createNotionApi(client, noSleep).upload(
+      'photo.png',
+      new Uint8Array(10),
+      'image/png',
+    );
+    expect(id).toBe('fu1');
+    expect(calls).toEqual([
+      'upload.create:{"filename":"photo.png","content_type":"image/png"}',
+      'upload.send:fu1:photo.png:10',
+    ]);
+  });
+
+  it('uploads a large file in parts and completes it', async () => {
+    const { client, calls } = fakeClient({});
+    await createNotionApi(client, noSleep).upload(
+      'big.bin',
+      new Uint8Array(UPLOAD_PART_BYTES + 5),
+      'application/octet-stream',
+    );
+    expect(calls[0]).toContain('"mode":"multi_part","number_of_parts":2');
+    expect(calls[1]).toBe(`upload.send:fu1:big.bin:${UPLOAD_PART_BYTES}:part=1`);
+    expect(calls[2]).toBe('upload.send:fu1:big.bin:5:part=2');
+    expect(calls[3]).toBe('upload.complete:fu1');
+  });
+
   it('never asks about a missing user id', async () => {
     const { client, calls } = fakeClient({});
     expect(await createNotionApi(client, noSleep).user(undefined)).toBeUndefined();
@@ -391,6 +484,10 @@ describe('createNotionClient', () => {
     expect(typeof client.blocks.update).toBe('function');
     expect(typeof client.pages.create).toBe('function');
     expect(typeof client.pages.update).toBe('function');
+    expect(typeof client.blocks.retrieve).toBe('function');
+    expect(typeof client.fileUploads.create).toBe('function');
+    expect(typeof client.fileUploads.send).toBe('function');
+    expect(typeof client.fileUploads.complete).toBe('function');
     expect(NOTION_VERSION).toBe('2025-09-03');
   });
 });

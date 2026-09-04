@@ -88,6 +88,9 @@ const SUMMARY = /<summary>([\s\S]*?)<\/summary>/;
 const HEADING_SUMMARY = /^(#{1,6})\s+([\s\S]*)$/;
 const CALLOUT_MARKER = /^\[!CALLOUT\][ \t]*(\S*)[ \t]*(\n|$)/;
 const ABSOLUTE = /^[a-z][a-z0-9+.-]*:/i;
+
+/** A link into some document's `<title>.assets/`, which is a file (§12). */
+const ASSET_LINK = /(^|\/)[^/]+\.assets\//;
 const MENTION_URL = /^notion:\/\/|^https:\/\/(?:www\.notion\.so|app\.notion\.com)\//i;
 
 /** The diff of two documents, as ops over their blocks. */
@@ -412,7 +415,9 @@ function paragraph(node: Paragraph): Omit<DiffBlock, 'index' | 'source'> {
   const type =
     only?.type === 'image'
       ? 'image'
-      : only?.type === 'link' && ABSOLUTE.test(only.url) && !MENTION_URL.test(only.url)
+      : only?.type === 'link' &&
+          !MENTION_URL.test(only.url) &&
+          (ABSOLUTE.test(only.url) || ASSET_LINK.test(only.url))
         ? 'file'
         : 'paragraph';
   return {

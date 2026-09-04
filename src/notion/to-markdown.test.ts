@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from '../markdown.js';
 import type { NotionBlock } from './api.js';
-import { fixtureBlocks, fixtureTitle, PAGE_IDS } from './fixtures.mock.js';
-import { blocksToMarkdown, inline, plain, type RichText, relativePath } from './to-markdown.js';
+import { ASSETS, fixtureBlocks, fixtureTitle, PAGE_IDS } from './fixtures.mock.js';
+import {
+  bareId,
+  blocksToMarkdown,
+  inline,
+  plain,
+  type RichText,
+  relativePath,
+} from './to-markdown.js';
 
 /** A block with a body, the way the API shapes one. */
 function block(type: string, body: Record<string, unknown> = {}, id = 'b1'): NotionBlock {
@@ -237,7 +244,38 @@ describe('blocks', () => {
     }
   });
 
-  it('a Notion-hosted file is a placeholder until ticket 14', () => {
+  it('a file with no caption is linked by its own name', () => {
+    expect(
+      one('file', { type: 'external', external: { url: 'https://x/y' }, name: 'spec.pdf' }),
+    ).toBe('[spec.pdf](https://x/y)\n');
+  });
+
+  it('a Notion-hosted file the fetch downloaded is linked into the assets directory', () => {
+    const assets = new Map([['b1', 'Specs/Auth.assets/chili.png']]);
+    const hosted = block('image', {
+      type: 'file',
+      file: { url: 'https://prod-files…' },
+      caption: [text('Uploaded image')],
+    });
+    expect(blocksToMarkdown([hosted], { from: 'Specs/Auth.md', assets })).toBe(
+      '![Uploaded image](Auth.assets/chili.png)\n',
+    );
+
+    const file = block('file', {
+      type: 'file',
+      file: { url: 'https://prod-files…' },
+      name: 'sample-file.bin',
+      caption: [],
+    });
+    expect(
+      blocksToMarkdown([file], {
+        from: 'Specs/Auth.md',
+        assets: new Map([['b1', 'Specs/Auth.assets/sample-file.bin']]),
+      }),
+    ).toBe('[sample-file.bin](Auth.assets/sample-file.bin)\n');
+  });
+
+  it('a Notion-hosted file nobody downloaded is still a placeholder', () => {
     expect(one('image', { type: 'file', file: { url: 'https://prod-files…' }, caption: [] })).toBe(
       '<!-- docsync:block notion:b1 type=image -->\n',
     );
@@ -499,7 +537,23 @@ describe('every fixture page', () => {
   for (const id of PAGE_IDS) {
     it(`converts ${fixtureTitle(id) || id}`, () => {
       const from = `Docsync test/${fixtureTitle(id)}.md`;
-      expect(blocksToMarkdown(fixtureBlocks(id), { pages, from })).toMatchSnapshot();
+      // The links a fetch would have written for the files this page hosts
+      // (MANUAL §12 phase 2); a page that hosts none gets an empty map.
+      const assets = new Map(
+        ASSETS.filter((asset) =>
+          fixtureBlocks(id).some((block) => bareId(block.id) === asset.block),
+        ).map((asset): [string, string] => [
+          asset.block,
+          `${from.slice(0, -'.md'.length)}.assets/${asset.file.replace(/^asset-\w+/, nameOf(asset))}`,
+        ]),
+      );
+      expect(blocksToMarkdown(fixtureBlocks(id), { pages, from, assets })).toMatchSnapshot();
     });
   }
 });
+
+/** The name the fetch gives one recorded asset: the source's, or the URL's. */
+function nameOf(asset: { url: string; file: string }): string {
+  const path = asset.url.split('?', 1)[0] ?? '';
+  return decodeURIComponent(path.slice(path.lastIndexOf('/') + 1)).replace(/\.[^.]*$/, '');
+}

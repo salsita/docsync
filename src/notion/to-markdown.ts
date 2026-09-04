@@ -20,6 +20,7 @@ import type {
   TableCell,
   TableRow,
 } from 'mdast';
+import { linkToAsset } from '../assets.js';
 import { stringifyMarkdown } from '../markdown.js';
 import type { NotionBlock, RawObject } from './api.js';
 
@@ -47,6 +48,13 @@ export interface ToMarkdownOptions {
   pages?: ReadonlyMap<string, string>;
   /** Repo-relative path of the file being written, for those relative links. */
   from?: string;
+  /**
+   * Where the files this page hosts were written, by undashed block id
+   * (MANUAL §12 phase 2). A media block in here is linked into
+   * `<title>.assets/`; one that is not — because nothing downloaded it — keeps
+   * the placeholder it had.
+   */
+  assets?: ReadonlyMap<string, string>;
 }
 
 /** Notion's default colour, which is the one we do not write down. */
@@ -313,15 +321,26 @@ function table(block: NotionBlock, options: ToMarkdownOptions): RootContent[] {
 }
 
 /**
- * An image, file, PDF or video. External URLs become a link (an image when the
- * block is an image); anything Notion hosts is a placeholder until ticket 14
- * downloads it (MANUAL §6).
+ * An image, file, PDF or video (MANUAL §6).
+ *
+ * An external URL is written as it stands: an image when the block is an
+ * image, a link otherwise, and nothing is downloaded. A file **Notion hosts**
+ * is written the same way but pointing into `<title>.assets/`, where the fetch
+ * put it (MANUAL §12 phase 2); its signed URL is never in the file, because it
+ * expires within the hour. A hosted block nobody downloaded keeps the
+ * placeholder, so a page is never written with a link to a file that is not
+ * there.
  */
 function media(block: NotionBlock, options: ToMarkdownOptions): RootContent[] {
   const body = bodyOf(block);
   const external = body.external;
+  const asset = typeof block.id === 'string' ? options.assets?.get(bareId(block.id)) : undefined;
   const url =
-    typeof external === 'object' && external !== null ? (external as RawObject).url : undefined;
+    asset !== undefined
+      ? linkToAsset(options.from ?? '', asset)
+      : typeof external === 'object' && external !== null
+        ? (external as RawObject).url
+        : undefined;
   if (typeof url !== 'string') return placeholder(block);
 
   const caption = Array.isArray(body.caption) ? (body.caption as RichText[]) : [];
@@ -329,12 +348,12 @@ function media(block: NotionBlock, options: ToMarkdownOptions): RootContent[] {
   if (block.type === 'image') {
     return [{ type: 'paragraph', children: [{ type: 'image', url, alt: label }] }];
   }
-  return [
-    {
-      type: 'paragraph',
-      children: [{ type: 'link', url, children: inline(caption, options) }],
-    },
-  ];
+  // A file has a name and a caption; the link's text is the caption when there
+  // is one, and the file's own name when there is not, so that a link never
+  // comes out empty.
+  const children =
+    caption.length > 0 ? inline(caption, options) : [{ type: 'text' as const, value: label }];
+  return [{ type: 'paragraph', children: [{ type: 'link', url, children }] }];
 }
 
 /** The plain text of a rich-text array, with no Markdown at all. */

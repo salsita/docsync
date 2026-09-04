@@ -51,14 +51,15 @@ describe('fetchRoot', () => {
   it('writes an index entry for every file, in the same order', async () => {
     const { files, entries } = await fetch();
 
-    // Every file is a page: comments, and the sidecar that has no entry of its
-    // own, are off unless the root asks for them (MANUAL §4).
+    // Every file is a page or one of the files a page hosts: comments, and
+    // the sidecar that has no entry of its own, are off unless the root asks
+    // for them (MANUAL §4).
     expect(entries).toHaveLength(files.length);
     expect(entries.map((one) => one.path)).toEqual(documents(files).map((file) => file.path));
     expect(entries[0]).toEqual(
       entry('Docsync test.md', ROOT_ID, files[0]?.entry?.lastEditedTime ?? ''),
     );
-    expect(entries.every((one) => one.type === 'notion-page')).toBe(true);
+    expect(entries.every((one) => one.type === 'notion-page' || one.type === 'asset')).toBe(true);
   });
 
   it('resolves a mention of a page in the same root to a relative link', async () => {
@@ -347,8 +348,8 @@ describe('the `comments` option (MANUAL §4, §7)', () => {
 
     // The same walk, plus one `GET /v1/comments` per page and per block of it:
     // the cost the manual's §7 warning is about.
-    expect(counted.requests.filter((one) => one.startsWith('comments:'))).toHaveLength(66);
-    expect(counted.requests).toHaveLength(19 + 66);
+    expect(counted.requests.filter((one) => one.startsWith('comments:'))).toHaveLength(68);
+    expect(counted.requests).toHaveLength(19 + 68);
     expect(sidecars(second.files)).toEqual(['Docsync test/Blocks.comments.md']);
   });
 
@@ -370,8 +371,10 @@ describe('changedSince', () => {
   it('calls every page changed when there is no previous index', async () => {
     const { files } = await fetch();
 
+    // Pages only: an asset moves with the page that holds it (§12 phase 2).
     expect(await changedSince(root, provider, new Map(), { api })).toEqual(
       documents(files)
+        .filter((file) => file.entry.type === 'notion-page')
         .map((file) => file.path)
         .sort(),
     );

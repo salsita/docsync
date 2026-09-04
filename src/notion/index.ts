@@ -20,18 +20,17 @@ import type {
 } from '../source.js';
 import type { SourceRef } from '../source-ref.js';
 import { createNotionApi, createNotionClient, type NotionApi, type RawObject } from './api.js';
+import { fetchPageAssets } from './assets.js';
 import { pageThreads } from './comments.js';
 import { bareId, blocksToMarkdown } from './to-markdown.js';
 import { type SkippedObject, titleOf, type WalkedPage, walkRoot } from './walk.js';
 
 /**
- * One Markdown file, ready to be written. A Notion root holds nothing but
- * Markdown, so the shared shape's optional `text` is always there. `body` is
- * the page without its frontmatter, and a comment sidecar has none.
+ * One file, ready to be written. A Notion root is Markdown and the files its
+ * pages host (MANUAL §12 phase 2): a page and a comment sidecar carry `text`,
+ * an asset carries `bytes`. `body` is a page without its frontmatter.
  */
-export interface FetchedFile extends SourceFetchedFile {
-  text: string;
-}
+export type FetchedFile = SourceFetchedFile;
 
 export interface FetchResult extends SourceFetchResult {
   files: FetchedFile[];
@@ -76,7 +75,9 @@ async function fetchWith(
   // What the index remembers about Notion pages anywhere in the checkout: their
   // paths, so a mention of a page in another root still resolves, and their
   // last-edit times, which is what makes a page "changed".
-  const known = [...previous.values()].filter((entry) => entry.src.source === 'notion');
+  const known = [...previous.values()]
+    .filter((entry) => entry.src.source === 'notion')
+    .filter((entry) => entry.type === 'notion-page');
   const pages = new Map(known.map((one): [string, string] => [one.src.id, one.path]));
   const times = new Map(known.map((one): [string, string] => [one.src.id, one.lastEditedTime]));
 
@@ -91,7 +92,15 @@ async function fetchWith(
     // Comments are opt-in per root, because reading them costs one request per
     // block of every page on every fetch (MANUAL §4, §7).
     files.push(
-      ...(await toFiles(page, api, pages, times.get(page.id), fetched, root.comments === true)),
+      ...(await toFiles(
+        page,
+        api,
+        pages,
+        times.get(page.id),
+        fetched,
+        root.comments === true,
+        previous,
+      )),
     );
   }
 
@@ -125,8 +134,12 @@ async function toFiles(
   previousTime: string | undefined,
   fetched: string,
   comments: boolean,
+  previous: ReadonlyMap<string, IndexEntry>,
 ): Promise<FetchedFile[]> {
-  const body = blocksToMarkdown(page.blocks, { pages, from: page.path });
+  // The files this page hosts itself go on disk beside it and are linked from
+  // the body, so the body cannot be written before they have names (§12).
+  const assets = await fetchPageAssets(api, page, previous);
+  const body = blocksToMarkdown(page.blocks, { pages, from: page.path, assets: assets.links });
   const entry: IndexEntry = {
     path: page.path,
     src: page.ref,
@@ -143,16 +156,21 @@ async function toFiles(
     changed: previousTime !== page.lastEditedTime,
   };
 
+  // An asset is a file of the commit and a document of the index in its own
+  // right, so it rides along with the page it belongs to.
+  const own = assets.files;
+
   // With comments off, a page costs what it did before ticket 17: the walk and
   // nothing more (MANUAL §7).
-  if (!comments) return [file];
+  if (!comments) return [file, ...own];
 
   // A comment moves nothing the walk can see, so every page's threads are read
   // on every fetch, changed or not (MANUAL §6).
   const threads = await pageThreads(api, page.id, page.blocks, body);
-  if (threads.length === 0) return [file];
+  if (threads.length === 0) return [file, ...own];
   return [
     file,
+    ...own,
     {
       path: sidecarPathOf(page.path),
       text: formatSidecar({ document: page.ref, fetched, threads }),
@@ -210,7 +228,9 @@ export async function changedSince(
   options: FetchOptions = {},
 ): Promise<string[]> {
   const api = options.api ?? (await notionApi(provider));
-  const known = [...previous.values()].filter((entry) => entry.src.source === 'notion');
+  // Pages only: an asset has no listing of its own, and its page moves with it
+  // (MANUAL §12 phase 2).
+  const known = [...previous.values()].filter((entry) => entry.type === 'notion-page');
   const walked = await walkRoot(
     api,
     root,
