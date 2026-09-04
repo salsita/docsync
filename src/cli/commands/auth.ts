@@ -52,6 +52,9 @@ export async function auth(
       context,
       `Already signed in as ${describeIdentity(await context.auth.whoAmI(source, deps))}.`,
     );
+    // The token is verified, not what it can see: a Notion page the
+    // integration was never granted still fails. Say how to start over.
+    say(context, `To sign in again, run \`docsync auth ${source} --logout\` first.`);
     return 0;
   } catch (error) {
     if (!(error instanceof NotSignedInError)) throw error;

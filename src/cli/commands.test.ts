@@ -418,7 +418,7 @@ describe.skipIf(process.platform === 'win32')(
         'Signed in as Ada Lovelace, ada@example.com.\n',
       );
       expect((await w.run(w.dir, 'auth', 'notion')).out).toBe(
-        'Already signed in as Ada Lovelace, ada@example.com.\n',
+        'Already signed in as Ada Lovelace, ada@example.com.\nTo sign in again, run `docsync auth notion --logout` first.\n',
       );
       expect((await w.run(w.dir, 'auth', 'notion', '--logout')).out).toBe(
         'Signed out of notion.\n',
