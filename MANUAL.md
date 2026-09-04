@@ -229,10 +229,11 @@ Creates a checkout.
 3. Writes an empty manifest to `.docsync.yaml`.
 4. `git init -b main`, with `core.autocrlf=false` so line endings are LF
    everywhere.
-5. Adds `.docsync.yaml`, the skill file paths, `.prettierrc` and
-   `.editorconfig` to `.git/info/exclude`.
+5. Adds `.docsync.yaml`, the skill file paths, `.prettierrc`,
+   `.editorconfig` and `.gitattributes` to `.git/info/exclude`.
 6. Writes the skill file (§10), `.prettierrc` and `.editorconfig` (§6
-   "Formatters and editors").
+   "Formatters and editors"), and `.gitattributes` marking `*.assets/**`
+   as binary so diffs stay readable.
 7. Appends a root per resolved `<src>` (same code path as `docsync add`).
 8. `git remote add origin docsync::.docsync.yaml`.
 9. `git fetch origin` and `git checkout --track origin/main`.
@@ -311,6 +312,7 @@ time. Useful before `add`.
 | Drive folder                              | `<title>/` containing its files and sub-folders, recursively       |
 | Notion page, no children                  | `<title>.md`                                                       |
 | Notion page with child pages              | `<title>.md` **and** `<title>/` beside it, containing the children |
+| Files hosted inside a page or Doc         | `<title>.assets/` beside `<title>.md`, one file each, linked from the body |
 
 Filenames are derived from titles:
 
@@ -373,7 +375,9 @@ title: Auth
   at the source.
 
 **Binary files**, a Markdown file stored in Drive included, have no
-frontmatter and are checked out verbatim. Their ids live in `.docsync/index.yaml`,
+frontmatter and are checked out verbatim. The files in a `<title>.assets/`
+directory are binaries of this kind too, owned by their document; the index
+records which block or object each one is and its checksum. Their ids live in `.docsync/index.yaml`,
 a tracked file the helper writes on every fetch. It maps every checked-out path
 to its source ref and type, and marks a Google Doc that had a pending
 suggestion at the last fetch (`suggested: true`). Do not edit it. A new binary file inside a Drive
@@ -408,7 +412,7 @@ below.
 | table                                                                                                    | GFM table. Cells hold inline formatting only.                                                                          |
 | equation                                                                                                 | `$$ … $$` block; `$ … $` inline                                                                                        |
 | image, file, PDF, video with an **external** URL | `![caption](url)` for images, `[name](url)` for the rest. On push a bare link block becomes a `file` block. A PDF or video block therefore comes back as a `file` block after a push and fetch. |
-| image, file, PDF hosted by Notion                                                                        | downloaded next to the page into `<title>.assets/` and linked relatively (**later**; placeholder in the first version) |
+| image, file, PDF, video hosted by Notion | downloaded next to the page into `<title>.assets/` and linked relatively: `![caption](<title>.assets/photo.png)` for an image, `[caption](<title>.assets/spec.pdf)` for the rest, with the file's own name as the link text when it has no caption. The name comes from Notion's, or from the URL's last segment, made unique by the filename rules above and kept stable by the index. On push a link into that directory is uploaded and the block points at the upload; the block type follows the link form and the extension: `![]()` → image, `.pdf` → pdf, a video extension → video, anything else → file. A hosted block whose file could not be downloaded keeps the placeholder |
 | child page                                                                                               | its own file, not in the body                                                                                          |
 | link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://www.notion.so/<id>)`, with `Untitled` when the page is not accessible. Both convert back to a mention on push. |
 | user mention | `[@Name](notion://user/<id>)` |
@@ -468,7 +472,7 @@ roman numerals are not represented either.
 | horizontal rule                               | `---`. The Docs API cannot create one, so a rule is dropped on push and does not survive                                                                                                 |
 | page break                                    | `<!-- docsync:pagebreak -->` on its own line. Docs keeps a page break inside a paragraph, so a paragraph containing one is fetched as two paragraphs around the comment                                                                          |
 | footnote                                      | `[^n]` with the definition at the end                                                                 |
-| image | `<!-- docsync:object gdocs:<objectId> type=image -->` in the first version; downloaded into `<title>.assets/` and linked relatively **later** |
+| image | downloaded into `<title>.assets/` and linked relatively where it sits, `![alt](<title>.assets/image-1.png)`, with the object's alt text as the alt and a name from its position and content type. An image the fetch did not download keeps `<!-- docsync:object gdocs:<objectId> type=image -->`, and a drawing is always that placeholder. On push an image is uploaded to Drive, shared for the one request that inserts it, then unshared and trashed; a file that is not an image is refused with "Google Docs cannot hold a file; link to it instead", and the alt text of a pushed image is lost, since the API cannot set it |
 | link                                          | `[text](url)`                                                                                         |
 | bold, italic, strikethrough, code font        | as in GFM                                                                                             |
 | underline                                     | `<u>…</u>`                                                                                            |
@@ -726,6 +730,14 @@ What is lost, per source:
   because nothing the push sends addresses it.
 - **Drive binaries:** a new revision of the same file is uploaded.
   Everything else about the file is untouched.
+- **Hosted files** (`<title>.assets/`): a new link into the directory
+  uploads the file and creates the block; changed bytes behind an existing
+  link re-upload and patch the same Notion block, or delete and re-insert
+  the Docs image. A link to a file that is not on disk, and a file deleted
+  while its link stays, are refused naming the path. A file the source will
+  not take (its size, or a non-image in a Doc) is reported and skipped,
+  never half uploaded, and the rest of the document still goes. The report
+  says `uploaded <n> files`.
 
 The push report says how much was touched: `updated  Specs/Auth.md  (3
 blocks changed, 41 kept)`, where changed counts updated, inserted and
@@ -836,21 +848,16 @@ Everything in this manual not marked **later**. Limitations of phase 1:
 
 - Notion databases are not synced. Pages inside a database are not synced either.
 - Sheets, Slides and Drawings are exported read-only.
-- Images and files hosted by the source are placeholders, not downloaded.
 - Google Docs revisions are collapsed into one commit per fetch.
 - One branch (`main`) per remote. Other local branches are fine; the helper only
   serves `main`.
 
 ### Phase 2 — attachments
 
-Files hosted by the source are downloaded on fetch into `<title>.assets/` next
-to the document and linked relatively from the Markdown. This is required for
-Notion anyway, since its hosted-file URLs are signed and expire after an hour.
-
-Push uploads new or changed files. Notion's File Upload API accepts the bytes
-directly (single request up to 20 MB, multipart above) and the upload is
-attached to the image, file, PDF or video block. For Google Docs the image is
-uploaded to Drive and inserted by reference.
+Done. Files hosted by the source are downloaded on fetch into
+`<title>.assets/` next to the document and linked relatively (§6); push
+uploads new or changed files (§7). A Docs checkout made before this keeps
+its image placeholders until the document next changes.
 
 ### Phase 3 — diff-based write-back
 

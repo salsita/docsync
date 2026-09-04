@@ -54,3 +54,30 @@ re-uploaded when it did not change.
 
 `pnpm check` green, both smoke scripts pass, manual rows updated and the
 **later** marks removed.
+
+## Outcome
+
+Landed 2026-09-04 in six agent commits (`3878dd5` … `a0f81a5`) plus the
+landing commit. `pnpm check` green, 1324 tests. Both fixtures now check out
+with `<title>.assets/` (Notion: `chili.png`, `sample-file.bin`; Docs:
+`image-1.png`), fixtures re-recorded.
+
+- Docs image push request sequence, verified against real Google: create
+  the assets folder, private upload, share anyone/reader, one `batchUpdate`
+  with `insertInlineImage`, unshare, trash, the last two in a `finally`; a
+  failure names what was left behind. The smoke script proved clean-up
+  after a deliberately failed insert.
+- Notion smoke: upload, in-place patch of the same block id, new bytes
+  served. Run 1 found a real bug (`blocks.update` refuses `type` inside the
+  body), fixed. The last check (missing file refused) failed on the script's
+  own dashed id; fixed both in the script and in `push.ts` lookup, unit
+  tested, not re-run against Notion since the script had used its two runs.
+- Notion plan limit is not readable; 5 GiB pre-check plus upload failure
+  handling, both reported as skipped. Multipart above 20 MB unit-tested only.
+- Docs cannot set alt text on insert; a pushed image loses it. An image
+  inside a text paragraph with empty alt is not detected as added or
+  removed. `replaceImage` would keep the object on changed bytes; a
+  follow-up.
+- `.gitattributes` written by `init` and excluded like `.prettierrc`.
+- Manual: both dialect rows, layout row, identity, `init` steps, §7
+  write-back, §12 phase 2 done.
