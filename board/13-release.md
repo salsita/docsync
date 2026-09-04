@@ -14,13 +14,13 @@ Phase 1.
 - ai-starter setup step that installs docsync and can drop a pre-filled
   `oauth-apps.yaml` from the team's secret store.
 
-## Known flake to fix here
+## Carried over from ticket 22
 
-`src/cli/commands.test.ts` "init builds the checkout of the quick start"
-failed once with git exit 128 during a full `pnpm check` under load and
-passed alone and on rerun (2026-09-03). `src/helper/e2e.test.ts` did the
-same during ticket 21 (2026-09-04). Two real-git test files each build the
-helper with `tsc`; serialise them or share one build in CI.
+The flake in the two real-git test files was the helper dying on EPIPE and
+is fixed. Still open: `src/cli.ts` (`out`/`err`) and the helper's
+`--version` write to `process.stdout` unguarded, so `docsync status | head`
+can crash the way the helper did. Route them through the guarded writer
+from `src/helper/main.ts`.
 
 ## Done when
 
