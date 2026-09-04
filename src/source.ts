@@ -114,6 +114,23 @@ export interface FileChange {
   assets?: ReadonlyMap<string, Uint8Array>;
 }
 
+/**
+ * Where a fetch or a push says what it is doing while it runs (MANUAL §7).
+ *
+ * One plain line per event, no carriage returns and no colour, because it is
+ * the helper's stderr: git relays it live, `docsync` relays git, and the same
+ * text has to read the same in a terminal, in a log and in a transcript. The
+ * helper passes its own `log`, so `git --quiet` — `option verbosity 0` — is
+ * what silences it (MANUAL §9). Nothing here is stored: the report files are
+ * the record.
+ */
+export type Progress = (line: string) => void;
+
+/** The one option both halves of a `Source` take. */
+export interface ProgressOptions {
+  progress?: Progress;
+}
+
 /** What a push did to one document, for the CLI to print. */
 export interface PushedDocument {
   path: string;
@@ -176,6 +193,7 @@ export interface Source {
     root: Root,
     provider: CredentialProvider,
     previous: ReadonlyMap<string, IndexEntry>,
+    options?: ProgressOptions,
   ): Promise<FetchResult>;
 
   /**
@@ -187,6 +205,7 @@ export interface Source {
     changes: readonly FileChange[],
     provider: CredentialProvider,
     index: DocumentIndex,
+    options?: ProgressOptions,
   ): Promise<PushReport>;
 
   /**

@@ -86,6 +86,7 @@ export async function pushRef(deps: FetchDeps, request: PushRequest): Promise<Pu
       changes,
       deps.provider,
       index,
+      { progress: deps.log },
     );
     for (const done of report) deps.log(`${root.src.source}: ${done.action} ${done.path}`);
     documents.push(...report);

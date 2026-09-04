@@ -205,12 +205,21 @@ describe('pushRef', () => {
     expect(await push()).toEqual({ ok: true });
     // Pre-flight, then the adapters, then the post-push fetch.
     expect(logged).toEqual([
+      'listing Specs.md',
       'notion: unchanged',
+      'listing Files/',
       'gdocs: unchanged',
+      '1/1 Specs/New.md',
       'notion: created Specs/New.md',
+      '1/2 Files/logo.png',
+      '2/2 Files/plain.txt',
       'gdocs: trashed Files/logo.png',
       'gdocs: created Files/plain.txt',
+      'listing Specs.md',
+      '1 Specs/New page.md',
       'notion: 1 changed',
+      'listing Files/',
+      '1/1 Files/plain.txt',
       'gdocs: 1 changed',
     ]);
     const tree = await readTree(repo.git, (await repo.git.revParse(REF)) ?? '');

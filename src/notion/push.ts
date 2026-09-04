@@ -16,6 +16,7 @@ import type { DocumentIndex } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import { type FileChange, PushError, type PushReport } from '../push-types.js';
+import type { Progress, ProgressOptions } from '../source.js';
 import type { NotionApi } from './api.js';
 import { fileUploadBody, uploadAssets } from './assets.js';
 import { mdastToBlocks, resolvePath } from './from-markdown.js';
@@ -25,10 +26,13 @@ import { bareId, blocksToMarkdown } from './to-markdown.js';
 import { titleOf } from './walk.js';
 import { createNotionWriter, type NotionWriter } from './write.js';
 
-export interface PushOptions {
+export interface PushOptions extends ProgressOptions {
   /** The API to use. Tests pass a fake one; a real push passes nothing. */
   api?: NotionApi;
 }
+
+/** A progress hook that is not there. */
+function noop(): void {}
 
 /**
  * Applies one root's changes.
@@ -44,7 +48,13 @@ export async function pushRoot(
   index: DocumentIndex = new Map(),
   options: PushOptions = {},
 ): Promise<PushReport> {
-  return pushWith(options.api ?? (await notionApi(provider)), root, changes, index);
+  return pushWith(
+    options.api ?? (await notionApi(provider)),
+    root,
+    changes,
+    index,
+    options.progress ?? noop,
+  );
 }
 
 async function pushWith(
@@ -52,6 +62,7 @@ async function pushWith(
   root: Root,
   all: readonly FileChange[],
   index: DocumentIndex,
+  progress: Progress,
 ): Promise<PushReport> {
   let changes: readonly FileChange[] = all;
   const writer = createNotionWriter(api);
@@ -61,6 +72,8 @@ async function pushWith(
   const uploaded = new Map<string, number>();
   const skippedFiles = new Map<string, { path: string; reason: string }[]>();
   const count = (path: string, result: { uploads: Map<string, string>; skipped: unknown[] }) => {
+    // One line per hosted file that went up (MANUAL §7).
+    for (const asset of result.uploads.keys()) progress(`upload ${asset}`);
     uploaded.set(path, (uploaded.get(path) ?? 0) + result.uploads.size);
     if (result.skipped.length > 0) {
       skippedFiles.set(path, [
@@ -100,7 +113,13 @@ async function pushWith(
   // Pass one: create every new page, in path order so that a parent page is
   // made before the children whose path implies it.
   const revisit: FileChange[] = [];
+  // One line per document, before its requests go out (MANUAL §7). Creations
+  // come first here, so they are numbered first; pass two below rewrites a
+  // body that has already been named and says nothing more.
+  const total = changes.length;
+  let done = 0;
   for (const change of [...added].sort((a, b) => a.path.localeCompare(b.path))) {
+    progress(`${++done}/${total} ${change.path}`);
     const document = read(change);
     const parent = parentId(change.path, root, ids);
     const title = document.frontmatter?.title ?? titleFromPath(change.path);
@@ -146,6 +165,7 @@ async function pushWith(
 
   for (const change of changes) {
     if (change.kind === 'added') continue;
+    progress(`${++done}/${total} ${change.path}`);
     const id = idFor(change, ids);
     if (id === undefined) {
       // A file with no id was never at the source (MANUAL §8).

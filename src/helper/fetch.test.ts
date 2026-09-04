@@ -119,7 +119,15 @@ describe('fetchCommit', () => {
     expect(await repo.git.text(['log', '-1', '--format=%B', commit])).toBe(
       'Add 3 documents\n\nContracts/logo.png\nSpecs.md\nSpecs/Auth.md\n',
     );
-    expect(logged).toEqual(['notion: 2 changed', 'gdocs: 1 changed']);
+    expect(logged).toEqual([
+      'listing Specs.md',
+      '1 Specs.md',
+      '2 Specs/Auth.md',
+      'notion: 2 changed',
+      'listing Contracts/',
+      '1/1 Contracts/logo.png',
+      'gdocs: 1 changed',
+    ]);
   });
 
   it('adds no commit when nothing changed, and does not download anything', async () => {
@@ -128,7 +136,12 @@ describe('fetchCommit', () => {
     logged = [];
     const second = await fetchCommit(deps, manifest, first.commit);
     expect(second).toMatchObject({ commit: first.commit, changed: false });
-    expect(logged).toEqual(['notion: unchanged', 'gdocs: unchanged']);
+    expect(logged).toEqual([
+      'listing Specs.md',
+      'notion: unchanged',
+      'listing Contracts/',
+      'gdocs: unchanged',
+    ]);
   });
 
   it('commits one edit on top of the previous commit, touching that file only', async () => {
@@ -336,7 +349,15 @@ describe('fetchCommit', () => {
       );
       expect([...index.keys()]).not.toContain('Specs/Auth.comments.md');
       // It is nobody's edit, so it is not a changed document of the report.
-      expect(logged).toEqual(['notion: 2 changed', 'gdocs: 1 changed']);
+      expect(logged).toEqual([
+        'listing Specs.md',
+        '1 Specs.md',
+        '2 Specs/Auth.md',
+        'notion: 2 changed',
+        'listing Contracts/',
+        '1/1 Contracts/logo.png',
+        'gdocs: 1 changed',
+      ]);
     });
 
     it('has none for a document with no thread', async () => {

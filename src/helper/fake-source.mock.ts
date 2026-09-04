@@ -26,6 +26,7 @@ import type {
   FetchedFile,
   FetchResult,
   FileChange,
+  ProgressOptions,
   PushReport,
   Source,
   SourceDescription,
@@ -204,13 +205,36 @@ export function createFakeSource(store: FakeStore): Source {
     root: Root,
     provider: CredentialProvider,
     previous: DocumentIndex,
+    options: ProgressOptions = {},
   ): Promise<FetchResult> {
     await provider.accessToken(root.src.source);
     const state = store.load();
     const known = new Map([...previous.values()].map((entry) => [entry.src.id, entry]));
 
+    // The same lines the real adapters emit, in the same two shapes: Drive
+    // knows the total once the walk is done, Notion does not (MANUAL §7).
+    const progress = options.progress ?? (() => {});
+    progress(`listing ${root.path}`);
+    const laid = [...layout(state, root)];
+    const moved = ([, object]: [string, FakeObject]): boolean => {
+      const before = known.get(object.id);
+      const bytes = object.bytes === undefined ? undefined : Buffer.from(object.bytes, 'base64');
+      return (
+        before === undefined ||
+        before.lastEditedTime !== object.lastEditedTime ||
+        before.md5 !== (bytes === undefined ? undefined : md5(bytes))
+      );
+    };
+    const total = laid.filter(moved).length;
+    let done = 0;
+
     const files: FetchedFile[] = [];
-    for (const [path, object] of layout(state, root)) {
+    for (const one of laid) {
+      const [path, object] = one;
+      const changed = moved(one);
+      if (changed) {
+        progress(root.src.source === 'notion' ? `${++done} ${path}` : `${++done}/${total} ${path}`);
+      }
       const ref: SourceRef = { source: object.source, id: object.id };
       const bytes = object.bytes === undefined ? undefined : Buffer.from(object.bytes, 'base64');
       const entry: IndexEntry = {
@@ -221,11 +245,6 @@ export function createFakeSource(store: FakeStore): Source {
         ...(object.kind === 'export' ? { readOnly: true } : {}),
         ...(bytes === undefined ? {} : { md5: md5(bytes) }),
       };
-      const before = known.get(object.id);
-      const changed =
-        before === undefined ||
-        before.lastEditedTime !== entry.lastEditedTime ||
-        before.md5 !== entry.md5;
       const file: FetchedFile = {
         path,
         entry,
@@ -263,8 +282,10 @@ export function createFakeSource(store: FakeStore): Source {
     changes: readonly FileChange[],
     provider: CredentialProvider,
     index: DocumentIndex,
+    options: ProgressOptions = {},
   ): Promise<PushReport> {
     await provider.accessToken(root.src.source);
+    const progress = options.progress ?? (() => {});
     const state = store.load();
     state.pushes.push({
       root: root.path,
@@ -297,7 +318,10 @@ export function createFakeSource(store: FakeStore): Source {
       return root.src.id;
     };
 
+    let written = 0;
     for (const change of changes) {
+      // One line per document, before its writes go out (MANUAL §7).
+      progress(`${++written}/${changes.length} ${change.path}`);
       if (change.kind === 'added') {
         const document = change.text === undefined ? undefined : parseDocument(change.text);
         if (document === undefined && root.src.source === 'notion') {

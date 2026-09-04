@@ -320,6 +320,26 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in twice.');
     });
 
+    it('pull relays the progress the helper printed while it ran', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in twice.\n', editor: ADA });
+      w.store.save(state);
+
+      const run = await w.run(co, 'pull');
+
+      // git relays the helper's stderr as the fetch runs; the report is
+      // printed on stdout only once git has returned (MANUAL §5, §7).
+      expect(run.err).toContain('listing Product Specs.md');
+      expect(run.err).toContain('1 Product Specs/Auth.md');
+      expect(run.out).toContain('Product Specs/Auth.md  by Ada Lovelace');
+      // Progress is transient: it is not in the report file.
+      expect(readFileSync(join(co, '.git/docsync/last-fetch.json'), 'utf8')).not.toContain(
+        'listing',
+      );
+    });
+
     it('push prints what it did, with the trashed documents last', async () => {
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`, `gdocs:${CONTRACTS}`);

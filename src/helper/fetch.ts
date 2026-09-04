@@ -74,7 +74,11 @@ export async function fetchCommit(
 
   for (const root of manifest.roots) {
     const source = deps.sources[root.src.source];
-    const result = await source.fetchRoot(root, deps.provider, previousIndex);
+    // What the adapter is doing while it does it, on the same channel as the
+    // summary below, so `--quiet` silences both (MANUAL §7, §9).
+    const result = await source.fetchRoot(root, deps.provider, previousIndex, {
+      progress: deps.log,
+    });
     const changed = result.files.filter((file) => file.changed && file.entry !== undefined).length;
     deps.log(`${root.src.source}: ${changed === 0 ? 'unchanged' : `${changed} changed`}`);
 

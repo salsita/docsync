@@ -20,6 +20,7 @@ import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
 import { isUnderRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import type {
+  ProgressOptions,
   SourceDescription,
   FetchedFile as SourceFetchedFile,
   FetchResult as SourceFetchResult,
@@ -43,7 +44,7 @@ export interface FetchResult extends SourceFetchResult {
   skipped: SkippedObject[];
 }
 
-export interface FetchOptions {
+export interface FetchOptions extends ProgressOptions {
   /** The API to use. Tests pass a fixture-backed one; a fetch passes nothing. */
   api?: GDriveApi;
   /** Handed to the real API when one is built. Tests of that path pass it. */
@@ -85,16 +86,29 @@ export async function fetchRoot(
   const paths = new Map(known.map((one): [string, string] => [one.src.id, one.path]));
   const before = new Map(known.map((one): [string, IndexEntry] => [one.src.id, one]));
 
+  // What it is doing, while it does it (MANUAL §7). The walk is one listing
+  // per folder and downloads nothing, so it is announced as a whole.
+  const progress = options.progress ?? noop;
+  progress(`listing ${root.path}`);
+
   const walked = await walkRoot(api, root, paths);
   const files: FetchedFile[] = [];
   const fetched = stamp(options.now?.() ?? new Date());
+  const comments = root.comments === true;
+  // Only changed documents are downloaded, so only they are counted; the walk
+  // is over, so the total is known before the first one is named.
+  const total = walked.files.filter((file) => hasChanged(file, before.get(file.id))).length;
+  let done = 0;
+
   for (const file of walked.files) {
     refuseSidecar(file.path);
+    if (hasChanged(file, before.get(file.id))) progress(`${++done}/${total} ${file.path}`);
+    // On a root with comments a Doc's threads are read whether it moved or
+    // not, and that is the slow half of such a fetch (MANUAL §6, §7).
+    if (comments && file.kind === 'doc') progress(`comments ${file.path}`);
     // Comments are opt-in per root, because reading them costs a request per
     // document on every fetch (MANUAL §4, §7).
-    files.push(
-      ...(await toFiles(file, api, before.get(file.id), fetched, root.comments === true, previous)),
-    );
+    files.push(...(await toFiles(file, api, before.get(file.id), fetched, comments, previous)));
   }
 
   return {
@@ -104,6 +118,23 @@ export async function fetchRoot(
     entries: files.flatMap((file) => (file.entry === undefined ? [] : [file.entry])),
     skipped: walked.skipped,
   };
+}
+
+/** A progress hook that is not there. */
+function noop(): void {}
+
+/**
+ * Whether a walked file differs from what the last fetch recorded of it.
+ *
+ * Drive moves a binary's modified time without moving its bytes and the other
+ * way round, so a checksum counts as metadata too (MANUAL §7).
+ */
+function hasChanged(file: WalkedFile, previous: IndexEntry | undefined): boolean {
+  return (
+    previous === undefined ||
+    previous.lastEditedTime !== file.modifiedTime ||
+    (file.md5Checksum !== undefined && previous.md5 !== file.md5Checksum)
+  );
 }
 
 /** `2026-09-03T16:31:07Z`: to the second, which is all a sidecar prints. */
@@ -228,10 +259,7 @@ async function toFiles(
     ...(file.kind === 'export' ? { readOnly: true } : {}),
     ...(file.md5Checksum === undefined ? {} : { md5: file.md5Checksum }),
   };
-  const changed =
-    previous === undefined ||
-    previous.lastEditedTime !== file.modifiedTime ||
-    (file.md5Checksum !== undefined && previous.md5 !== file.md5Checksum);
+  const changed = hasChanged(file, previous);
 
   const common = {
     path: file.path,

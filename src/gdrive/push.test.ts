@@ -602,3 +602,72 @@ describe('attachments (MANUAL §12 phase 2)', () => {
     ).rejects.toThrow(/the file is gone but drive\/Elements\.md still links it/);
   });
 });
+
+describe('progress (MANUAL §7)', () => {
+  const PATH = 'drive/Elements.md';
+  const ASSET = 'drive/Elements.assets/photo.png';
+
+  /** Every line a push emitted, with the number of calls made when it was. */
+  function watch(api: FakeDrive) {
+    const lines: string[] = [];
+    const calls: number[] = [];
+    return {
+      lines,
+      calls,
+      progress: (line: string) => {
+        lines.push(line);
+        calls.push(api.calls.length);
+      },
+    };
+  }
+
+  it('names each document before its requests go out', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+    const watcher = watch(api);
+
+    await pushRoot(
+      root,
+      [
+        { kind: 'added', path: 'drive/New.md', text: file(undefined, 'New', 'Fresh.\n') },
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(ELEMENTS_ID, 'Elements', 'One, edited.\n'),
+          previousText: file(ELEMENTS_ID, 'Elements', 'One.\n'),
+        },
+      ],
+      provider,
+      index,
+      { api, progress: watcher.progress },
+    );
+
+    // Creations come first, so they are numbered first (MANUAL §7).
+    expect(watcher.lines).toEqual(['1/2 drive/New.md', '2/2 drive/Elements.md']);
+    expect(watcher.calls[0]).toBe(0);
+  });
+
+  it('names every file it uploads', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+    const watcher = watch(api);
+
+    await pushRoot(
+      root,
+      [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(ELEMENTS_ID, 'Elements', 'One.\n\n![](Elements.assets/photo.png)\n'),
+          previousText: file(ELEMENTS_ID, 'Elements', 'One.\n'),
+          assets: new Map([[ASSET, new TextEncoder().encode('PNG')]]),
+        },
+      ],
+      provider,
+      index,
+      { api, progress: watcher.progress },
+    );
+
+    expect(watcher.lines).toEqual(['1/1 drive/Elements.md', `upload ${ASSET}`]);
+  });
+});

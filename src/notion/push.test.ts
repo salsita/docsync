@@ -704,3 +704,44 @@ describe('pushRoot', () => {
     });
   });
 });
+
+describe('progress (MANUAL §7)', () => {
+  const PATH = 'notion/Docsync test/Blocks.md';
+  const ASSET = 'notion/Docsync test/Blocks.assets/photo.png';
+
+  it('names each page before its requests go out, and every file it uploads', async () => {
+    const api = fake();
+    const base = await given(api, BLOCKS_ID, 'One paragraph.\n');
+    const lines: string[] = [];
+    const calls: number[] = [];
+    const progress = (line: string) => {
+      lines.push(line);
+      calls.push(api.calls.length);
+    };
+
+    await pushRoot(
+      root,
+      [
+        {
+          kind: 'added',
+          path: 'notion/Docsync test/New.md',
+          text: file(undefined, 'New', 'Fresh.\n'),
+        },
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(BLOCKS_ID, 'Blocks', `${base}\n![A photo](Blocks.assets/photo.png)\n`),
+          previousText: file(BLOCKS_ID, 'Blocks', base),
+          assets: new Map([[ASSET, new TextEncoder().encode('PNG')]]),
+        },
+      ],
+      provider,
+      index,
+      { api, progress },
+    );
+
+    // Creations come first, so they are numbered first (MANUAL §7).
+    expect(lines).toEqual([`1/2 notion/Docsync test/New.md`, `2/2 ${PATH}`, `upload ${ASSET}`]);
+    expect(calls[0]).toBe(0);
+  });
+});

@@ -413,3 +413,64 @@ describe('notionApi', () => {
     expect(typeof api.blockTree).toBe('function');
   });
 });
+
+describe('progress (MANUAL §7)', () => {
+  /** A collecting `progress`, standing in for the helper's `log`. */
+  function collect(): { lines: string[]; progress: (line: string) => void } {
+    const lines: string[] = [];
+    return { lines, progress: (line) => lines.push(line) };
+  }
+
+  const indexAfter = async (of: Root): Promise<Map<string, IndexEntry>> => {
+    const first = await fetchRoot(of, provider, new Map(), { api: fixtureApi() });
+    return new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+  };
+
+  it('names the root it is listing, then every page it fetched', async () => {
+    const { lines, progress } = collect();
+
+    await fetchRoot(root, provider, new Map(), { api: fixtureApi(), progress });
+
+    // Notion's tree is discovered as it is walked, so there is no total to
+    // count against: the number alone (MANUAL §7).
+    expect(lines).toEqual([
+      'listing Docsync test.md',
+      '1 Docsync test.md',
+      '2 Docsync test/Leaf.md',
+      '3 Docsync test/Title-With- Illegal-Chars- -Quoted- -Tag- -Pipe-.md',
+      '4 Docsync test/Hidden leading dot.md',
+      '5 Docsync test/Notes (2).md',
+      '6 Docsync test/Notes.md',
+      '7 Docsync test/CON-.md',
+      '8 Docsync test/Blocks.md',
+      '9 Docsync test/Blocks/Nested.md',
+    ]);
+  });
+
+  it('says only that it listed when nothing changed', async () => {
+    const previous = await indexAfter(root);
+    const { lines, progress } = collect();
+
+    await fetchRoot(root, provider, previous, { api: fixtureApi(), progress });
+
+    expect(lines).toEqual(['listing Docsync test.md']);
+  });
+
+  it('names every page whose comments it reads when the root asks for them', async () => {
+    const on: Root = { ...root, comments: true };
+    const previous = await indexAfter(on);
+    const { lines, progress } = collect();
+
+    await fetchRoot(on, provider, previous, {
+      api: fixtureApi(),
+      now: () => new Date('2026-09-03T16:31:07Z'),
+      progress,
+    });
+
+    // Nothing changed, so no page line; the comment reads are the whole cost
+    // of this fetch, and they are one per page (MANUAL §7).
+    expect(lines[0]).toBe('listing Docsync test.md');
+    expect(lines.every((line, at) => at === 0 || line.startsWith('comments '))).toBe(true);
+    expect(lines).toHaveLength(10);
+  });
+});

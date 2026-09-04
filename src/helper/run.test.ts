@@ -151,12 +151,18 @@ describe('createCommands', () => {
     const served = await repo.git.revParse('refs/docsync/origin/main');
     expect(listed).toEqual([`${served} refs/heads/main`, '@refs/heads/main HEAD']);
     expect(refreshed).toEqual([repo.root]);
-    expect(errors).toEqual(['notion: 1 changed']);
+    expect(errors).toEqual(['listing Specs/', '1 Specs/Specs.md', 'notion: 1 changed']);
 
     // Unchanged: same commit, and `list for-push` answers it without fetching.
     expect(await commands.list(false)).toEqual(listed);
     expect(await commands.list(true)).toEqual(listed);
-    expect(errors).toEqual(['notion: 1 changed', 'notion: unchanged']);
+    expect(errors).toEqual([
+      'listing Specs/',
+      '1 Specs/Specs.md',
+      'notion: 1 changed',
+      'listing Specs/',
+      'notion: unchanged',
+    ]);
   });
 
   it('acknowledges fetch without doing anything', async () => {
@@ -185,6 +191,11 @@ describe('createCommands', () => {
 
   it('goes quiet at verbosity 0 and declines other options', async () => {
     expect(await commands.option('progress', 'true')).toBe('unsupported');
+    // A fetch says at least that it is listing each root, so silence here is
+    // the whole channel going quiet, progress included (MANUAL §7, §9).
+    errors = [];
+    await commands.list(false);
+    expect(errors).toEqual(['listing Specs/', 'notion: unchanged']);
     expect(await commands.option('verbosity', '0')).toBe('ok');
     errors = [];
     await commands.list(false);

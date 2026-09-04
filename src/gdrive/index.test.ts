@@ -430,3 +430,64 @@ describe('changedSince', () => {
     expect(await changedSince(root, provider, previous, options)).toEqual(['drive/Gone.md']);
   });
 });
+
+describe('progress (MANUAL §7)', () => {
+  /** A collecting `progress`, standing in for the helper's `log`. */
+  function collect(): { lines: string[]; progress: (line: string) => void } {
+    const lines: string[] = [];
+    return { lines, progress: (line) => lines.push(line) };
+  }
+
+  const indexAfter = async (of: Root): Promise<Map<string, IndexEntry>> => {
+    const first = await fetchRoot(of, provider, new Map(), options);
+    return new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+  };
+
+  it('names the root it is listing, then every document it downloads', async () => {
+    const { lines, progress } = collect();
+
+    await fetchRoot(root, provider, new Map(), { ...options, progress });
+
+    // The total is known once the walk is done, so every line carries it.
+    expect(lines).toEqual([
+      'listing drive/',
+      '1/10 drive/Elements.md',
+      '2/10 drive/dummy.pdf',
+      '3/10 drive/plain.txt',
+      '4/10 drive/Numbers.xlsx',
+      '5/10 drive/Notes.md',
+      '6/10 drive/Notes (2).md',
+      '7/10 drive/Hidden leading dot.md',
+      '8/10 drive/Title-With- Illegal-Chars- -Quoted- -Tag- -Pipe-.md',
+      '9/10 drive/Leaf.md',
+      '10/10 drive/Sub/Nested.md',
+    ]);
+  });
+
+  it('says only that it listed when nothing changed', async () => {
+    const previous = await indexAfter(root);
+    const { lines, progress } = collect();
+
+    await fetchRoot(root, provider, previous, { ...options, progress });
+
+    expect(lines).toEqual(['listing drive/']);
+  });
+
+  it('names every document whose comments it reads when the root asks for them', async () => {
+    const on: Root = { ...root, comments: true };
+    const previous = await indexAfter(on);
+    const { lines, progress } = collect();
+
+    await fetchRoot(on, provider, previous, {
+      ...options,
+      now: () => new Date('2026-09-03T16:31:07Z'),
+      progress,
+    });
+
+    // Nothing changed, so no document line; the comment listings are the whole
+    // cost of this fetch, and they are one per Doc (MANUAL §7).
+    expect(lines[0]).toBe('listing drive/');
+    expect(lines.filter((line) => line.startsWith('comments '))).toHaveLength(DOC_IDS.length);
+    expect(lines).toHaveLength(1 + DOC_IDS.length);
+  });
+});

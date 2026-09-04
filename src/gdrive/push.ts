@@ -21,6 +21,7 @@ import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import { type FileChange, PushError, type PushReport } from '../push-types.js';
+import type { Progress, ProgressOptions } from '../source.js';
 import { DEFAULT_UPLOAD_MIME, FOLDER_MIME, type GDriveApi } from './api.js';
 import { objectRangeOf, type StagedImage, stageImages, withSharedImages } from './assets.js';
 import { gdriveApi } from './index.js';
@@ -28,10 +29,13 @@ import { type PatchPlan, planPatch } from './patch.js';
 import { readLive } from './ranges.js';
 import { createGDriveWriter, type GDriveWriter } from './write.js';
 
-export interface PushOptions {
+export interface PushOptions extends ProgressOptions {
   /** The API to use. Tests pass a fake one; a real push passes nothing. */
   api?: GDriveApi;
 }
+
+/** A progress hook that is not there. */
+function noop(): void {}
 
 /** What a new binary is uploaded as, by extension. Everything else is bytes. */
 const UPLOAD_MIMES: Record<string, string> = {
@@ -62,7 +66,13 @@ export async function pushRoot(
   index: DocumentIndex = new Map(),
   options: PushOptions = {},
 ): Promise<PushReport> {
-  return pushWith(options.api ?? (await gdriveApi(provider)), root, changes, index);
+  return pushWith(
+    options.api ?? (await gdriveApi(provider)),
+    root,
+    changes,
+    index,
+    options.progress ?? noop,
+  );
 }
 
 async function pushWith(
@@ -70,6 +80,7 @@ async function pushWith(
   root: Root,
   all: readonly FileChange[],
   index: DocumentIndex,
+  progress: Progress,
 ): Promise<PushReport> {
   const writer = createGDriveWriter(api);
   const report: PushReport = [];
@@ -137,7 +148,12 @@ async function pushWith(
   // the files under it need it.
   const added = changes.filter((change) => change.kind === 'added');
   const created = new Map<string, string>();
+  // One line per document, before its requests go out (MANUAL §7). Creations
+  // come first here, so they are numbered first.
+  const total = changes.length;
+  let done = 0;
   for (const change of [...added].sort((a, b) => a.path.localeCompare(b.path))) {
+    progress(`${++done}/${total} ${change.path}`);
     const parent = await folderFor(change.path);
     const name = nameOf(change.path);
 
@@ -161,6 +177,7 @@ async function pushWith(
 
   for (const change of changes) {
     if (change.kind === 'added') continue;
+    progress(`${++done}/${total} ${change.path}`);
     const previous = known.get(change.previousPath ?? change.path);
     const document = parseDocument(change.text ?? '');
     const fromFrontmatter =
@@ -206,6 +223,7 @@ async function pushWith(
         document.body,
         known,
         await folderFor(change.path),
+        progress,
       );
       const plan = patched.plan;
       if (patched.uploaded > 0) uploaded.set(change.path, patched.uploaded);
@@ -253,6 +271,7 @@ async function pushWith(
       skippedFiles.set(documentPath, [...(skippedFiles.get(documentPath) ?? []), one]);
     }
     if (staged.images.length === 0) continue;
+    for (const one of staged.images) progress(`upload ${one.path}`);
 
     const outcome = await withSharedImages(api, staged.images, () =>
       api.batchUpdate(document.src.id, [
@@ -319,6 +338,7 @@ async function patchDocument(
   body: MdastRoot,
   known: ReadonlyMap<string, IndexEntry>,
   parentId: string,
+  progress: Progress,
 ): Promise<{ plan: PatchPlan; uploaded: number; skipped: { path: string; reason: string }[] }> {
   if (change.previousText === undefined) {
     throw new PushError(
@@ -363,6 +383,7 @@ async function patchDocument(
     },
   );
   const images = new Map(staged.images.map((one): [string, string] => [one.path, one.uri]));
+  for (const one of staged.images) progress(`upload ${one.path}`);
 
   const plan = planPatch(live, ops, { path: change.path, images });
   if (staged.images.length === 0) {
