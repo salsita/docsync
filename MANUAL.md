@@ -244,7 +244,9 @@ With no sources, the result is a repo with one empty commit. Add roots later.
 ### `docsync add <src>[=<path>]...`
 
 Resolves each source ref, appends roots to the manifest, then fetches and
-fast-forwards if the working tree is clean.
+fast-forwards. An edit in progress is in the way only when git says the
+fetch would overwrite it; then nothing is merged, the command says why, and
+`docsync pull` after a commit or a stash finishes the job.
 
 The `=<path>` alias is optional. A trailing slash means "under this
 directory, named by the source title". No trailing slash means "exactly this
@@ -282,8 +284,9 @@ whether the source has moved since (a cheap metadata check, no download), and
 Thin wrappers over the git commands with docsync-specific output:
 
 - `push` prints, per document, what it did (created, updated, trashed), then
-  fetches and fast-forwards the current branch onto the follow-up commit (§7)
-  when the working tree is clean. It is a fetch and a merge, not a merge
+  fetches and fast-forwards the current branch onto the follow-up commit (§7),
+  unless git says an edit in progress would be overwritten, which it reports
+  with the way out. It is a fetch and a merge, not a merge
   alone: after `git push`, `origin/main` still points at what was pushed, and
   the follow-up commit only arrives with another fetch.
 - `pull` and `fetch` print which documents changed and who changed them.
@@ -658,8 +661,8 @@ Git sends the commits between `origin/main` and your branch. The helper:
 6. **Post-push fetch.** Re-reads every document it touched. If the canonical
    form differs from what was pushed (new ids, source-side normalization), it
    writes one more commit on top of `origin/main`. Your branch is then one
-   fast-forward behind. `docsync push` fast-forwards for you when the working
-   tree is clean; after plain `git push`, run `git pull`. When the source only
+   fast-forward behind. `docsync push` fast-forwards for you unless an edit in
+   progress is in the way; after plain `git push`, run `git pull`. When the source only
    re-stamped edit times, that follow-up commit is `Update the index`.
 
 The helper reports progress on stderr as the push runs: one line per

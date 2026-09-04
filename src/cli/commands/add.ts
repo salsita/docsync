@@ -104,21 +104,41 @@ export async function appendRoots(
 
 /**
  * The fetch that follows a manifest change, in both `add` and `init`: git
- * fetches, and the branch fast-forwards only when there is nothing local to
- * disturb (MANUAL §5).
+ * fetches, then the branch fast-forwards. Git itself decides whether an edit
+ * in progress is in the way — one to a file the fetch did not touch is not —
+ * and when it refuses, the command says why and how to finish (MANUAL §5).
  */
 export async function fetchAndFastForward(context: Context, repo: Repo): Promise<number> {
   const fetched = await repo.git.run(['fetch', 'origin'], { relay: true });
   if (fetched.status !== 0) return fetched.status;
 
-  if (await repo.git.isClean()) {
-    const merged = await repo.git.run(['merge', '--ff-only', 'origin/main'], { relay: true });
-    if (merged.status !== 0) return merged.status;
-  } else {
-    say(context, 'Your working tree has changes, so nothing was merged. Run: docsync pull');
-  }
+  await fastForward(context, repo, ['merge', '--ff-only', 'origin/main']);
   sayBlock(context, formatFetchReport(await readFetchReport(repo.gitDir)));
   return 0;
+}
+
+/**
+ * One fast-forward of the current branch, `merge` or `pull` as the caller
+ * needs. A refusal is not a failure of the command that asked: what was
+ * fetched or pushed stands, and the working tree is left exactly as it was.
+ */
+export async function fastForward(
+  context: Context,
+  repo: Repo,
+  args: readonly string[],
+): Promise<void> {
+  const merged = await repo.git.run(args);
+  if (merged.status === 0) {
+    for (const line of merged.stdout.split('\n')) if (line !== '') say(context, line);
+    return;
+  }
+  const why =
+    merged.stderr
+      .split('\n')
+      .map((line) => line.replace(/^(error|fatal): /, '').trim())
+      .find((line) => line !== '' && !line.startsWith('hint:')) ?? 'git refused';
+  say(context, `Nothing was merged: ${why}`);
+  say(context, 'Commit or stash your changes, then run: docsync pull');
 }
 
 export interface AddOptions {

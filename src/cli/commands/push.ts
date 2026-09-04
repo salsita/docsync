@@ -11,6 +11,7 @@
 import { readPushReport } from '../../helper/report.js';
 import { type Context, openRepo, say, sayBlock } from '../context.js';
 import { formatPushReport } from '../print.js';
+import { fastForward } from './add.js';
 
 export async function push(context: Context): Promise<number> {
   const repo = await openRepo(context);
@@ -19,17 +20,10 @@ export async function push(context: Context): Promise<number> {
 
   sayBlock(context, formatPushReport(await readPushReport(repo.gitDir)));
 
-  if (!(await repo.git.isClean())) {
-    say(context);
-    say(
-      context,
-      'Your working tree has changes, so the follow-up commit was not merged. ' +
-        'Commit or stash them, then run: docsync pull',
-    );
-    return 0;
-  }
   // A pull, not a merge: git's `origin/main` still points at what was pushed,
-  // and the follow-up commit of §7 only arrives with another fetch.
-  const merged = await repo.git.run(['pull', '--ff-only'], { relay: true });
-  return merged.status;
+  // and the follow-up commit of §7 only arrives with another fetch. An edit in
+  // progress blocks it only when git says it would be overwritten.
+  say(context);
+  await fastForward(context, repo, ['pull', '--ff-only']);
+  return 0;
 }

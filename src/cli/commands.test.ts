@@ -361,7 +361,23 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.git(co, 'rev-parse', 'HEAD')).toBe(w.git(co, 'rev-parse', 'origin/main'));
     });
 
-    it('push on a dirty tree says how to get the follow-up commit', async () => {
+    it('add fast-forwards around an edit in progress elsewhere', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      w.write(co, 'Product Specs/Auth.md', 'still editing\n');
+      w.write(co, 'notes.txt', 'untracked\n');
+
+      const run = await w.run(co, 'add', `gdocs:${CONTRACTS}`);
+
+      expect(run.code).toBe(0);
+      expect(run.out).not.toContain('Nothing was merged');
+      expect(w.git(co, 'rev-parse', 'HEAD')).toBe(w.git(co, 'rev-parse', 'origin/main'));
+      // The edit in progress is untouched, and the new root is in place.
+      expect(w.read(co, 'Product Specs/Auth.md')).toBe('still editing\n');
+      expect(w.files(co)).toContain('.docsync/index.yaml');
+    });
+
+    it('push fast-forwards onto the follow-up commit around an edit in progress', async () => {
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`);
       w.write(co, 'Product Specs/Auth.md', w.read(co, 'Product Specs/Auth.md') + 'And out.\n');
@@ -371,9 +387,26 @@ describe.skipIf(process.platform === 'win32')(
       const run = await w.run(co, 'push');
 
       expect(run.code).toBe(0);
-      expect(run.out).toContain('docsync pull');
-      // The edit in progress is still there: nothing was merged over it.
+      // The follow-up commit touches the index, not the file being edited, so
+      // git fast-forwards and the edit in progress is still there.
+      expect(run.out).not.toContain('Nothing was merged');
+      expect(w.git(co, 'rev-parse', 'HEAD')).toBe(w.git(co, 'rev-parse', 'origin/main'));
       expect(w.read(co, 'Product Specs/Auth.md')).toBe('still editing\n');
+    });
+
+    it('add says why when what came in would overwrite a file of yours', async () => {
+      const w = world();
+      const co = await checkout(w);
+      w.write(co, 'Product Specs/Auth.md', 'mine\n');
+
+      const run = await w.run(co, 'add', `notion:${SPECS}`);
+
+      expect(run.code).toBe(0);
+      expect(run.out).toContain('Nothing was merged:');
+      expect(run.out).toContain('Product Specs/Auth.md');
+      expect(run.out).toContain('docsync pull');
+      expect(w.read(co, 'Product Specs/Auth.md')).toBe('mine\n');
+      expect(w.git(co, 'rev-parse', 'HEAD')).not.toBe(w.git(co, 'rev-parse', 'origin/main'));
     });
 
     it('push says so when the commits carried no document change', async () => {
