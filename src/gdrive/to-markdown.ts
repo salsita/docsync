@@ -678,7 +678,46 @@ function annotate(
   start: number,
 ): PhrasingContent[] {
   if (content === '') return [];
+  const wrapped =
+    style.bold === true ||
+    style.italic === true ||
+    style.strikethrough === true ||
+    (style.underline === true && style.link?.url === undefined);
+  if (wrapped) {
+    // Docs styles spaces as readily as letters, and a paragraph's own newline
+    // as readily as either; Markdown cannot open bold on a space or close it
+    // on nothing. The spaces at either edge go out unstyled, and what is left
+    // of the run is what gets wrapped — possibly nothing, which gets nothing.
+    const body = content.replace(/\n$/, '');
+    const lead = /^ +/.exec(body)?.[0] ?? '';
+    const trail = body.length > lead.length ? (/ +$/.exec(body)?.[0] ?? '') : '';
+    if (lead !== '' || trail !== '') {
+      const core = body.slice(lead.length, body.length - trail.length);
+      // The link, if any, goes around all three pieces rather than each.
+      const url = style.link?.url;
+      const inner: TextStyle = {
+        ...style,
+        link: undefined,
+        underline: url === undefined ? style.underline : false,
+      };
+      const unstyled: TextStyle = {
+        ...inner,
+        bold: false,
+        italic: false,
+        strikethrough: false,
+        underline: false,
+      };
+      const pieces = [
+        ...annotate(lead, unstyled, context, start),
+        ...annotate(core, inner, context, start + lead.length),
+        ...annotate(trail, unstyled, context, start + lead.length + core.length),
+      ];
+      return url === undefined ? pieces : [{ type: 'link', url, children: pieces }];
+    }
+  }
   let nodes = textNodes(content, style, context, start);
+  // Nothing to style: the run was the paragraph's newline, or spaces.
+  if (nodes.every((node) => node.type === 'text' && node.value === '')) return nodes;
   if (style.underline === true && style.link?.url === undefined) {
     nodes = [{ type: 'html', value: '<u>' }, ...nodes, { type: 'html', value: '</u>' }];
   }

@@ -151,6 +151,43 @@ describe('text runs', () => {
     );
   });
 
+  it('does not style the newline a paragraph ends in', () => {
+    // Enter at the end of bold text leaves the paragraph's newline run bold;
+    // an empty heading in a bold style is nothing but that run, and an empty
+    // heading is what it was before the style: nothing.
+    expect(
+      documentToMarkdown(doc([para([run('x', { bold: true }), run('\n', { bold: true })])])),
+    ).toBe('**x**\n');
+    expect(
+      documentToMarkdown(
+        doc([
+          para([run('\n', { bold: true })], { paragraphStyle: { namedStyleType: 'HEADING_3' } }),
+        ]),
+      ),
+    ).toBe('');
+    expect(documentToMarkdown(doc([para([run('\n', { italic: true, underline: true })])]))).toBe(
+      '',
+    );
+  });
+
+  it('moves the spaces at the edges of a styled run outside it', () => {
+    expect(
+      documentToMarkdown(doc([para([run('Created by: ', { bold: true }), run('me\n')])])),
+    ).toBe('**Created by:** me\n');
+    expect(
+      documentToMarkdown(doc([para([run('a'), run(' b ', { italic: true }), run('c\n')])])),
+    ).toBe('a _b_ c\n');
+    // Leading spaces are the paragraph's, encoded as any leading space is.
+    expect(documentToMarkdown(doc([para([run('   ', { bold: true }), run('x\n')])]))).toBe(
+      '&#x20;  x\n',
+    );
+    expect(
+      documentToMarkdown(
+        doc([para([run(' x ', { bold: true, link: { url: 'https://example.com/' } }), run('\n')])]),
+      ),
+    ).toBe('[ **x** ](https://example.com/)\n');
+  });
+
   it('survives a run with no content at all', () => {
     expect(documentToMarkdown(doc([para([{ textRun: {} }, run('after\n')])]))).toBe('after\n');
   });

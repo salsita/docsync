@@ -69,7 +69,14 @@ function canonicalNotionId(id: string): string | undefined {
 
 /** Whether a host is one Notion serves pages from. */
 function isNotionHost(host: string): boolean {
-  return host === 'notion.so' || host === 'www.notion.so' || host.endsWith('.notion.site');
+  return (
+    host === 'notion.so' ||
+    host === 'www.notion.so' ||
+    host === 'notion.com' ||
+    host === 'www.notion.com' ||
+    host === 'app.notion.com' ||
+    host.endsWith('.notion.site')
+  );
 }
 
 function notionFromUrl(input: string, url: URL): SourceRef | SourceRefError {

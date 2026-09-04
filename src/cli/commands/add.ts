@@ -31,15 +31,25 @@ export interface RootSpec {
  * lets `docsync init` take an optional `<dir>` in front of its refs.
  */
 export function looksLikeSource(argument: string): boolean {
-  const [text = ''] = argument.split('=');
-  return !isSourceRefError(parseSourceRefOrUrl(text));
+  return !isSourceRefError(parseSourceRefOrUrl(splitSpec(argument).text));
+}
+
+/**
+ * The `=` that separates the alias is the last one, and only when it is not a
+ * URL's own: `?v=<id>`, `&usp=sharing` and `#heading=h.1` all carry one, and
+ * the text before such a `=` ends in the parameter's name.
+ */
+export function splitSpec(argument: string): { text: string; alias?: string } {
+  const at = argument.lastIndexOf('=');
+  if (at === -1) return { text: argument };
+  const text = argument.slice(0, at);
+  if (/[?&#][^=?&#]*$/.test(text)) return { text: argument };
+  return { text, alias: argument.slice(at + 1) };
 }
 
 /** `<src>[=<path>]` as the manual writes it, with URLs accepted (MANUAL §13). */
 export function parseSpec(argument: string): RootSpec {
-  const at = argument.indexOf('=');
-  const text = at === -1 ? argument : argument.slice(0, at);
-  const alias = at === -1 ? undefined : argument.slice(at + 1);
+  const { text, alias } = splitSpec(argument);
   const ref = parseSourceRefOrUrl(text);
   if (isSourceRefError(ref)) throw new CliError(`${text}: ${ref.message}`);
   if (alias === '') throw new CliError(`${argument}: the "=" needs a path after it`);

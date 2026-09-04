@@ -44,6 +44,9 @@ const URLS: Array<[string, SourceRef]> = [
   // http is accepted too: it is a Notion URL, not a rejection.
   [`http://www.notion.so/Product-Specs-${NID}`, notion],
   [`https://salsita.notion.site/Product-Specs-${NID}`, notion],
+  // The notion.com domain, and the app's own `/p/<workspace>/` shape.
+  [`https://www.notion.com/Product-Specs-${NID}`, notion],
+  [`https://app.notion.com/p/salsita/Product-Specs-${NID}`, notion],
   [`https://www.notion.so/salsita/Product-Specs-${NID_DASHED}`, notion],
   [`https://www.notion.so/Product-Specs-${NID_UPPER}`, notion],
   // A query is dropped, even when it carries another id.
