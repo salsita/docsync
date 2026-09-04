@@ -8,7 +8,7 @@
  */
 import type { Link, Root as MdastRoot } from 'mdast';
 import { visit } from 'unist-util-visit';
-import { assetLinksOf, documentOfAssetsDir, isAssetPath } from '../assets.js';
+import { assetLinksOf, documentOfAssetsDir, isAssetPath, refuseOrphanedLinks } from '../assets.js';
 import type { CredentialProvider } from '../auth/index.js';
 import { type BlockCounts, type BlockOp, diffBlocks } from '../diff/blocks.js';
 import { parseDocument } from '../frontmatter.js';
@@ -228,45 +228,6 @@ async function pushWith(
     ...((uploaded.get(one.path) ?? 0) === 0 ? {} : { uploaded: uploaded.get(one.path) }),
     ...(skippedFiles.has(one.path) ? { skippedFiles: skippedFiles.get(one.path) } : {}),
   }));
-}
-
-/**
- * A file deleted while the document still links it (MANUAL §12 phase 2).
- *
- * The link would point at nothing, and a push that let it through would leave
- * the page pointing at a file the checkout no longer has. It is refused before
- * anything is written, naming the path — as is the reverse case, a file
- * deleted for a document this push does not touch at all, which cannot have
- * dropped the link.
- */
-function refuseOrphanedLinks(
-  assetChanges: readonly FileChange[],
-  documentChanges: readonly FileChange[],
-  index: DocumentIndex,
-): void {
-  const texts = new Map<string, string>();
-  for (const change of documentChanges) {
-    if (change.text !== undefined) texts.set(change.path, change.text);
-  }
-  const deletedDocuments = new Set(
-    documentChanges.filter((one) => one.kind === 'deleted').map((one) => one.path),
-  );
-
-  for (const change of assetChanges) {
-    if (change.kind !== 'deleted') continue;
-    const document = index.get(change.path)?.document ?? documentOfAssetsDir(change.path) ?? '';
-    if (deletedDocuments.has(document)) continue;
-    const text = texts.get(document);
-    if (text !== undefined) {
-      const links = assetLinksOf(parseDocument(text).body.children, document);
-      if (!links.has(change.path)) continue;
-    }
-    throw new PushError(
-      `${change.path}: the file is gone but ${document} still links it; ` +
-        'delete the link as well, or restore the file',
-      change.path,
-    );
-  }
 }
 
 /**

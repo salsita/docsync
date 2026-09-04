@@ -280,10 +280,30 @@ describe('deleteContentRange', () => {
   });
 });
 
+describe('insertInlineImage', () => {
+  it('puts one object in the paragraph and reports it as an inline object', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'before after\n' } },
+      { insertInlineImage: { location: { index: 7 }, uri: 'https://drive/uc?id=x' } },
+    ]);
+
+    const doc = model.document();
+    const elements = doc.body?.content?.[1]?.paragraph?.elements ?? [];
+    const object = elements.find((one) => one.inlineObjectElement !== undefined);
+    expect(object?.inlineObjectElement?.inlineObjectId).toBe('kix.img1');
+    // One code unit, as Docs counts it.
+    expect((object?.endIndex ?? 0) - (object?.startIndex ?? 0)).toBe(1);
+    expect(
+      doc.inlineObjects?.['kix.img1']?.inlineObjectProperties?.embeddedObject?.imageProperties,
+    ).toEqual({ contentUri: 'https://drive/uc?id=x' });
+  });
+});
+
 describe('a request the model does not know', () => {
   it('fails loudly rather than being ignored', () => {
-    expect(() => createDocsModel().apply([{ insertInlineImage: {} }])).toThrow(
-      'the model does not know insertInlineImage',
+    expect(() => createDocsModel().apply([{ replaceImage: {} }])).toThrow(
+      'the model does not know replaceImage',
     );
   });
 });

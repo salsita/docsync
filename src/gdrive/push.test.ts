@@ -7,6 +7,7 @@ import { createFakeCredentialProvider } from '../auth/index.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import type { FileChange } from '../push-types.js';
+import { MAX_IMAGE_BYTES } from './assets.js';
 import { createFakeDrive, type FakeDrive } from './fake-api.mock.js';
 import { markdownToRequests } from './from-markdown.js';
 import { pushRoot } from './push.js';
@@ -408,5 +409,196 @@ describe('two new files under one new folder', () => {
       'create b',
       'batchUpdate new3',
     ]);
+  });
+});
+
+describe('attachments (MANUAL §12 phase 2)', () => {
+  const PATH = 'drive/Elements.md';
+  const ASSET = 'drive/Elements.assets/photo.png';
+  const bytes = (value: string) => new TextEncoder().encode(value);
+
+  const withAsset = (objectId: string): DocumentIndex =>
+    new Map([
+      ...index,
+      [
+        ASSET,
+        {
+          path: ASSET,
+          src: { source: 'gdocs', id: objectId },
+          type: 'asset',
+          lastEditedTime: '',
+          document: PATH,
+          checksum: 'old',
+        } as IndexEntry,
+      ],
+    ]);
+
+  it('uploads, shares, inserts, unshares and trashes, in that order', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+
+    const report = await push(api, [
+      {
+        kind: 'modified',
+        path: PATH,
+        text: file(ELEMENTS_ID, 'Elements', 'One.\n\n![](Elements.assets/photo.png)\n'),
+        previousText: file(ELEMENTS_ID, 'Elements', 'One.\n'),
+        assets: new Map([[ASSET, bytes('PNG')]]),
+      },
+    ]);
+
+    const staged = [...api.files.values()].find((one) => one.name === 'photo.png');
+    expect(staged).toBeDefined();
+    // The title check is the push's own; what matters is the four steps of
+    // the exposure, in this order and no other.
+    expect(api.calls.filter((one) => !one.startsWith('getFile'))).toEqual([
+      'create Elements.assets',
+      'create photo.png',
+      `share ${staged?.id} anyone/reader`,
+      `batchUpdate ${ELEMENTS_ID}`,
+      `unshare ${staged?.id}`,
+      `trash ${staged?.id}`,
+    ]);
+    // Nothing stays shared, and the Drive copy is gone.
+    expect(api.permissions.size).toBe(0);
+    expect(staged?.trashed).toBe(true);
+    expect(report[0]?.uploaded).toBe(1);
+
+    const doc = await api.getDocument(ELEMENTS_ID);
+    const uri = Object.values(doc.inlineObjects ?? {})[0]?.inlineObjectProperties?.embeddedObject
+      ?.imageProperties as { contentUri?: string } | undefined;
+    expect(uri?.contentUri).toBe(`https://drive.google.com/uc?export=view&id=${staged?.id}`);
+  });
+
+  it('unshares and trashes even when the insert fails, and says what it left', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+    api.batchUpdate = async () => {
+      throw new Error('the batch failed');
+    };
+
+    await expect(
+      push(api, [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(ELEMENTS_ID, 'Elements', 'One.\n\n![](Elements.assets/photo.png)\n'),
+          previousText: file(ELEMENTS_ID, 'Elements', 'One.\n'),
+          assets: new Map([[ASSET, bytes('PNG')]]),
+        },
+      ]),
+    ).rejects.toThrow(/the batch failed/);
+
+    expect(api.permissions.size).toBe(0);
+    expect([...api.files.values()].find((one) => one.name === 'photo.png')?.trashed).toBe(true);
+  });
+
+  it('names what the clean-up could not undo', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+    api.deletePermission = async () => {
+      throw new Error('no');
+    };
+
+    await expect(
+      push(api, [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(ELEMENTS_ID, 'Elements', 'One.\n\n![](Elements.assets/photo.png)\n'),
+          previousText: file(ELEMENTS_ID, 'Elements', 'One.\n'),
+          assets: new Map([[ASSET, bytes('PNG')]]),
+        },
+      ]),
+    ).rejects.toThrow(/Left behind, and yours to remove: the public link on the Drive file/);
+  });
+
+  it('refuses a file that is not an image', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+    await expect(
+      push(api, [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(ELEMENTS_ID, 'Elements', 'One.\n\n[Spec](Elements.assets/spec.pdf)\n'),
+          previousText: file(ELEMENTS_ID, 'Elements', 'One.\n'),
+          assets: new Map([['drive/Elements.assets/spec.pdf', bytes('%PDF')]]),
+        },
+      ]),
+    ).rejects.toThrow(/Google Docs cannot hold a file; link to it instead/);
+  });
+
+  it('refuses a link whose file is not in the checkout', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+    await expect(
+      push(api, [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: file(ELEMENTS_ID, 'Elements', 'One.\n\n![](Elements.assets/photo.png)\n'),
+          previousText: file(ELEMENTS_ID, 'Elements', 'One.\n'),
+        },
+      ]),
+    ).rejects.toThrow(/photo\.png: this link points at a file that is not in the checkout/);
+  });
+
+  it('reports an image over the limit and inserts nothing for it', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+    const huge = { length: MAX_IMAGE_BYTES + 1 } as unknown as Uint8Array;
+
+    const report = await push(api, [
+      {
+        kind: 'modified',
+        path: PATH,
+        text: file(ELEMENTS_ID, 'Elements', 'One.\n\n![](Elements.assets/photo.png)\n'),
+        previousText: file(ELEMENTS_ID, 'Elements', 'One.\n'),
+        assets: new Map([[ASSET, huge]]),
+      },
+    ]);
+
+    expect(report[0]?.skippedFiles?.[0]?.path).toBe(ASSET);
+    expect(api.calls.filter((one) => one.startsWith('share'))).toEqual([]);
+    expect((await api.getDocument(ELEMENTS_ID)).inlineObjects).toBeUndefined();
+  });
+
+  it('replaces the object when only the bytes changed', async () => {
+    const api = drive();
+    await seed(api, ELEMENTS_ID, 'One.\n');
+    // An image already in the document, as a fetch would have found it.
+    await api.batchUpdate(ELEMENTS_ID, [
+      { insertInlineImage: { location: { index: 1 }, uri: 'https://old' } },
+    ]);
+    api.calls.length = 0;
+
+    const report = await pushRoot(
+      root,
+      [{ kind: 'modified', path: ASSET, bytes: bytes('NEWPNG') }],
+      provider,
+      withAsset('kix.img1'),
+      { api },
+    );
+
+    const staged = [...api.files.values()].find((one) => one.name === 'photo.png');
+    expect(api.calls).toEqual([
+      'create Elements.assets',
+      'create photo.png',
+      `share ${staged?.id} anyone/reader`,
+      `batchUpdate ${ELEMENTS_ID}`,
+      `unshare ${staged?.id}`,
+      `trash ${staged?.id}`,
+    ]);
+    const objects = Object.keys((await api.getDocument(ELEMENTS_ID)).inlineObjects ?? {});
+    expect(objects).toEqual(['kix.img1', 'kix.img2']);
+    expect(report).toEqual([{ path: PATH, title: 'Elements.md', action: 'updated', uploaded: 1 }]);
+  });
+
+  it('refuses a file deleted while the document still links it', async () => {
+    const api = drive();
+    await expect(
+      pushRoot(root, [{ kind: 'deleted', path: ASSET }], provider, withAsset('kix.img1'), { api }),
+    ).rejects.toThrow(/the file is gone but drive\/Elements\.md still links it/);
   });
 });

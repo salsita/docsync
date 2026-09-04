@@ -33,6 +33,8 @@ export interface FakeDrive extends GDriveApi {
   files: Map<string, FakeFile>;
   /** Bytes by URI, for the images a document already holds. */
   hosted: Map<string, Uint8Array>;
+  /** The shares that exist right now, as `<fileId>:<permissionId>`. */
+  permissions: Set<string>;
   /** Every operation, in order: `createFile Notes`, `trash doc1`, … */
   calls: string[];
   /** One document's body as Markdown, for asserting what a push wrote. */
@@ -46,7 +48,9 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
   const files = new Map<string, FakeFile>();
   const documents = new Map<string, DocsModel>();
   const hosted = new Map<string, Uint8Array>();
+  const permissions = new Set<string>();
   const calls: string[] = [];
+  let nextPermission = 0;
   let made = 0;
 
   for (const one of seed) {
@@ -90,6 +94,20 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
     files,
     calls,
     hosted,
+    permissions,
+
+    async createPermission(id, permission) {
+      nextPermission += 1;
+      const permissionId = `perm${nextPermission}`;
+      permissions.add(`${id}:${permissionId}`);
+      calls.push(`share ${id} ${permission.type}/${permission.role}`);
+      return permissionId;
+    },
+
+    async deletePermission(id, permissionId) {
+      permissions.delete(`${id}:${permissionId}`);
+      calls.push(`unshare ${id}`);
+    },
 
     async downloadUri(uri) {
       calls.push(`downloadUri ${uri}`);

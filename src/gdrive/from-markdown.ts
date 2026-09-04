@@ -37,6 +37,7 @@ import type {
   RootContent,
   Table,
 } from 'mdast';
+import { resolveAssetPath } from '../assets.js';
 import { parseMarkdown } from '../markdown.js';
 
 /** One `batchUpdate` request. The API's own JSON, not a wrapper. */
@@ -123,9 +124,17 @@ export function markdownToRequests(text: string): RequestPlan {
 }
 
 /** mdast to the requests that write it, for a caller that has the tree. */
-export function mdastToRequests(tree: Root): RequestPlan {
-  const { segments, dropped } = mdastToSegments(tree);
+export function mdastToRequests(tree: Root, options: ImageOptions = {}): RequestPlan {
+  const { segments, dropped } = mdastToSegments(tree, BODY_BASE, options);
   return { ...segmentsToRequests(segments), dropped };
+}
+
+/** What a conversion needs to know to create an image (MANUAL §12 phase 2). */
+export interface ImageOptions {
+  /** Public URI per repo-relative asset path. */
+  images?: ReadonlyMap<string, string>;
+  /** Repo-relative path of the document, for resolving those links. */
+  from?: string;
 }
 
 /**
@@ -135,8 +144,15 @@ export function mdastToRequests(tree: Root): RequestPlan {
 export function mdastToSegments(
   tree: Root,
   base = BODY_BASE,
+  options: ImageOptions = {},
 ): { segments: Segment[]; dropped: string[] } {
-  const context: Context = { dropped: [], definitions: definitionsOf(tree), inFootnote: false };
+  const context: Context = {
+    dropped: [],
+    definitions: definitionsOf(tree),
+    inFootnote: false,
+    ...(options.images === undefined ? {} : { images: options.images }),
+    ...(options.from === undefined ? {} : { from: options.from }),
+  };
   return { segments: buildSegments(tree.children, context, base), dropped: context.dropped };
 }
 
@@ -193,6 +209,15 @@ interface Context {
   definitions: Map<string, RootContent[]>;
   /** A footnote cannot hold a footnote, so a reference inside one is dropped. */
   inFootnote: boolean;
+  /**
+   * The public URI each of the document's attachments was shared under, by
+   * repo-relative path (MANUAL §12 phase 2). `insertInlineImage` takes a URI
+   * and nothing else, which is why the bytes are on Drive by the time this
+   * runs. An image that is not in here cannot be created and is dropped.
+   */
+  images?: ReadonlyMap<string, string>;
+  /** Repo-relative path of the document, for resolving those links. */
+  from?: string;
 }
 
 /** The footnote definitions of a document, which GFM puts at the end. */
@@ -209,7 +234,8 @@ function definitionsOf(tree: Root): Map<string, RootContent[]> {
 /** One text run, or the place a footnote reference goes. */
 type Piece =
   | { kind: 'text'; text: string; style: RunStyle }
-  | { kind: 'footnote'; identifier: string };
+  | { kind: 'footnote'; identifier: string }
+  | { kind: 'image'; uri: string };
 
 /** What the dialect can say about one run. Absent means off. */
 interface RunStyle {
@@ -363,7 +389,8 @@ function textSegment(
 
   let text = '';
   const styles: DocsRequest[] = [];
-  const notes: { offset: number; identifier: string }[] = [];
+  /** Everything that inserts one character of its own at an offset. */
+  const inserted: { offset: number; identifier?: string; uri?: string }[] = [];
   /** Where each paragraph starts, for the bullet ranges. */
   const starts: number[] = [];
 
@@ -372,7 +399,11 @@ function textSegment(
     text += paragraph.prefix;
     for (const piece of paragraph.pieces) {
       if (piece.kind === 'footnote') {
-        notes.push({ offset: text.length, identifier: piece.identifier });
+        inserted.push({ offset: text.length, identifier: piece.identifier });
+        continue;
+      }
+      if (piece.kind === 'image') {
+        inserted.push({ offset: text.length, uri: piece.uri });
         continue;
       }
       const from = text.length;
@@ -400,17 +431,25 @@ function textSegment(
   requests.push(...styles);
 
   const footnotes: SegmentFootnote[] = [];
-  for (const note of [...notes].reverse()) {
+  // Descending, because each of these inserts a character where it lands and
+  // would move every offset after it.
+  for (const one of [...inserted].sort((a, b) => b.offset - a.offset)) {
+    if (one.uri !== undefined) {
+      requests.push({
+        insertInlineImage: { location: { index: base + one.offset }, uri: one.uri },
+      });
+      continue;
+    }
     footnotes.push({
       at: requests.length,
-      body: footnoteBodyOf(context.definitions.get(note.identifier) ?? [], context),
+      body: footnoteBodyOf(context.definitions.get(one.identifier ?? '') ?? [], context),
     });
-    requests.push({ createFootnote: { location: { index: base + note.offset } } });
+    requests.push({ createFootnote: { location: { index: base + one.offset } } });
   }
 
-  // Every footnote reference is one more character in the body, which the
-  // bullet ranges below have to cover.
-  const end = base + text.length + notes.length;
+  // Every footnote reference and every image is one more character in the
+  // body, which the bullet ranges below have to cover.
+  const end = base + text.length + inserted.length;
   for (const bullets of [...(options.bullets ?? [])].reverse()) {
     requests.push({
       createParagraphBullets: {
@@ -541,7 +580,8 @@ function tableSegment(node: Table, context: Context, base: number): Segment | un
       const styles: DocsRequest[] = [];
       let text = '';
       for (const piece of content) {
-        if (piece.kind === 'footnote') continue;
+        // A table cell holds no footnote and no image the API can create.
+        if (piece.kind !== 'text') continue;
         const from = at + offset;
         text += piece.text;
         offset += piece.text.length;
@@ -604,10 +644,15 @@ function walk(
         if (inCell || context.inFootnote) context.dropped.push('footnote');
         else out.push({ kind: 'footnote', identifier: node.identifier });
         break;
-      case 'image':
-        // Attachments are ticket 14; a push cannot create one (MANUAL §6).
-        context.dropped.push('image');
+      case 'image': {
+        // An attachment the push has already put on Drive and shared can be
+        // inserted; anything else the API cannot create (MANUAL §6, §12).
+        const path = resolveAssetPath(context.from ?? '', node.url);
+        const uri = path === undefined ? undefined : context.images?.get(path);
+        if (uri === undefined) context.dropped.push('image');
+        else out.push({ kind: 'image', uri });
         break;
+      }
       case 'html': {
         const value = node.value.trim();
         if (OPEN_UNDERLINE.test(value)) {

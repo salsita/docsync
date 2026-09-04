@@ -13,10 +13,25 @@
  * only when they differ; a document that did not change downloads nothing at
  * all.
  */
-import { type AssetHint, assignAssetNames, checksumOf } from '../assets.js';
+import {
+  type AssetHint,
+  assetsDirOf,
+  assignAssetNames,
+  checksumOf,
+  extensionOf,
+  MEDIA_EXTENSIONS,
+  mimeTypeOf,
+} from '../assets.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
+import { PushError } from '../push-types.js';
 import type { FetchedFile } from '../source.js';
-import type { DocsDocument, GDriveApi, ParagraphElement, StructuralElement } from './api.js';
+import {
+  type DocsDocument,
+  FOLDER_MIME,
+  type GDriveApi,
+  type ParagraphElement,
+  type StructuralElement,
+} from './api.js';
 
 /** What one document's images came to: the files to write, and the links. */
 export interface DocumentAssets {
@@ -146,4 +161,165 @@ export async function fetchDocumentAssets(
     links.set(one.id, path);
   }
   return { files, links };
+}
+
+/**
+ * The largest image this push will put in a Doc. Bigger than this is reported
+ * and skipped, never partially uploaded (MANUAL §12 phase 2).
+ */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** The URI `insertInlineImage` is given for a file on Drive. */
+export function driveUriOf(fileId: string): string {
+  return `https://drive.google.com/uc?export=view&id=${fileId}`;
+}
+
+/** One image on its way into a document. */
+export interface StagedImage {
+  /** Repo-relative path in the checkout. */
+  path: string;
+  /** The Drive copy the insert reads from. Trashed when the push is done. */
+  fileId: string;
+  uri: string;
+}
+
+export interface StagedImages {
+  images: StagedImage[];
+  skipped: { path: string; reason: string }[];
+}
+
+/**
+ * Puts the bytes of every image a push has to insert on Drive, in a folder
+ * `<doc title>.assets` beside the Doc (MANUAL §12 phase 2).
+ *
+ * Nothing is shared here: the copies are private until the moment of the
+ * insert, and gone straight after it (`withSharedImages`). A file that is not
+ * an image is refused — Google Docs has nowhere to put one — and one over the
+ * limit is reported and skipped.
+ */
+export async function stageImages(
+  api: GDriveApi,
+  paths: Iterable<string>,
+  bytesOf: ReadonlyMap<string, Uint8Array>,
+  where: { documentPath: string; parentId: string },
+): Promise<StagedImages> {
+  const images: StagedImage[] = [];
+  const skipped: { path: string; reason: string }[] = [];
+  let folderId: string | undefined;
+
+  for (const path of paths) {
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    const bytes = bytesOf.get(path);
+    if (bytes === undefined) {
+      throw new PushError(
+        `${path}: this link points at a file that is not in the checkout; add the file or remove the link`,
+        where.documentPath,
+      );
+    }
+    if (!MEDIA_EXTENSIONS.image.has(extensionOf(name).toLowerCase())) {
+      throw new PushError(
+        `${path}: Google Docs cannot hold a file; link to it instead`,
+        where.documentPath,
+      );
+    }
+    if (bytes.length > MAX_IMAGE_BYTES) {
+      skipped.push({ path, reason: `over the ${MAX_IMAGE_BYTES} byte limit for a Google Doc` });
+      continue;
+    }
+    folderId ??= await assetsFolder(api, where.documentPath, where.parentId);
+    const file = await api.uploadFile(
+      { name, parents: [folderId] },
+      bytes,
+      mimeTypeOf(name, 'image/png'),
+    );
+    images.push({ path, fileId: file.id, uri: driveUriOf(file.id) });
+  }
+  return { images, skipped };
+}
+
+/** The `<doc title>.assets` folder beside a Doc, made if it is not there. */
+async function assetsFolder(
+  api: GDriveApi,
+  documentPath: string,
+  parentId: string,
+): Promise<string> {
+  const directory = assetsDirOf(documentPath);
+  const name = directory.slice(directory.lastIndexOf('/') + 1);
+  const found = (await api.listFolder(parentId)).find(
+    (file) => file.mimeType === FOLDER_MIME && file.name === name,
+  );
+  if (found !== undefined) return found.id;
+  return (await api.createFile({ name, mimeType: FOLDER_MIME, parents: [parentId] })).id;
+}
+
+/**
+ * Runs `insert` with every staged image world-readable, and takes it all back
+ * (MANUAL §12 phase 2, the owner's condition on this ticket).
+ *
+ * The share is created immediately before the insert and removed immediately
+ * after, in a `finally` that also trashes the Drive copy, so the exposure
+ * lasts one request and nothing stays shared even when the insert throws. What
+ * the clean-up could not do is named in `leftBehind`, so a failure says what it
+ * left where.
+ */
+export async function withSharedImages<T>(
+  api: GDriveApi,
+  images: readonly StagedImage[],
+  insert: () => Promise<T>,
+): Promise<{ result?: T; leftBehind: string[]; error?: unknown }> {
+  const shared: { fileId: string; permissionId: string }[] = [];
+  const leftBehind: string[] = [];
+  let result: T | undefined;
+  let error: unknown;
+
+  try {
+    for (const image of images) {
+      shared.push({
+        fileId: image.fileId,
+        permissionId: await api.createPermission(image.fileId, {
+          type: 'anyone',
+          role: 'reader',
+        }),
+      });
+    }
+    result = await insert();
+  } catch (thrown) {
+    error = thrown;
+  } finally {
+    for (const one of shared) {
+      try {
+        await api.deletePermission(one.fileId, one.permissionId);
+      } catch {
+        leftBehind.push(`the public link on the Drive file ${one.fileId}`);
+      }
+    }
+    for (const image of images) {
+      try {
+        await api.updateFile(image.fileId, { trashed: true });
+      } catch {
+        leftBehind.push(`the Drive copy ${image.fileId} of ${image.path}`);
+      }
+    }
+  }
+
+  return {
+    ...(result === undefined ? {} : { result }),
+    leftBehind,
+    ...(error === undefined ? {} : { error }),
+  };
+}
+
+/** Where one inline object sits in the body: its one code unit. */
+export function objectRangeOf(
+  doc: DocsDocument,
+  objectId: string,
+): { start: number; end: number } | undefined {
+  for (const structural of doc.body?.content ?? []) {
+    for (const one of structural.paragraph?.elements ?? []) {
+      if (one.inlineObjectElement?.inlineObjectId !== objectId) continue;
+      const start = one.startIndex ?? 0;
+      return { start, end: one.endIndex ?? start + 1 };
+    }
+  }
+  return undefined;
 }

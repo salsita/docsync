@@ -288,6 +288,16 @@ export interface GDriveApi {
   uploadFile(metadata: FileMetadata, bytes: Uint8Array, mimeType?: string): Promise<DriveFile>;
   /** A copy of a file. Used by the manual test, which never writes an original. */
   copyFile(id: string, metadata: FileMetadata): Promise<DriveFile>;
+  /**
+   * Shares a file, and answers the permission's id (MANUAL §12 phase 2).
+   *
+   * `insertInlineImage` takes a public URI and nothing else, so an image a
+   * push inserts is world-readable for exactly as long as that one request
+   * takes. `deletePermission` takes it back.
+   */
+  createPermission(id: string, permission: { type: string; role: string }): Promise<string>;
+  /** Takes a share back. */
+  deletePermission(id: string, permissionId: string): Promise<void>;
 }
 
 export interface GDriveApiOptions {
@@ -457,6 +467,22 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
         method: 'POST',
         headers: { 'content-type': contentType },
         body,
+      });
+    },
+
+    async createPermission(id, permission) {
+      const query = new URLSearchParams({ fields: 'id', supportsAllDrives: 'true' });
+      const made = await json<{ id?: string }>(
+        `${DRIVE_ENDPOINT}/files/${id}/permissions?${query}`,
+        withJson('POST', permission),
+      );
+      return String(made.id ?? '');
+    },
+
+    async deletePermission(id, permissionId) {
+      const query = new URLSearchParams({ supportsAllDrives: 'true' });
+      await call(`${DRIVE_ENDPOINT}/files/${id}/permissions/${permissionId}?${query}`, {
+        method: 'DELETE',
       });
     },
 

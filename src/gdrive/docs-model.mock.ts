@@ -39,7 +39,8 @@ import type { DocsRequest } from './from-markdown.js';
 type Item =
   | { kind: 'text'; text: string; style: TextStyle }
   | { kind: 'pageBreak' }
-  | { kind: 'footnote'; id: string };
+  | { kind: 'footnote'; id: string }
+  | { kind: 'image'; id: string; uri: string };
 
 interface Para {
   items: Item[];
@@ -84,6 +85,9 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
   const lists = new Map<string, string>();
   let listCount = 0;
   let footnoteCount = 0;
+  let imageCount = 0;
+  /** The URI every inserted image was read from, by object id. */
+  const images = new Map<string, string>();
 
   /* --------------------------------------------------------------- layout */
 
@@ -403,6 +407,22 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
     rows.splice(where.rowIndex ?? 0, 1);
   }
 
+  /**
+   * `insertInlineImage`: Docs copies the bytes out of the URI into the
+   * document and keeps an object of its own, one code unit wide (MANUAL §12
+   * phase 2). The URI is remembered so a test can say which file it came from.
+   */
+  function insertInlineImage(request: Record<string, unknown>): BatchReply {
+    const location = request.location as { index: number };
+    imageCount += 1;
+    const id = `kix.img${imageCount}`;
+    images.set(id, String(request.uri ?? ''));
+    const { slot, offset } = locate(location.index);
+    const [head, tail] = split(slot.para, offset);
+    slot.para.items = [...head, { kind: 'image', id, uri: String(request.uri ?? '') }, ...tail];
+    return {};
+  }
+
   function createFootnote(request: Record<string, unknown>): BatchReply {
     const location = request.location as { index: number };
     footnoteCount += 1;
@@ -574,7 +594,9 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       if (item.kind === 'text')
         out.push({ ...bounds, textRun: { content: item.text, textStyle: item.style } });
       else if (item.kind === 'pageBreak') out.push({ ...bounds, pageBreak: {} });
-      else {
+      else if (item.kind === 'image') {
+        out.push({ ...bounds, inlineObjectElement: { inlineObjectId: item.id } });
+      } else {
         out.push({
           ...bounds,
           footnoteReference: {
@@ -716,6 +738,9 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
             deleteParagraphBullets(payload);
             replies.push({});
             break;
+          case 'insertInlineImage':
+            replies.push(insertInlineImage(payload));
+            break;
           case 'insertPageBreak':
             insertPageBreak((payload.location as { index: number }).index);
             replies.push({});
@@ -765,6 +790,21 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
         body: { content: [{ endIndex: 1, sectionBreak: {} }, ...structure(body, 1)] },
         lists: listed,
         footnotes: notes,
+        ...(images.size === 0
+          ? {}
+          : {
+              inlineObjects: Object.fromEntries(
+                [...images].map(([id, uri]) => [
+                  id,
+                  {
+                    objectId: id,
+                    inlineObjectProperties: {
+                      embeddedObject: { imageProperties: { contentUri: uri } },
+                    },
+                  },
+                ]),
+              ),
+            }),
       };
     },
   };

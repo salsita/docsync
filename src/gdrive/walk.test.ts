@@ -34,6 +34,8 @@ function stubApi(
     comments: refuse('comments'),
     download: refuse('download'),
     downloadUri: refuse('downloadUri'),
+    createPermission: refuse('createPermission'),
+    deletePermission: refuse('deletePermission'),
     export: refuse('export'),
   };
 }

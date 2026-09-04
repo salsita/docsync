@@ -67,6 +67,13 @@ const STYLE = 2;
 export interface PatchOptions {
   /** The file the ops came from, for the message of a refusal. */
   path?: string;
+  /**
+   * The public URI each of the document's attachments is shared under, by
+   * repo-relative path (MANUAL §12 phase 2). An inserted block that links one
+   * becomes an `insertInlineImage`; one that links a file nobody staged is
+   * dropped, as an image always was.
+   */
+  images?: ReadonlyMap<string, string>;
 }
 
 export interface PatchPlan {
@@ -142,7 +149,10 @@ export function planPatch(
     const at = trailing ? level.end - 1 : index;
     const base = trailing ? at + 1 : at;
 
-    const { segments, dropped: lost } = mdastToSegments(tree, base);
+    const { segments, dropped: lost } = mdastToSegments(tree, base, {
+      ...(options.images === undefined ? {} : { images: options.images }),
+      ...(options.path === undefined ? {} : { from: options.path }),
+    });
     const built = segmentsToRequests(segments);
     dropped.push(...lost);
     if (built.requests.length === 0) return;

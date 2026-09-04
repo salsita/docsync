@@ -182,7 +182,14 @@ export function countingApi(backing: GDriveApi = fixtureApi()): CountedApi {
  */
 export function refusesToWrite(): Pick<
   GDriveApi,
-  'batchUpdate' | 'createFile' | 'updateFile' | 'uploadRevision' | 'uploadFile' | 'copyFile'
+  | 'batchUpdate'
+  | 'createFile'
+  | 'updateFile'
+  | 'uploadRevision'
+  | 'uploadFile'
+  | 'copyFile'
+  | 'createPermission'
+  | 'deletePermission'
 > {
   const refuse = (name: string) => () => Promise.reject(new Error(`${name} on the fixture tree`));
   return {
@@ -192,5 +199,7 @@ export function refusesToWrite(): Pick<
     uploadRevision: refuse('uploadRevision'),
     uploadFile: refuse('uploadFile'),
     copyFile: refuse('copyFile'),
+    createPermission: refuse('createPermission'),
+    deletePermission: refuse('deletePermission'),
   };
 }

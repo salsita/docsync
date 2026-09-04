@@ -13,14 +13,16 @@
  * it, and a deletion is a trashing, never a delete (MANUAL §8).
  */
 import type { Root as MdastRoot } from 'mdast';
+import { assetLinksOf, documentOfAssetsDir, isAssetPath, refuseOrphanedLinks } from '../assets.js';
 import type { CredentialProvider } from '../auth/index.js';
-import { diffBlocks } from '../diff/blocks.js';
+import { type BlockOp, diffBlocks } from '../diff/blocks.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import { type FileChange, PushError, type PushReport } from '../push-types.js';
 import { DEFAULT_UPLOAD_MIME, FOLDER_MIME, type GDriveApi } from './api.js';
+import { objectRangeOf, type StagedImage, stageImages, withSharedImages } from './assets.js';
 import { gdriveApi } from './index.js';
 import { type PatchPlan, planPatch } from './patch.js';
 import { readLive } from './ranges.js';
@@ -66,11 +68,20 @@ export async function pushRoot(
 async function pushWith(
   api: GDriveApi,
   root: Root,
-  changes: readonly FileChange[],
+  all: readonly FileChange[],
   index: DocumentIndex,
 ): Promise<PushReport> {
   const writer = createGDriveWriter(api);
   const report: PushReport = [];
+  const uploaded = new Map<string, number>();
+  const skippedFiles = new Map<string, { path: string; reason: string }[]>();
+
+  // A file in `<title>.assets/` is an attachment of a document, not a document
+  // (MANUAL §12 phase 2). It is never uploaded to Drive as a file of its own:
+  // Docs copies the bytes into the document, and the Drive copy is temporary.
+  const assetChanges = all.filter((change) => isAssetPath(change.path));
+  const changes = all.filter((change) => !isAssetPath(change.path));
+  refuseOrphanedLinks(assetChanges, changes, index);
 
   // What the last fetch left behind, for this root's source only.
   const known = new Map<string, IndexEntry>();
@@ -187,13 +198,26 @@ async function pushWith(
     }
 
     if (isDoc && change.text !== undefined) {
-      const plan = await patchDocument(api, writer, id, change, document.body, known);
+      const patched = await patchDocument(
+        api,
+        writer,
+        id,
+        change,
+        document.body,
+        known,
+        await folderFor(change.path),
+      );
+      const plan = patched.plan;
+      if (patched.uploaded > 0) uploaded.set(change.path, patched.uploaded);
+      if (patched.skipped.length > 0) skippedFiles.set(change.path, patched.skipped);
       report.push({
         path: change.path,
         title: wanted,
         action: 'updated',
         blocks: plan.counts,
         ...(plan.suggestions.length === 0 ? {} : { suggestions: plan.suggestions }),
+        ...(patched.uploaded === 0 ? {} : { uploaded: patched.uploaded }),
+        ...(patched.skipped.length === 0 ? {} : { skippedFiles: patched.skipped }),
       });
       continue;
     }
@@ -206,7 +230,75 @@ async function pushWith(
     report.push({ path: change.path, title: wanted, action: 'updated' });
   }
 
-  return report;
+  // Bytes that changed under an image nothing else rewrote: the object is
+  // deleted and a new one inserted in its place (MANUAL §7, §12 phase 2).
+  for (const change of assetChanges) {
+    if (change.kind === 'deleted' || change.bytes === undefined) continue;
+    const entry = known.get(change.previousPath ?? change.path);
+    if (entry?.type !== 'asset') continue;
+    const documentPath = entry.document ?? documentOfAssetsDir(change.path) ?? '';
+    if (uploaded.has(documentPath)) continue;
+    const document = known.get(documentPath);
+    if (document === undefined) continue;
+
+    const live = await api.getDocument(document.src.id, 'inline');
+    const at = objectRangeOf(live, entry.src.id);
+    if (at === undefined) continue;
+
+    const staged = await stageImages(api, [change.path], new Map([[change.path, change.bytes]]), {
+      documentPath,
+      parentId: await folderFor(documentPath),
+    });
+    for (const one of staged.skipped) {
+      skippedFiles.set(documentPath, [...(skippedFiles.get(documentPath) ?? []), one]);
+    }
+    if (staged.images.length === 0) continue;
+
+    const outcome = await withSharedImages(api, staged.images, () =>
+      api.batchUpdate(document.src.id, [
+        { deleteContentRange: { range: { startIndex: at.start, endIndex: at.end } } },
+        {
+          insertInlineImage: {
+            location: { index: at.start },
+            uri: staged.images[0]?.uri ?? '',
+          },
+        },
+      ]),
+    );
+    refuseIfLeftBehind(outcome, documentPath);
+    uploaded.set(documentPath, (uploaded.get(documentPath) ?? 0) + 1);
+    if (!report.some((one) => one.path === documentPath)) {
+      report.push({ path: documentPath, title: nameOf(documentPath), action: 'updated' });
+    }
+  }
+
+  return report.map((one) => ({
+    ...one,
+    ...((uploaded.get(one.path) ?? 0) === 0 ? {} : { uploaded: uploaded.get(one.path) }),
+    ...(skippedFiles.has(one.path) ? { skippedFiles: skippedFiles.get(one.path) } : {}),
+  }));
+}
+
+/**
+ * What a share-insert-unshare-trash that could not clean up after itself says.
+ *
+ * The insert's own failure comes first, with what was left behind appended to
+ * it: a push that leaves a file shared on Drive has to say so, in the one
+ * message somebody will read (the owner's condition on this ticket).
+ */
+function refuseIfLeftBehind(
+  outcome: { leftBehind: string[]; error?: unknown },
+  path: string,
+): void {
+  const left =
+    outcome.leftBehind.length === 0
+      ? ''
+      : ` Left behind, and yours to remove: ${outcome.leftBehind.join('; ')}.`;
+  if (outcome.error !== undefined) {
+    const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+    throw new PushError(`${message}${left}`, path);
+  }
+  if (left !== '') throw new PushError(`the images were inserted, but${left}`, path);
 }
 
 /**
@@ -226,7 +318,8 @@ async function patchDocument(
   change: FileChange,
   body: MdastRoot,
   known: ReadonlyMap<string, IndexEntry>,
-): Promise<PatchPlan> {
+  parentId: string,
+): Promise<{ plan: PatchPlan; uploaded: number; skipped: { path: string; reason: string }[] }> {
   if (change.previousText === undefined) {
     throw new PushError(
       'there is no base version of this file to patch the document from; fetch, merge and push again',
@@ -257,9 +350,45 @@ async function patchDocument(
     );
   }
 
-  const plan = planPatch(live, diffBlocks(base, body), { path: change.path });
-  await writer.patchBody(id, plan);
-  return plan;
+  const ops = diffBlocks(base, body);
+  // Only the blocks this push writes need an image behind them: a block it
+  // keeps already points at the object Docs holds (MANUAL §12 phase 2).
+  const staged = await stageImages(
+    api,
+    createdLinks(ops, change.path),
+    change.assets ?? new Map(),
+    {
+      documentPath: change.path,
+      parentId,
+    },
+  );
+  const images = new Map(staged.images.map((one): [string, string] => [one.path, one.uri]));
+
+  const plan = planPatch(live, ops, { path: change.path, images });
+  if (staged.images.length === 0) {
+    await writer.patchBody(id, plan);
+    return { plan, uploaded: 0, skipped: staged.skipped };
+  }
+
+  // The share exists for exactly one batch, and the copies go with it.
+  const outcome = await withSharedImages(api, staged.images, () => writer.patchBody(id, plan));
+  refuseIfLeftBehind(outcome, change.path);
+  return { plan, uploaded: staged.images.length, skipped: staged.skipped };
+}
+
+/** The assets linked by the blocks a set of ops creates or rewrites. */
+function createdLinks(ops: readonly BlockOp[], from: string): Set<string> {
+  const out = new Set<string>();
+  const walk = (list: readonly BlockOp[]): void => {
+    for (const op of list) {
+      if (op.op === 'insert' || op.op === 'move' || op.op === 'update') {
+        for (const path of assetLinksOf(op.next.source, from)) out.add(path);
+      }
+      if (op.op === 'keep' || op.op === 'update') walk(op.children);
+    }
+  };
+  walk(ops);
+  return out;
 }
 
 /**

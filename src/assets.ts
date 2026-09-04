@@ -12,8 +12,11 @@
  * for every decision either of them would otherwise have to make twice.
  */
 import { createHash } from 'node:crypto';
-import type { IndexEntry } from './index-file.js';
+import { parseDocument } from './frontmatter.js';
+import type { DocumentIndex, IndexEntry } from './index-file.js';
 import { assignNames, type Sibling } from './manifest/filenames.js';
+import { PushError } from './push-types.js';
+import type { FileChange } from './source.js';
 
 /** What a document's assets directory is called, beside the document itself. */
 export const ASSETS_SUFFIX = '.assets';
@@ -258,4 +261,43 @@ export function assetLinksOf(nodes: readonly unknown[], documentPath: string): S
   };
   walk(nodes);
   return out;
+}
+
+/**
+ * A file deleted while the document still links it (MANUAL §12 phase 2).
+ *
+ * The link would point at nothing, and a push that let it through would leave
+ * the page pointing at a file the checkout no longer has. It is refused before
+ * anything is written, naming the path — as is the reverse case, a file
+ * deleted for a document this push does not touch at all, which cannot have
+ * dropped the link.
+ */
+export function refuseOrphanedLinks(
+  assetChanges: readonly FileChange[],
+  documentChanges: readonly FileChange[],
+  index: DocumentIndex,
+): void {
+  const texts = new Map<string, string>();
+  for (const change of documentChanges) {
+    if (change.text !== undefined) texts.set(change.path, change.text);
+  }
+  const deletedDocuments = new Set(
+    documentChanges.filter((one) => one.kind === 'deleted').map((one) => one.path),
+  );
+
+  for (const change of assetChanges) {
+    if (change.kind !== 'deleted') continue;
+    const document = index.get(change.path)?.document ?? documentOfAssetsDir(change.path) ?? '';
+    if (deletedDocuments.has(document)) continue;
+    const text = texts.get(document);
+    if (text !== undefined) {
+      const links = assetLinksOf(parseDocument(text).body.children, document);
+      if (!links.has(change.path)) continue;
+    }
+    throw new PushError(
+      `${change.path}: the file is gone but ${document} still links it; ` +
+        'delete the link as well, or restore the file',
+      change.path,
+    );
+  }
 }
