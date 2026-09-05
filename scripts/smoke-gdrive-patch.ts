@@ -119,9 +119,13 @@ try {
           after.match(/ALUMINUM.{0,3}FENCE/)?.[0] ?? 'not found',
         )}`,
   );
-  const orphans = ['3D models', 'Textures', 'Very project-dependant'].filter((one) =>
-    after.includes(one),
-  );
+  // The nested items of the three deleted list items, worded so that no line
+  // of `next` contains them: what survived a deletion of its parent.
+  const orphans = [
+    'Real photographs when possible',
+    'A source from which we can infer the branding',
+    'Very project-dependant',
+  ].filter((one) => after.includes(one));
   say(
     'orphans',
     orphans.length === 0

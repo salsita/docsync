@@ -711,9 +711,7 @@ describe('a large rewrite (ticket 32)', () => {
   const fixture = (name: string): string =>
     readFileSync(join(dirname(fileURLToPath(import.meta.url)), '__fixtures__', name), 'utf8');
 
-  // Red until the three defects of ticket 32 are fixed; `it.fails` so that the
-  // reproduction can be committed before the fix without breaking `pnpm check`.
-  it.fails('patches page breaks, list structure and escapes exactly', async () => {
+  it('patches page breaks, list structure and escapes exactly', async () => {
     const api = drive();
     // The base does not round-trip through `seed` byte for byte (two blank
     // lines after the `\` + `&#x20;` items are lost), so what the document

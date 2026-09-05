@@ -437,6 +437,24 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
     return { createFootnote: { footnoteId: id } };
   }
 
+  /**
+   * One paragraph merged into the one before it, whose own newline a deletion
+   * took.
+   *
+   * The text joins, and the **later** paragraph's style and bullet win: a
+   * paragraph's properties hang off its paragraph mark, the deletion took the
+   * first paragraph's mark and left the second's standing, so what remains is
+   * the second paragraph with the first's text in front of it. The model used
+   * to keep the first one's, which is why it said a deleted list item handed
+   * its bullet to the paragraph after it and left that paragraph's own nesting
+   * behind — a defect the real API does not have (ticket 32).
+   */
+  function absorb(into: Para, para: Para): void {
+    into.items.push(...para.items);
+    into.named = para.named;
+    into.bullet = para.bullet === undefined ? undefined : { ...para.bullet };
+  }
+
   /** Removes a range, merging the paragraphs whose newline it took. */
   function deleteContentRange(request: Record<string, unknown>): void {
     const range = request.range as { startIndex: number; endIndex: number; segmentId?: string };
@@ -473,7 +491,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       if (range.endIndex <= start || range.startIndex >= end) {
         if (merging === undefined) kept.push(node);
         else {
-          merging.items.push(...para.items);
+          absorb(merging, para);
           merging = undefined;
         }
         continue;
@@ -484,7 +502,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       let target = para;
       if (merging === undefined) kept.push(node);
       else {
-        merging.items.push(...para.items);
+        absorb(merging, para);
         target = merging;
       }
       merging = newlineGone ? target : undefined;
@@ -511,7 +529,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       if (endIndex <= start || startIndex >= end) {
         if (merging === undefined) kept.push(para);
         else {
-          merging.items.push(...para.items);
+          absorb(merging, para);
           merging = undefined;
         }
         continue;
@@ -521,7 +539,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       let target = para;
       if (merging === undefined) kept.push(para);
       else {
-        merging.items.push(...para.items);
+        absorb(merging, para);
         target = merging;
       }
       merging = newlineGone ? target : undefined;

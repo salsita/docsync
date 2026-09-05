@@ -278,6 +278,46 @@ describe('deleteContentRange', () => {
     ]);
     expect(documentToMarkdown(model.document())).toBe('two\n');
   });
+
+  // A paragraph's style and its bullet hang off its newline, so deleting whole
+  // paragraphs leaves the *following* paragraph's newline standing, and with it
+  // that paragraph's style. Getting this backwards is what made the fake say a
+  // deleted list item hands its bullet to the paragraph after it (ticket 32);
+  // `scripts/smoke-gdrive-patch.ts` is where the real API said otherwise.
+  it('gives the merged paragraph the style of the newline that survived', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'item\nplain\n' } },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 1, endIndex: 6 },
+          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+        },
+      },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('- item\n\nplain\n');
+
+    // The whole bulleted paragraph goes, newline included.
+    model.apply([{ deleteContentRange: { range: { startIndex: 1, endIndex: 6 } } }]);
+    expect(documentToMarkdown(model.document())).toBe('plain\n');
+  });
+
+  it('keeps the bullet of the paragraph a deletion merged into', () => {
+    const model = createDocsModel();
+    model.apply([
+      { insertText: { location: { index: 1 }, text: 'gone\nitem\n' } },
+      {
+        createParagraphBullets: {
+          range: { startIndex: 6, endIndex: 11 },
+          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+        },
+      },
+    ]);
+    expect(documentToMarkdown(model.document())).toBe('gone\n\n- item\n');
+
+    model.apply([{ deleteContentRange: { range: { startIndex: 1, endIndex: 6 } } }]);
+    expect(documentToMarkdown(model.document())).toBe('- item\n');
+  });
 });
 
 describe('insertInlineImage', () => {
