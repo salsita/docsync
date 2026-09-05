@@ -28,6 +28,39 @@ export interface PlannedPush {
   changes: FileChange[];
 }
 
+/**
+ * One path the push will not carry, and why (MANUAL §7 step 3).
+ *
+ * `message` is the sentence `docsync push` fails with; `reason` is the short
+ * half `docsync status` prints after the path, so the preview and the refusal
+ * say the same thing in the room each has (ticket 31).
+ */
+export interface Refusal {
+  path: string;
+  reason: string;
+  message: string;
+}
+
+/**
+ * What a pushed diff means, whole: the work per root, everything refused, and
+ * the paths a push passes over.
+ *
+ * Refusals are collected rather than thrown, because `docsync status` previews
+ * a push and a preview that stopped at the first problem would not be one.
+ * `push` fails on the first refusal, which is what it always did (ticket 31).
+ */
+export interface PushPlan {
+  /** Per-root changes, in manifest order. */
+  roots: PlannedPush[];
+  /** Every refused path, in the order the diff holds them. */
+  refusals: Refusal[];
+  /** Deleted under no root: `docsync remove`, not a trash (MANUAL §8). */
+  ignored: string[];
+}
+
+/** Records one refusal. The default message is the usual `<path>: <reason>`. */
+type Refuse = (path: string, reason: string, message?: string) => undefined;
+
 /** The bytes of a path in the pushed tree. */
 export type BlobReader = (path: string) => Promise<Uint8Array>;
 
@@ -40,8 +73,8 @@ export type BlobReader = (path: string) => Promise<Uint8Array>;
 export type BaseReader = (path: string) => Promise<Uint8Array | undefined>;
 
 /**
- * Sorts a diff into per-root changes, in manifest order. Throws with a
- * message naming the path on anything the push must refuse.
+ * Sorts a diff into per-root changes, in manifest order, and names every path
+ * the push must refuse instead of carrying it.
  */
 export async function planChanges(
   diff: readonly DiffEntry[],
@@ -49,7 +82,7 @@ export async function planChanges(
   index: DocumentIndex,
   read: BlobReader,
   readBase: BaseReader = async () => undefined,
-): Promise<PlannedPush[]> {
+): Promise<PushPlan> {
   /** Every asset path the push added or modified, and every one it removed. */
   const live = new Set<string>();
   const gone = new Set<string>();
@@ -94,6 +127,12 @@ export async function planChanges(
     }
     return assets.size === 0 ? {} : { assets };
   };
+  const refusals: Refusal[] = [];
+  const ignored: string[] = [];
+  const refuse: Refuse = (path, reason, message = `${path}: ${reason}`) => {
+    refusals.push({ path, reason, message });
+    return undefined;
+  };
   const planned = new Map<Root, FileChange[]>();
   const add = (root: Root, ...changes: FileChange[]): void => {
     const list = planned.get(root) ?? [];
@@ -104,8 +143,14 @@ export async function planChanges(
     roots.find((root) => path === root.path || path.startsWith(`${territoryOf(root.path)}/`));
 
   for (const entry of diff) {
+    // Anything recorded while this entry is sorted means it is refused, and
+    // nothing about it reaches a root.
+    const before = refusals.length;
+    const stopped = (): boolean => refusals.length > before;
+
     if (entry.path === INDEX_PATH || entry.previousPath === INDEX_PATH) {
-      throw new Error(`${INDEX_PATH}: the index is written by fetch; do not edit it`);
+      refuse(INDEX_PATH, 'the index is written by fetch; do not edit it');
+      continue;
     }
     const kind = entry.status[0];
     const root = rootOf(entry.path);
@@ -116,27 +161,45 @@ export async function planChanges(
     // else's folder is named as what it is. The path it came from first, since
     // that is the one `git checkout` restores.
     for (const path of [entry.previousPath, entry.path]) {
-      if (path === undefined) continue;
+      if (path === undefined || stopped()) continue;
       const under = rootOf(path);
-      if (under?.readOnly === true) refuseReadOnlyRoot(path, under);
+      if (under?.readOnly === true) {
+        refuse(
+          path,
+          `under read-only root ${under.path}`,
+          `${path} is under a read-only root (${under.path}); nothing under it is pushed. ` +
+            `Restore it with git checkout -- ${path}`,
+        );
+      }
     }
+    if (stopped()) continue;
 
     // The sidecar is read-only: comments are only pulled in this version
     // (MANUAL §6). Refused before any source is touched, changed, added or
     // removed. Outside every root it is not ours, and a deletion there is
     // `docsync remove` taking the document and its sidecar with it (MANUAL §8).
-    // The path it came from first: that is the one `git checkout` restores.
     for (const path of [entry.previousPath, entry.path]) {
-      if (isSidecarPath(path) && rootOf(path ?? '') !== undefined) refuseSidecar(path ?? '');
+      if (path === undefined || stopped()) continue;
+      if (isSidecarPath(path) && rootOf(path) !== undefined) {
+        refuse(
+          path,
+          'read-only; comments are only pulled in this version',
+          `${path} is read-only; comments are only pulled in this version. ` +
+            `Restore it with git checkout -- ${path}`,
+        );
+      }
     }
+    if (stopped()) continue;
 
     if (kind === 'D') {
       // Deleted under no root is `docsync remove`: unsubscribe, not trash (MANUAL §8).
-      if (root !== undefined) add(root, { kind: 'deleted', path: entry.path });
+      if (root === undefined) ignored.push(entry.path);
+      else add(root, { kind: 'deleted', path: entry.path });
       continue;
     }
     if (root === undefined) {
-      throw new Error(`${entry.path}: not under any root in the manifest`);
+      refuse(entry.path, 'not under any root in the manifest');
+      continue;
     }
 
     if (kind === 'R' && entry.previousPath !== undefined) {
@@ -144,7 +207,8 @@ export async function planChanges(
       const previous = index.get(entry.previousPath);
       const identical = entry.status === 'R100';
       if (from === root && previous !== undefined) {
-        refuseIfReadOnly(previous, entry.path, !identical);
+        refuseReadOnlyExport(previous, entry.path, !identical, refuse);
+        if (stopped()) continue;
         const change: FileChange = {
           kind: 'renamed',
           path: entry.path,
@@ -164,18 +228,22 @@ export async function planChanges(
       }
       // Across roots, or from a path the index never held: the old object is
       // trashed where it was and a new one is made where the file now is.
+      const remade = await added(root, entry.path, index, read, refuse);
+      if (remade === undefined) continue;
       if (from !== undefined) add(from, { kind: 'deleted', path: entry.previousPath });
-      add(root, await added(root, entry.path, index, read));
+      add(root, remade);
       continue;
     }
 
     // `A`, `M`, and `T` (a mode change, which is a modification here).
     const known = index.get(entry.path);
     if (known === undefined) {
-      add(root, await added(root, entry.path, index, read));
+      const made = await added(root, entry.path, index, read, refuse);
+      if (made !== undefined) add(root, made);
       continue;
     }
-    refuseIfReadOnly(known, entry.path, true);
+    refuseReadOnlyExport(known, entry.path, true, refuse);
+    if (stopped()) continue;
     const bytes = await read(entry.path);
     const wasDocument = isDocument(known);
     const isMarkdown = entry.path.endsWith('.md');
@@ -183,11 +251,9 @@ export async function planChanges(
       isMarkdown && parseDocument(Buffer.from(bytes).toString('utf8')).frontmatter !== undefined;
     if (isMarkdown && wasDocument !== hasFrontmatter) {
       // The path changed what it is (MANUAL §6): one object goes, another comes.
-      add(
-        root,
-        { kind: 'deleted', path: entry.path },
-        await added(root, entry.path, index, read, bytes),
-      );
+      const made = await added(root, entry.path, index, read, refuse, bytes);
+      if (made === undefined) continue;
+      add(root, { kind: 'deleted', path: entry.path }, made);
       continue;
     }
     add(root, {
@@ -210,35 +276,29 @@ export async function planChanges(
     void root;
   }
 
-  return roots.flatMap((root) => {
-    const changes = planned.get(root);
-    return changes === undefined ? [] : [{ root, changes }];
-  });
-}
-
-/** What a push says about any file under a `readonly: true` root (MANUAL §4). */
-function refuseReadOnlyRoot(path: string, root: Root): never {
-  throw new Error(
-    `${path} is under a read-only root (${root.path}); nothing under it is pushed. ` +
-      `Restore it with git checkout -- ${path}`,
-  );
-}
-
-/** What a push says about a `*.comments.md` somebody edited (MANUAL §6). */
-function refuseSidecar(path: string): never {
-  throw new Error(
-    `${path} is read-only; comments are only pulled in this version. ` +
-      `Restore it with git checkout -- ${path}`,
-  );
+  return {
+    roots: roots.flatMap((root) => {
+      const changes = planned.get(root);
+      return changes === undefined ? [] : [{ root, changes }];
+    }),
+    refusals,
+    ignored,
+  };
 }
 
 function isDocument(entry: IndexEntry): boolean {
   return entry.type === 'gdoc' || entry.type === 'notion-page';
 }
 
-function refuseIfReadOnly(entry: IndexEntry, path: string, contentChanged: boolean): void {
+/** A Sheet, a Slide deck or a Drawing: content is edited at the source (MANUAL §7 step 4). */
+function refuseReadOnlyExport(
+  entry: IndexEntry,
+  path: string,
+  contentChanged: boolean,
+  refuse: Refuse,
+): void {
   if (entry.readOnly === true && contentChanged) {
-    throw new Error(`${path}: a read-only export; edit it at the source`);
+    refuse(path, 'a read-only export; edit it at the source');
   }
 }
 
@@ -273,8 +333,9 @@ async function added(
   path: string,
   index: DocumentIndex,
   read: BlobReader,
+  refuse: Refuse,
   bytes?: Uint8Array,
-): Promise<FileChange> {
+): Promise<FileChange | undefined> {
   const raw = bytes ?? (await read(path));
   const notion = root.src.source === 'notion';
   if (!path.endsWith('.md')) {
@@ -282,7 +343,7 @@ async function added(
     // sources hold those (MANUAL §12 phase 2). Anything else under a Notion
     // root is a file Notion has nowhere to put.
     if (notion && !isAssetPath(path)) {
-      throw new Error(`${path}: Notion holds no files; only .md pages go under a Notion root`);
+      return refuse(path, 'Notion holds no files; only .md pages go under a Notion root');
     }
     return { kind: 'added', path, bytes: raw };
   }
@@ -291,8 +352,9 @@ async function added(
   const { frontmatter } = parseDocument(text);
   if (frontmatter === undefined) {
     if (notion) {
-      throw new Error(
-        `${path}: a new file under a Notion root must start with frontmatter (a --- line, then another) to become a page`,
+      return refuse(
+        path,
+        'a new file under a Notion root must start with frontmatter (a --- line, then another) to become a page',
       );
     }
     return { kind: 'added', path, bytes: raw };
@@ -301,8 +363,9 @@ async function added(
     const id = formatSourceRef(frontmatter.id);
     const other = [...index.values()].find((entry) => formatSourceRef(entry.src) === id);
     if (other !== undefined) {
-      throw new Error(
-        `${path}: its id ${id} is already checked out as ${other.path}; remove the id line to create a copy`,
+      return refuse(
+        path,
+        `its id ${id} is already checked out as ${other.path}; remove the id line to create a copy`,
       );
     }
   }

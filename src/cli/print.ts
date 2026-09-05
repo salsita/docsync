@@ -6,6 +6,7 @@
  * out. Nothing here reads a file, spawns git or knows what a command is, which
  * is what lets every format be tested as a value.
  */
+import type { PushPlan } from '../helper/changes.js';
 import type { FetchReport, PushReportFile } from '../helper/report.js';
 import type { Root } from '../manifest/types.js';
 import type { PushedDocument, SkippedObject, SourceDescription } from '../source.js';
@@ -161,6 +162,46 @@ function actionRow(document: PushedDocument): string[] {
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * The `To push:` section of `docsync status`: what `docsync push` would do to
+ * real documents, said in the push report's verbs (MANUAL §5, §7 steps 2 to 4).
+ *
+ * The plan is the one `push` itself computes, over the same diff, so the
+ * preview cannot drift from the push. A rename that also carried an edit is
+ * both lines, in that order. `uncommitted` is what `git status --porcelain`
+ * counted: those changes are not in the list, and saying so is the whole point
+ * of the closing line. Nothing at all when there is nothing to say.
+ */
+export function formatPushPreview(plan: PushPlan, uncommitted: number): string {
+  const rows: string[][] = [];
+  for (const { changes } of plan.roots) {
+    for (const change of changes) {
+      if (change.kind === 'added') rows.push(['create', change.path]);
+      else if (change.kind === 'modified') rows.push(['update', change.path]);
+      else if (change.kind === 'deleted') rows.push(['trash', change.path]);
+      else {
+        rows.push(['rename', `${change.previousPath} -> ${change.path}`]);
+        // A rename that carried an edit updates the document too (§7 step 5).
+        if (change.text !== undefined || change.bytes !== undefined) {
+          rows.push(['update', change.path]);
+        }
+      }
+    }
+  }
+  // Deleted under no root: `docsync remove`, which the push passes over (§8).
+  for (const path of plan.ignored) rows.push(['ignored', path]);
+  for (const one of plan.refusals) rows.push(['refused', `${one.path}: ${one.reason}`]);
+
+  if (rows.length === 0 && uncommitted === 0) return '';
+  const lines = columns(rows).map((line) => `  ${line}`);
+  if (uncommitted > 0) {
+    lines.push(
+      `  (${plural(uncommitted, 'uncommitted change')} ${uncommitted === 1 ? 'is' : 'are'} not pushed)`,
+    );
+  }
+  return ['To push:', ...lines].join('\n');
 }
 
 /**

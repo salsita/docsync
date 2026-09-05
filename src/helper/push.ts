@@ -79,8 +79,12 @@ export async function pushRef(deps: FetchDeps, request: PushRequest): Promise<Pu
       return file === undefined ? undefined : git.catBlob(file.sha);
     },
   );
+  // A push stops at the first refused path, as it always has; `docsync status`
+  // is what lists them all, without a push (ticket 31).
+  const refused = plan.refusals[0];
+  if (refused !== undefined) throw new Error(refused.message);
   const documents: PushedDocument[] = [];
-  for (const { root, changes } of plan) {
+  for (const { root, changes } of plan.roots) {
     const report = await deps.sources[root.src.source].pushRoot(
       root,
       changes,

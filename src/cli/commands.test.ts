@@ -48,6 +48,8 @@ function seed(): FakeState {
     parent: SPECS,
     body: 'Log in.\n',
     editor: ADA,
+    // Only a root with `comments: true` ever sees this (MANUAL §4).
+    comments: '## AAACFLfYEtk — comment\n\nAda: Is this still true?\n',
   });
   addObject(state, {
     id: LEAF,
@@ -343,6 +345,51 @@ describe.skipIf(process.platform === 'win32')(
 
       expect(pushed.code).toBe(0);
       expect(w.store.load().objects[AUTH]?.body).toContain('And out.');
+    });
+
+    it('status previews the push: the verbs, the refusals and the uncommitted note', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`, `gdocs:${CONTRACTS}`);
+      expect((await w.run(co, 'add', '--readonly', `gdocs:${INPUTS}`)).code).toBe(0);
+      // Sidecars have no flag of their own: the manifest is where they go on.
+      w.write(
+        co,
+        '.docsync.yaml',
+        w
+          .read(co, '.docsync.yaml')
+          .replace('path: Product Specs.md\n', 'path: Product Specs.md\n    comments: true\n'),
+      );
+      expect((await w.run(co, 'pull')).code).toBe(0);
+
+      // On the served commit there is nothing to preview, and no line saying so.
+      expect((await w.run(co, 'status')).out).not.toContain('To push:');
+
+      w.write(co, 'Product Specs/Auth.md', `${w.read(co, 'Product Specs/Auth.md')}And out.\n`);
+      w.write(co, 'Contracts/New.md', '---\ntitle: New\n---\n\nBody.\n');
+      w.git(co, 'add', '--', 'Contracts/New.md');
+      w.git(co, 'mv', 'Contracts/Terms.md', 'Contracts/Conditions.md');
+      w.git(co, 'rm', '--quiet', 'Contracts/logo.png');
+      w.write(co, 'Product Specs/Auth.comments.md', 'my answer\n');
+      w.write(co, 'Inputs/Brief.md', 'mine now\n');
+      w.git(co, 'commit', '--quiet', '-a', '-m', 'Everything at once');
+      // An edit nobody committed is not in the list, only counted at the end.
+      w.write(co, 'Product Specs.md', `${w.read(co, 'Product Specs.md')}Later.\n`);
+
+      const shown = await w.run(co, 'status');
+      const lines = shown.out.split('\n').map((one) => one.trim().replace(/\s+/g, ' '));
+
+      expect(shown.out).toContain('To push:');
+      expect(lines).toContain('update Product Specs/Auth.md');
+      expect(lines).toContain('create Contracts/New.md');
+      expect(lines).toContain('rename Contracts/Terms.md -> Contracts/Conditions.md');
+      expect(lines).toContain('trash Contracts/logo.png');
+      expect(lines).toContain(
+        'refused Product Specs/Auth.comments.md: read-only; comments are only pulled in this version',
+      );
+      expect(lines).toContain('refused Inputs/Brief.md: under read-only root Inputs/');
+      expect(lines).toContain('(1 uncommitted change is not pushed)');
+      // The preview is local: nothing was pushed to see it.
+      expect(w.store.load().pushes).toEqual([]);
     });
 
     it('fetch prints what changed at the source and who changed it', async () => {

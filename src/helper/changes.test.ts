@@ -102,7 +102,14 @@ const readBase = async (path: string): Promise<Uint8Array | undefined> => {
   const text = baseBlobs[path];
   return text === undefined ? undefined : Buffer.from(text);
 };
-const plan = (...diff: DiffEntry[]) => planChanges(diff, ROOTS, index, read, readBase);
+const planned = (...diff: DiffEntry[]) => planChanges(diff, ROOTS, index, read, readBase);
+/** The per-root plan alone, which is what most of these tests are about. */
+const plan = async (...diff: DiffEntry[]) => (await planned(...diff)).roots;
+/** Every message this push would be refused with, in diff order (ticket 31). */
+const refusals = async (...diff: DiffEntry[]) =>
+  (await planned(...diff)).refusals.map((one) => one.message);
+/** The first of them: what `docsync push` fails with. */
+const refusal = async (...diff: DiffEntry[]) => (await refusals(...diff))[0] ?? '';
 const D = (path: string): DiffEntry => ({ status: 'D', path });
 const M = (path: string): DiffEntry => ({ status: 'M', path });
 const A = (path: string): DiffEntry => ({ status: 'A', path });
@@ -160,28 +167,28 @@ describe('planChanges', () => {
   });
 
   it('refuses an addition or a modification outside every root, by path', async () => {
-    await expect(plan(A('README.md'))).rejects.toThrow(
+    expect(await refusals(A('README.md'))).toEqual([
       'README.md: not under any root in the manifest',
-    );
-    await expect(plan(M('README.md'))).rejects.toThrow(
+    ]);
+    expect(await refusals(M('README.md'))).toEqual([
       'README.md: not under any root in the manifest',
-    );
+    ]);
   });
 
   it('refuses any touch of the index', async () => {
     const message = '.docsync/index.yaml: the index is written by fetch; do not edit it';
-    await expect(plan(M('.docsync/index.yaml'))).rejects.toThrow(message);
-    await expect(plan(D('.docsync/index.yaml'))).rejects.toThrow(message);
-    await expect(plan(R('.docsync/index.yaml', 'Files/index.yaml'))).rejects.toThrow(message);
+    expect(await refusals(M('.docsync/index.yaml'))).toEqual([message]);
+    expect(await refusals(D('.docsync/index.yaml'))).toEqual([message]);
+    expect(await refusals(R('.docsync/index.yaml', 'Files/index.yaml'))).toEqual([message]);
   });
 
   it('refuses a content change to a read-only export but lets a rename through', async () => {
-    await expect(plan(M('Files/Rates.xlsx'))).rejects.toThrow(
+    expect(await refusals(M('Files/Rates.xlsx'))).toEqual([
       'Files/Rates.xlsx: a read-only export; edit it at the source',
-    );
-    await expect(plan(R('Files/Rates.xlsx', 'Files/Fees.xlsx', 'R090'))).rejects.toThrow(
+    ]);
+    expect(await refusals(R('Files/Rates.xlsx', 'Files/Fees.xlsx', 'R090'))).toEqual([
       'Files/Fees.xlsx: a read-only export; edit it at the source',
-    );
+    ]);
     expect(await plan(R('Files/Rates.xlsx', 'Files/Fees.xlsx'))).toEqual([
       {
         root: DRIVE,
@@ -255,18 +262,18 @@ describe('planChanges', () => {
         ],
       },
     ]);
-    await expect(plan(A('Specs/Plain.md'))).rejects.toThrow(
+    expect(await refusals(A('Specs/Plain.md'))).toEqual([
       'Specs/Plain.md: a new file under a Notion root must start with frontmatter (a --- line, then another) to become a page',
-    );
-    await expect(plan(A('Specs/pic.png'))).rejects.toThrow(
+    ]);
+    expect(await refusals(A('Specs/pic.png'))).toEqual([
       'Specs/pic.png: Notion holds no files; only .md pages go under a Notion root',
-    );
+    ]);
   });
 
   it('refuses a new file carrying an id the checkout already has', async () => {
-    await expect(plan(A('Files/Copy.md'))).rejects.toThrow(
+    expect(await refusals(A('Files/Copy.md'))).toEqual([
       `Files/Copy.md: its id notion:${'b'.repeat(32)} is already checked out as Specs/Auth.md; remove the id line to create a copy`,
-    );
+    ]);
   });
 
   it('treats frontmatter added to a plain file, or removed from a document, as delete plus add', async () => {
@@ -296,30 +303,32 @@ describe('planChanges', () => {
   });
 
   describe('the comment sidecar is read-only (MANUAL §6)', () => {
-    const refusal =
+    const message =
       'Specs/Auth.comments.md is read-only; comments are only pulled in this version. ' +
       'Restore it with git checkout -- Specs/Auth.comments.md';
 
     it('refuses one that was modified', async () => {
-      await expect(plan(M('Specs/Auth.comments.md'))).rejects.toThrow(refusal);
+      expect(await refusal(M('Specs/Auth.comments.md'))).toBe(message);
     });
 
     it('refuses one that was added', async () => {
-      await expect(plan(A('Specs/Auth.comments.md'))).rejects.toThrow(refusal);
+      expect(await refusal(A('Specs/Auth.comments.md'))).toBe(message);
     });
 
     it('refuses one that was deleted', async () => {
-      await expect(plan(D('Specs/Auth.comments.md'))).rejects.toThrow(refusal);
+      expect(await refusal(D('Specs/Auth.comments.md'))).toBe(message);
     });
 
     it('refuses one that was renamed, naming the path it came from', async () => {
-      await expect(plan(R('Specs/Auth.comments.md', 'Specs/Notes.comments.md'))).rejects.toThrow(
+      expect(await refusal(R('Specs/Auth.comments.md', 'Specs/Notes.comments.md'))).toContain(
         'Specs/Auth.comments.md is read-only',
       );
     });
 
-    it('refuses before any source is touched, whatever else the push holds', async () => {
-      await expect(plan(M('Specs/Auth.md'), D('Specs/Auth.comments.md'))).rejects.toThrow(refusal);
+    it('refuses it whatever else the push holds, and plans the rest for the preview', async () => {
+      const both = await planned(M('Specs/Auth.md'), D('Specs/Auth.comments.md'));
+      expect(both.refusals.map((one) => one.message)).toEqual([message]);
+      expect(both.roots[0]?.changes[0]?.path).toBe('Specs/Auth.md');
     });
 
     it('lets a document simply named `comments.md` through', async () => {
@@ -333,50 +342,59 @@ describe('planChanges', () => {
   });
 
   describe('a read-only root is never pushed to (MANUAL §4, §7 step 3)', () => {
-    const refusal = (path: string): string =>
+    const message = (path: string): string =>
       `${path} is under a read-only root (Inputs/); nothing under it is pushed. ` +
       `Restore it with git checkout -- ${path}`;
 
     it('refuses a modified document', async () => {
-      await expect(plan(M('Inputs/Brief.md'))).rejects.toThrow(refusal('Inputs/Brief.md'));
+      expect(await refusal(M('Inputs/Brief.md'))).toBe(message('Inputs/Brief.md'));
     });
 
     it('refuses an added file, document or not', async () => {
-      await expect(plan(A('Inputs/Notes.md'))).rejects.toThrow(refusal('Inputs/Notes.md'));
-      await expect(plan(A('Inputs/Brief.assets/scan.png'))).rejects.toThrow(
-        refusal('Inputs/Brief.assets/scan.png'),
+      expect(await refusal(A('Inputs/Notes.md'))).toBe(message('Inputs/Notes.md'));
+      expect(await refusal(A('Inputs/Brief.assets/scan.png'))).toBe(
+        message('Inputs/Brief.assets/scan.png'),
       );
     });
 
     it('refuses a deletion, which elsewhere would be an unsubscribe', async () => {
-      await expect(plan(D('Inputs/contract.pdf'))).rejects.toThrow(refusal('Inputs/contract.pdf'));
+      expect(await refusal(D('Inputs/contract.pdf'))).toBe(message('Inputs/contract.pdf'));
     });
 
     it('refuses a rename inside it, naming the path it came from', async () => {
-      await expect(plan(R('Inputs/Brief.md', 'Inputs/Summary.md'))).rejects.toThrow(
-        refusal('Inputs/Brief.md'),
+      expect(await refusal(R('Inputs/Brief.md', 'Inputs/Summary.md'))).toBe(
+        message('Inputs/Brief.md'),
       );
     });
 
     it('refuses a rename out of it and a rename into it', async () => {
-      await expect(plan(R('Inputs/Brief.md', 'Files/Brief.md'))).rejects.toThrow(
-        refusal('Inputs/Brief.md'),
+      expect(await refusal(R('Inputs/Brief.md', 'Files/Brief.md'))).toBe(
+        message('Inputs/Brief.md'),
       );
-      await expect(plan(R('Files/Plan.md', 'Inputs/Plan.md'))).rejects.toThrow(
-        refusal('Inputs/Plan.md'),
-      );
+      expect(await refusal(R('Files/Plan.md', 'Inputs/Plan.md'))).toBe(message('Inputs/Plan.md'));
     });
 
     it('refuses a sidecar under it as a read-only root, not as a sidecar', async () => {
-      await expect(plan(M('Inputs/Brief.comments.md'))).rejects.toThrow(
-        refusal('Inputs/Brief.comments.md'),
+      expect(await refusal(M('Inputs/Brief.comments.md'))).toBe(
+        message('Inputs/Brief.comments.md'),
       );
     });
 
-    it('refuses before any source is touched, whatever else the push holds', async () => {
-      await expect(plan(M('Specs/Auth.md'), M('Inputs/Brief.md'))).rejects.toThrow(
-        refusal('Inputs/Brief.md'),
-      );
+    it('says why in the short form `docsync status` prints (ticket 31)', async () => {
+      const { refusals: found } = await planned(M('Inputs/Brief.md'));
+      expect(found).toEqual([
+        {
+          path: 'Inputs/Brief.md',
+          reason: 'under read-only root Inputs/',
+          message: message('Inputs/Brief.md'),
+        },
+      ]);
+    });
+
+    it('refuses it whatever else the push holds, and plans the rest for the preview', async () => {
+      const both = await planned(M('Specs/Auth.md'), M('Inputs/Brief.md'));
+      expect(both.refusals.map((one) => one.message)).toEqual([message('Inputs/Brief.md')]);
+      expect(both.roots[0]?.changes[0]?.path).toBe('Specs/Auth.md');
     });
 
     it('leaves a sibling root that is not read-only alone', async () => {
@@ -399,7 +417,7 @@ describe('planChanges', () => {
           ],
         },
       ]);
-      await expect(plan(A('Specs/pic.png'))).rejects.toThrow(/Notion holds no files/);
+      expect(await refusal(A('Specs/pic.png'))).toMatch(/Notion holds no files/);
     });
 
     it('carries changed asset bytes, with no base text to diff them against', async () => {
@@ -448,6 +466,42 @@ describe('planChanges', () => {
             { kind: 'added', path: 'Files/Plan.assets/shot.png', bytes: Buffer.from('SHOT') },
           ],
         },
+      ]);
+    });
+  });
+
+  describe('every refusal is collected, so status can list them (ticket 31)', () => {
+    it('answers all of them in diff order, and push fails on the first', async () => {
+      const { roots, refusals: found } = await planned(
+        M('Specs/Auth.md'),
+        A('README.md'),
+        M('Specs/Auth.comments.md'),
+        M('Inputs/Brief.md'),
+        M('.docsync/index.yaml'),
+      );
+      expect(found.map((one) => one.path)).toEqual([
+        'README.md',
+        'Specs/Auth.comments.md',
+        'Inputs/Brief.md',
+        '.docsync/index.yaml',
+      ]);
+      // What was not refused is still planned: that is the preview.
+      expect(roots).toHaveLength(1);
+      expect(roots[0]?.changes[0]?.path).toBe('Specs/Auth.md');
+    });
+
+    it('says a deletion outside every root is ignored, not refused (MANUAL §8)', async () => {
+      const { roots, refusals: found, ignored } = await planned(D('README.md'));
+      expect(roots).toEqual([]);
+      expect(found).toEqual([]);
+      expect(ignored).toEqual(['README.md']);
+    });
+
+    it('carries the reason `docsync status` prints after the path', async () => {
+      const { refusals: found } = await planned(A('README.md'), M('Files/Rates.xlsx'));
+      expect(found.map((one) => `${one.path}: ${one.reason}`)).toEqual([
+        'README.md: not under any root in the manifest',
+        'Files/Rates.xlsx: a read-only export; edit it at the source',
       ]);
     });
   });

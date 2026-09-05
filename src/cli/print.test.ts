@@ -3,11 +3,13 @@
 process.env.TZ = 'UTC';
 
 import { describe, expect, it } from 'vitest';
+import type { PushPlan } from '../helper/changes.js';
 import type { FetchReport, PushReportFile } from '../helper/report.js';
 import type { Root } from '../manifest/types.js';
 import {
   COMMAND_REFERENCE,
   formatFetchReport,
+  formatPushPreview,
   formatPushReport,
   formatResolved,
   formatStatusLine,
@@ -269,6 +271,85 @@ describe('formatStatusLine', () => {
     expect(formatStatusLine(root, undefined, undefined)).toBe(
       'notion:2f3a…  Product Specs/  fetched unknown  not checked',
     );
+  });
+});
+
+describe('formatPushPreview', () => {
+  const root: Root = {
+    src: { source: 'notion', id: '2f3a9c00000000000000000000000000' },
+    path: 'Specs/',
+    ignore: [],
+  };
+  const preview = (over: Partial<PushPlan> = {}): PushPlan => ({
+    roots: [],
+    refusals: [],
+    ignored: [],
+    ...over,
+  });
+
+  it('names every file with the push report’s verbs (MANUAL §7 step 5)', () => {
+    const plan = preview({
+      roots: [
+        {
+          root,
+          changes: [
+            { kind: 'added', path: 'Specs/New.md', text: 'new\n' },
+            { kind: 'modified', path: 'Specs/Auth.md', text: 'edited\n' },
+            { kind: 'renamed', path: 'Specs/Login.md', previousPath: 'Specs/Old.md' },
+            { kind: 'renamed', path: 'Specs/Two.md', previousPath: 'Specs/One.md', text: 'x\n' },
+            { kind: 'deleted', path: 'Specs/Gone.md' },
+          ],
+        },
+      ],
+    });
+    expect(formatPushPreview(plan, 0)).toBe(
+      [
+        'To push:',
+        '  create  Specs/New.md',
+        '  update  Specs/Auth.md',
+        '  rename  Specs/Old.md -> Specs/Login.md',
+        // A rename that also carried an edit is both (MANUAL §7 step 5).
+        '  rename  Specs/One.md -> Specs/Two.md',
+        '  update  Specs/Two.md',
+        '  trash   Specs/Gone.md',
+      ].join('\n'),
+    );
+  });
+
+  it('lists what the push would ignore and every path it would refuse', () => {
+    const plan = preview({
+      ignored: ['README.md'],
+      refusals: [
+        {
+          path: 'Inputs/Brief.md',
+          reason: 'under read-only root Inputs/',
+          message: 'Inputs/Brief.md is under a read-only root (Inputs/); …',
+        },
+        {
+          path: 'Specs/Auth.comments.md',
+          reason: 'read-only; comments are only pulled in this version',
+          message: 'Specs/Auth.comments.md is read-only; …',
+        },
+      ],
+    });
+    expect(formatPushPreview(plan, 0)).toBe(
+      [
+        'To push:',
+        '  ignored  README.md',
+        '  refused  Inputs/Brief.md: under read-only root Inputs/',
+        '  refused  Specs/Auth.comments.md: read-only; comments are only pulled in this version',
+      ].join('\n'),
+    );
+  });
+
+  it('closes with the uncommitted changes it did not list (the owner’s question)', () => {
+    const plan = preview({ ignored: ['README.md'] });
+    expect(formatPushPreview(plan, 2)).toContain('(2 uncommitted changes are not pushed)');
+    expect(formatPushPreview(plan, 1)).toContain('(1 uncommitted change is not pushed)');
+  });
+
+  it('says nothing at all when there is nothing to push', () => {
+    expect(formatPushPreview(preview(), 0)).toBe('');
   });
 });
 
