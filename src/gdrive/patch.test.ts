@@ -427,3 +427,23 @@ describe('a page break', () => {
     expect(applied(base, next)).toBe(next);
   });
 });
+
+describe('a deleted list item', () => {
+  it('takes its nested items with it', () => {
+    const base = '- one\n  - nested a\n  - nested b\n- two\n';
+    const next = '- two\n';
+    const patch = plan(base, next);
+
+    // One deletion, over the item and everything under it: not the lead line
+    // alone, which would leave the children hanging under what came before.
+    expect(kinds(patch.requests)).toEqual(['deleteContentRange']);
+    expect(applied(base, next)).toBe(next);
+  });
+
+  it('does not swallow text inserted where it was', () => {
+    const base = '- one\n  - nested a\n- two\n';
+    const next = '- two\n\nA new paragraph at the end.\n';
+
+    expect(applied(base, next)).toBe(next);
+  });
+});

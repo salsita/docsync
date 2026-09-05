@@ -560,8 +560,29 @@ export function planPatch(
       return;
     }
     emit(found.start, DELETE, [
-      { deleteContentRange: { range: range(found.start, found.end, found.segmentId) } },
+      { deleteContentRange: { range: range(found.start, extent(found), found.segmentId) } },
     ]);
+  }
+
+  /**
+   * One past the last index a block covers, its nested blocks included.
+   *
+   * A block's own range is the paragraph it *is*: for a list item, the line
+   * with the bullet on it and nothing under it. The diff, though, says nothing
+   * about the children of a block it deletes — they go with their parent, and
+   * a child that survives elsewhere arrives there as an insertion (MANUAL §7).
+   * Deleting only the parent's own range left the nested items behind, still
+   * bulleted and still indented, hanging under whatever came before (ticket
+   * 32). A footnote's body lives in a segment of its own, so it is no part of
+   * the stretch of the body a deletion cuts.
+   */
+  function extent(found: Ranged): number {
+    let end = found.end;
+    for (const child of found.children) {
+      if (child.segmentId !== found.segmentId) continue;
+      end = Math.max(end, extent(child));
+    }
+    return end;
   }
 
   /** Where the blocks the ops at `at` insert have to go. */
@@ -577,7 +598,11 @@ export function planPatch(
     }
     for (let index = at - 1; index >= 0; index -= 1) {
       const found = liveOf(ops[index], blocks);
-      if (found !== undefined) return found.end;
+      // Past everything the block before covers, its nested blocks included:
+      // at the end of a level the new blocks go after the whole subtree, and a
+      // block being deleted is deleted over that same stretch, so an anchor
+      // inside it would put the new text where the deletion is about to run.
+      if (found !== undefined) return extent(found);
     }
     return context.end;
   }
