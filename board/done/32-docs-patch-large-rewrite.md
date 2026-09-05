@@ -58,3 +58,25 @@ as its base.
 `pnpm check` green with the reproduction test; the smoke script's diff is
 empty; the owner re-pushes the Discovery Inputs rewrite and the fetch after
 it changes nothing.
+
+## Outcome
+
+Landed as `650e279`, `5b2f909`, `361e4e0`, `f0d892b`, `663d429`. Root
+causes: the page-break comment matched the attribute-comment pattern in
+`src/diff/blocks.ts` and was glued to the following block, so it had no
+range and no identity of its own; `remove()` in `src/gdrive/patch.ts` cut a
+list item's own line only, leaving its nested items behind (fixed with
+`extent()`, also used by the anchor scan, which otherwise inserted into the
+stretch about to be deleted); `mdast-util-to-markdown` escapes every `_`,
+now undone inside a word by a `text` handler in `src/markdown.ts`. The
+fake Docs model merged paragraphs keeping the wrong paragraph's style and
+bullet, which is why it flattened lists the real Doc nested; corrected and
+pinned. `scripts/smoke-gdrive-patch.ts` ran against real Drive on copies it
+created and trashed: 73 differing lines before, 0 after. The reproduction
+from the owner's two document versions is green.
+
+Consequence to expect: every checked-out file holding an intraword `\_`
+loses the backslash on its next fetch, once, on every source. Follow-up
+worth a ticket only if wanted: blank lines between list groups cannot be
+created at the source (empty paragraphs, §6), so such a base never
+round-trips through a create.
