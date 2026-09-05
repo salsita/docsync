@@ -1,0 +1,108 @@
+# Publishing @salsita/docsync (ticket 13).
+#
+# Two ways in, one job:
+#
+#   push to main   check, build, `npm publish --dry-run`. The publish path is
+#                  exercised on every commit, so a tag is never the first time
+#                  this workflow runs.
+#   tag v*         check, build, the tag must equal the version in
+#                  package.json, `npm publish --access public --provenance`,
+#                  then a GitHub release whose body is that version's
+#                  CHANGELOG section.
+#
+# Authentication is npm trusted publishing: npm accepts the job's OIDC identity
+# (`id-token: write`) instead of a token, so there is no NPM_TOKEN here and no
+# publish secret in the repository. The trusted publisher is configured per
+# package on npmjs.com, which means the package has to exist first: the owner
+# publishes 0.1.0 by hand and this workflow takes over from 0.1.1.
+#
+# `--provenance` needs the repository to be public and the same OIDC token.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version comes from the "packageManager" field in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing (OIDC) is npm 11.5 and later. The npm the runner
+      # ships follows its Node, so it can be older; upgrading here is what
+      # keeps this workflow token-free.
+      - name: Ensure npm can publish with OIDC
+        run: |
+          set -euo pipefail
+          have=$(npm --version)
+          if [ "$(printf '%s\n11.5.0\n' "$have" | sort -V | head -n1)" != "11.5.0" ]; then
+            echo "npm $have is older than 11.5.0; upgrading for trusted publishing"
+            npm install -g npm@latest
+          fi
+          npm --version
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm check
+
+      - run: pnpm build
+
+      - name: The tag must be the version in package.json
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+          echo "publishing $version"
+
+      # Every commit on main proves the publish still works, without publishing.
+      - name: Publish (dry run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: npm publish --dry-run
+
+      - name: Publish to npm
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: npm publish --access public --provenance
+
+      # The changelog is written by hand per release (CHANGELOG.md); the
+      # release body is that section, so the two cannot drift.
+      - name: Create the GitHub release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          awk -v ver="$version" '
+            $0 ~ "^## \\[" ver "\\]" { inside = 1; next }
+            inside && /^## \[/ { exit }
+            inside { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          if [ ! -s "$RUNNER_TEMP/release-notes.md" ]; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
