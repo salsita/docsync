@@ -2,6 +2,9 @@
  * `pushRoot` over an in-memory Drive: which operations one diff becomes, in
  * what order, and what the report says about them.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/index.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
@@ -701,5 +704,33 @@ describe('progress (MANUAL §7)', () => {
     );
 
     expect(watcher.lines).toEqual(['1/1 drive/Elements.md', `upload ${ASSET}`]);
+  });
+});
+
+describe('a large rewrite (ticket 32)', () => {
+  const fixture = (name: string): string =>
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), '__fixtures__', name), 'utf8');
+
+  // Red until the three defects of ticket 32 are fixed; `it.fails` so that the
+  // reproduction can be committed before the fix without breaking `pnpm check`.
+  it.fails('patches page breaks, list structure and escapes exactly', async () => {
+    const api = drive();
+    // The base does not round-trip through `seed` byte for byte (two blank
+    // lines after the `\` + `&#x20;` items are lost), so what the document
+    // actually holds after seeding is the base the push diffs against.
+    await seed(api, ELEMENTS_ID, fixture('push-discovery-base.md'));
+    const base = api.markdown(ELEMENTS_ID);
+    const next = fixture('push-discovery-next.md');
+
+    await push(api, [
+      {
+        kind: 'modified',
+        path: 'drive/Elements.md',
+        text: file(ELEMENTS_ID, 'Elements', next),
+        previousText: file(ELEMENTS_ID, 'Elements', base),
+      },
+    ]);
+
+    expect(api.markdown(ELEMENTS_ID)).toBe(next);
   });
 });
