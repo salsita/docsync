@@ -35,3 +35,16 @@ can show them.
 `pnpm check` green; on the owner's checkout `docsync status` names exactly
 the files `docsync push` would then report, and the sidecar and read-only
 refusals appear without a push being attempted.
+
+## Outcome
+
+Landed as `c1c9748`. `planChanges` returns `PushPlan { roots, refusals,
+ignored }` and never throws; push fails on the first refusal's message, so
+its behaviour and every existing expectation are unchanged. `docsync
+status` diffs `origin/main...HEAD` through the same code with blobs from
+the object store, prints `To push:` via `formatPushPreview`, and warns
+instead of failing if the preview breaks. Deviations, all kept: an added
+or modified file outside every root shows as `refused …: not under any
+root in the manifest` and only deletions there are `ignored`, as §7 step 3
+says; no section when there would be no lines; singular wording for one
+uncommitted change. Manual §5 `status` describes the section.

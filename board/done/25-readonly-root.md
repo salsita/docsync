@@ -37,3 +37,15 @@ accident writes to a document the team does not own. Today only exports
 `pnpm check` green; a checkout with a read-only Drive folder refuses a push
 that edits a file in it, with the message above, and pushes an edit in the
 other root.
+
+## Outcome
+
+Landed as `b0e72e9`. Manifest key `readonly`, TS property `readOnly` to
+match `IndexEntry.readOnly` and avoid reading as the modifier. The refusal
+in `planChanges` runs before the sidecar and index checks, covers every
+change kind and both sides of a rename, with the ticket's message verbatim.
+`docsync add --readonly`, the `read-only` status word, manifest round-trip,
+eight plan cases and two CLI e2e tests. Manual §4, §5, §7 step 3, §13 and
+the skill bullet applied in the landing commit. Follow-up: `docsync add`
+has no `--comments` flag; the e2e edits the manifest by hand to turn
+sidecars on.
