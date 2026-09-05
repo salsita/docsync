@@ -81,9 +81,19 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: npm publish --access public --dry-run
 
+      # A version already on the registry is not published again: the first
+      # release is published by hand before the trusted publisher can exist,
+      # and its tag run still has to end green and create the GitHub release.
       - name: Publish to npm
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        run: npm publish --access public --provenance
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          if npm view "@salsita/docsync@$version" version >/dev/null 2>&1; then
+            echo "@salsita/docsync@$version is already on the registry; not publishing again"
+            exit 0
+          fi
+          npm publish --access public --provenance
 
       # The changelog is written by hand per release (CHANGELOG.md); the
       # release body is that section, so the two cannot drift.

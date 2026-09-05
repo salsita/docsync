@@ -41,7 +41,8 @@ This installs two executables on your `PATH`:
 - `docsync` — the front end you use.
 - `git-remote-docsync` — the helper git discovers by name when a remote URL starts with `docsync::`.
 
-The ai-starter setup installs docsync for you.
+`MANUAL.md` and `CHANGELOG.md` ship inside the package; `docsync --version`
+prints the installed version.
 
 ### Credentials
 
@@ -73,7 +74,8 @@ notion:
 ```
 
 Most people never register anything: one person on the team creates the two
-apps (table above) and shares the values through the team's secret store.
+apps (table above) and sends the filled-in file to each person directly (see
+below).
 
 Save, close, and the browser flow starts. Before opening the browser the
 terminal says what to grant. For Notion you pick pages in Notion's own
