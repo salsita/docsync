@@ -312,6 +312,14 @@ Thin wrappers over the git commands with docsync-specific output:
   alone: after `git push`, `origin/main` still points at what was pushed, and
   the follow-up commit only arrives with another fetch.
 - `pull` and `fetch` print which documents changed and who changed them.
+  On a branch other than `main` neither one merges anything: the fetch runs
+  and its report is printed as always, the local `main` fast-forwards to what
+  the fetch brought — refused, and said so, when `main` carries commits of
+  its own — and the command ends with one line, `main is now at <short sha>;
+  rebase or merge it into <branch> when you are ready: git rebase main`.
+  Merging `main` into a work branch is the branch owner's decision, so
+  docsync never does it. Plain `git pull` on such a branch fails for want of
+  tracking information; `docsync pull` is the one to use there.
 - `fetch --all` and `pull --all` fetch **every** document under every root
   again, whatever its last-edit time says: each one is downloaded and
   converted with the docsync you have now, which is how a fix to the
@@ -483,6 +491,13 @@ spaces at its edges, so a bold sentence around a link reads
 `**Send the&#x20;**[…]**&#x20;****early****.**`: a styled space is invisible at
 the source, and Markdown cannot open emphasis on one. `<u>` and
 `<span data-color>` hold their spaces, and a link stays around all the pieces.
+A run of nothing but spaces and line breaks has nothing to open emphasis on,
+so it goes out unstyled whole: a bold line break is written as the line break
+it is. And a space at the very start or the very end of a block's inline
+content is dropped, in a table cell as in a paragraph, a heading or a list
+item, since it is invisible at the source and could only be written as
+`&#x20;`. Spaces beside a line break inside the block, and spaces inside a
+link or a `<span>`, are content and stay.
 
 **Block attributes.** What Notion stores on a block that GFM cannot express
 goes in an HTML comment on its own line directly above the block, only when
