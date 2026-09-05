@@ -426,6 +426,76 @@ describe.skipIf(process.platform === 'win32')(
       expect(run.code).toBe(0);
       expect(run.out).toContain('Product Specs/Auth.md  by Ada Lovelace');
       expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in twice.');
+      // On main there is nothing to say about main (ticket 29).
+      expect(run.out).not.toContain('main is now at');
+    });
+
+    it('pull on a branch fast-forwards main and leaves the branch alone', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      w.git(co, 'checkout', '--quiet', '-b', 'feature');
+      w.write(co, 'Product Specs/Auth.md', `${w.read(co, 'Product Specs/Auth.md')}Mine.\n`);
+      w.git(co, 'commit', '--quiet', '-a', '-m', 'My work');
+      const mine = w.git(co, 'rev-parse', 'HEAD');
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in twice.\n', editor: ADA });
+      w.store.save(state);
+
+      const run = await w.run(co, 'pull');
+
+      expect(run.code).toBe(0);
+      // The fetch is the expensive, useful part, and it ran (MANUAL §5).
+      expect(run.out).toContain('Product Specs/Auth.md  by Ada Lovelace');
+      // main is what the source says; the branch is untouched, and so is the
+      // working tree it left behind.
+      expect(w.git(co, 'rev-parse', 'main')).toBe(w.git(co, 'rev-parse', 'origin/main'));
+      expect(w.git(co, 'branch', '--show-current')).toBe('feature');
+      expect(w.git(co, 'rev-parse', 'HEAD')).toBe(mine);
+      expect(w.read(co, 'Product Specs/Auth.md')).toContain('Mine.');
+      const short = w.git(co, 'rev-parse', '--short', 'main');
+      expect(
+        run.out
+          .trimEnd()
+          .endsWith(
+            `main is now at ${short}; rebase or merge it into feature ` +
+              'when you are ready: git rebase main',
+          ),
+      ).toBe(true);
+    });
+
+    it('fetch on a branch moves main too', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      w.git(co, 'checkout', '--quiet', '-b', 'feature');
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in twice.\n', editor: ADA });
+      w.store.save(state);
+
+      const run = await w.run(co, 'fetch');
+
+      expect(run.code).toBe(0);
+      expect(w.git(co, 'rev-parse', 'main')).toBe(w.git(co, 'rev-parse', 'origin/main'));
+      expect(run.out).toContain('main is now at');
+    });
+
+    it('pull on a branch says so when main is not a fast-forward', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      // A commit of one's own on main, which the source knows nothing about.
+      w.write(co, 'Product Specs/Auth.md', `${w.read(co, 'Product Specs/Auth.md')}Local.\n`);
+      w.git(co, 'commit', '--quiet', '-a', '-m', 'On main');
+      const local = w.git(co, 'rev-parse', 'main');
+      w.git(co, 'checkout', '--quiet', '-b', 'feature');
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in twice.\n', editor: ADA });
+      w.store.save(state);
+
+      const run = await w.run(co, 'pull');
+
+      // The fetch stands; main is left exactly where its owner put it.
+      expect(run.code).toBe(0);
+      expect(w.git(co, 'rev-parse', 'main')).toBe(local);
+      expect(run.out).toContain('main was left where it is: it is not a fast-forward of');
     });
 
     it('pull --all re-renders a document the source never touched', async () => {

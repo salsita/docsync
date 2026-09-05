@@ -105,6 +105,15 @@ describe('the git runner', () => {
     expect(await git.isClean()).toBe(true);
   });
 
+  it('names the branch HEAD is on, and says nothing when HEAD is detached', async () => {
+    git = runner();
+    expect(await git.branch()).toBe('main');
+
+    repo.run('checkout', '--quiet', '--detach', 'HEAD');
+    expect(await git.branch()).toBeUndefined();
+    repo.run('checkout', '--quiet', 'main');
+  });
+
   it('reads a remote URL, and says so when there is no such remote', async () => {
     git = runner();
     expect(await git.remoteUrl('origin')).toBeUndefined();

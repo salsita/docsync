@@ -44,6 +44,8 @@ export interface GitRunner {
   toplevel(): Promise<string | undefined>;
   /** The repository directory (`.git`), absolute. */
   gitDir(): Promise<string | undefined>;
+  /** The branch HEAD is on, or undefined when HEAD is detached. */
+  branch(): Promise<string | undefined>;
   /** Whether the working tree has no changes, staged or not. */
   isClean(): Promise<boolean>;
   /** A remote's URL, or undefined when there is no such remote. */
@@ -121,6 +123,12 @@ export function createGitRunner(options: GitRunnerOptions): GitRunner {
     must,
     toplevel: () => ask(['rev-parse', '--show-toplevel']),
     gitDir: () => ask(['rev-parse', '--absolute-git-dir']),
+    async branch() {
+      // `--show-current` answers nothing at all on a detached HEAD, and does
+      // it with status 0, so the empty answer is the detached one.
+      const name = await ask(['branch', '--show-current']);
+      return name === undefined || name === '' ? undefined : name;
+    },
     async isClean() {
       return (await must(['status', '--porcelain'])) === '';
     },
