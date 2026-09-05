@@ -85,8 +85,10 @@ The resulting tokens are stored in the OS keychain (macOS Keychain, Windows
 Credential Manager, Secret Service on Linux). The apps file is written with
 owner-only permissions and holds the client secrets and nothing else.
 
-A team can share one app per source. The ai-starter setup can drop a
-pre-filled `oauth-apps.yaml` in place from the team's secret store.
+A team shares one app per source: whoever registered the apps sends the
+pre-filled `oauth-apps.yaml` to each person directly and securely, and the
+recipient saves it as `~/.docsync/oauth-apps.yaml`. No repository and no
+setup tool carries it.
 
 `docsync auth <source>` also verifies an existing token and prints who you are
 signed in as, and says so: to sign in again, or to pick Notion pages again,
