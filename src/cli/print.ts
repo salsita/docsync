@@ -15,7 +15,7 @@ import { formatSourceRef } from '../source-ref.js';
 /** MANUAL §13, verbatim: the usage block `docsync --help` prints. */
 export const COMMAND_REFERENCE = [
   'docsync init    [<dir>] [<src>[=<path>]...]',
-  'docsync add     <src>[=<path>]... [--no-fetch]',
+  'docsync add     <src>[=<path>]... [--no-fetch] [--readonly]',
   'docsync remove  <path>...',
   'docsync status',
   'docsync fetch   [--all]',

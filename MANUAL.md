@@ -169,6 +169,12 @@ Fields per root:
 | `path`   | yes      | Local path, relative to the repo root. See path rules below. |
 | `ignore` | no       | List of patterns. Matching documents are not checked out.    |
 | `comments` | no     | `true` to pull comment threads and suggestions into sidecars (§6). Default `false`. |
+| `readonly` | no     | `true` to refuse any push that touches a file under this root. Default `false`. Fetch is unchanged. |
+
+A read-only root is pulled for context — a client's inputs, a signed
+contract — and never written to: a push that adds, modifies, deletes or
+renames any file under it, document, asset or sidecar alike, is refused (§7
+step 3). `docsync add --readonly` sets it.
 
 ### Path rules
 
@@ -245,10 +251,11 @@ Creates a checkout.
 
 With no sources, the result is a repo with one empty commit. Add roots later.
 
-### `docsync add <src>[=<path>]...`
+### `docsync add <src>[=<path>]... [--readonly]`
 
 Resolves each source ref, appends roots to the manifest, then fetches and
-fast-forwards. An edit in progress is in the way only when git says the
+fast-forwards. `--readonly` marks every root the command adds as read-only
+(§4). An edit in progress is in the way only when git says the
 fetch would overwrite it; then nothing is merged, the command says why, and
 `docsync pull` after a commit or a stash finishes the job.
 
@@ -280,8 +287,19 @@ push without that pull is refused as "the source changed".
 ### `docsync status`
 
 Like `git status`, plus one line per root: source, path, last fetched time,
-whether the source has moved since (a cheap metadata check, no download), and
-`comments on` when the root pulls comment sidecars (§4).
+whether the source has moved since (a cheap metadata check, no download),
+`comments on` when the root pulls comment sidecars, and `read-only` when the
+root is (§4).
+
+Then, when the current branch is ahead of `origin/main`, `To push:` lists
+what `docsync push` would do, one line per file in the push report's own
+words: `create`, `update`, `rename <old> -> <new>` (followed by `update` when
+the renamed file was also edited), `trash`, `ignored <path>` for a deletion
+under no root, and `refused <path>: <reason>` for everything a push would
+refuse (§7 steps 3 and 4). A closing `(<n> uncommitted changes are not
+pushed)` appears when the working tree is dirty: only commits are pushed. The
+preview is computed by the code the push uses and costs no network. Nothing
+is printed when the branch equals `origin/main`.
 
 ### `docsync fetch` / `docsync pull` / `docsync push`
 
@@ -688,7 +706,10 @@ Git sends the commits between `origin/main` and your branch. The helper:
    produces, and it means unsubscribe, not trash. Changes to
    `.docsync/index.yaml` are refused, and so is any change to a comment
    sidecar under a root: "`<path>` is read-only; comments are only pulled in
-   this version. Restore it with `git checkout -- <path>`".
+   this version. Restore it with `git checkout -- <path>`". Any added,
+   modified, deleted or renamed file under a root with `readonly: true` is
+   refused first: "`<path>` is under a read-only root (`<root path>`);
+   nothing under it is pushed. Restore it with `git checkout -- <path>`".
 4. Refuses content changes to read-only exports (Sheets, Slides, Drawings).
    Renaming or deleting one renames or trashes the source file.
 5. Diffs the tree per root and applies:
@@ -964,7 +985,7 @@ comment on its own; only what you author.
 
 ```
 docsync init    [<dir>] [<src>[=<path>]...]
-docsync add     <src>[=<path>]... [--no-fetch]
+docsync add     <src>[=<path>]... [--no-fetch] [--readonly]
 docsync remove  <path>...
 docsync status
 docsync fetch   [--all]

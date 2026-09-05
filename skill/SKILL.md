@@ -38,6 +38,9 @@ moves the document to the source's trash.
   They stand for content the Markdown cannot express. Deleting one deletes
   that content at the source; editing or moving one is refused.
 - **`*.comments.md`** — read-only sidecars (below).
+- **Files under a read-only root** — a root marked `readonly: true` in
+  `.docsync.yaml`. It is pulled for context and never pushed to; a push that
+  adds, changes, deletes or renames anything under it is refused.
 - **The skill files** in `.agents/`, `.claude/` and `.cursor/` — docsync
   overwrites them on every command. `.docsync.yaml`, `.prettierrc`,
   `.editorconfig` and `.gitattributes` are the checkout's, not yours either.

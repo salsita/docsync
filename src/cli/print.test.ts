@@ -401,7 +401,7 @@ describe('COMMAND_REFERENCE', () => {
     expect(COMMAND_REFERENCE).toBe(
       [
         'docsync init    [<dir>] [<src>[=<path>]...]',
-        'docsync add     <src>[=<path>]... [--no-fetch]',
+        'docsync add     <src>[=<path>]... [--no-fetch] [--readonly]',
         'docsync remove  <path>...',
         'docsync status',
         'docsync fetch   [--all]',
