@@ -374,7 +374,29 @@ export function inline(
   richText: readonly RichText[],
   options: ToMarkdownOptions = {},
 ): PhrasingContent[] {
-  return mergeRuns(richText).flatMap((part) => annotate(part, options));
+  return trimEdges(mergeRuns(richText).flatMap((part) => annotate(part, options)));
+}
+
+/**
+ * A block's inline content, without the spaces at its very start and its very
+ * end (MANUAL §6). A space there is invisible at the source, and the writer
+ * has to encode it — `&#x20;SA: …`, `…(Contract.md)&#x20;` — so it is noise in
+ * every diff of every document that has one.
+ *
+ * Spaces only, and only at the block's own two edges: a space beside a line
+ * break inside the block is the block's text, and a space inside a link or a
+ * `<span>` is that node's. The push-time comparison converts the live block
+ * with this same code, so a trimmed base never reads as an edit, and
+ * `mergeRichText` compares plain text, so the space at the source survives.
+ */
+function trimEdges(nodes: PhrasingContent[]): PhrasingContent[] {
+  const out = [...nodes];
+  const first = out[0];
+  if (first?.type === 'text') out[0] = { ...first, value: first.value.replace(/^ +/, '') };
+  const last = out.at(-1);
+  if (last?.type === 'text')
+    out[out.length - 1] = { ...last, value: last.value.replace(/ +$/, '') };
+  return out;
 }
 
 /** The annotations that decide whether two runs are really one. */
@@ -474,6 +496,11 @@ function annotate(part: RichText, options: ToMarkdownOptions): PhrasingContent[]
   // The spaces inside a code run are its content, not its edges.
   if (wraps && annotations.code !== true && isText(part)) {
     const content = part.plain_text ?? '';
+    // A run of nothing but spaces and newlines has nothing to wrap: a bold
+    // newline is not a thing, and `**\n**` is not Markdown anybody wrote. It
+    // goes out whole and unstyled, the way the shed rule sends out a space,
+    // and its newlines are line breaks like any other (MANUAL §6).
+    if (content !== '' && /^[ \n]+$/.test(content)) return link(html(textNodes(content)));
     const lead = /^ +/.exec(content)?.[0] ?? '';
     const trail = content.length > lead.length ? (/ +$/.exec(content)?.[0] ?? '') : '';
     if (lead !== '' || trail !== '' || content === '') {

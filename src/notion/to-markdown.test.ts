@@ -583,6 +583,50 @@ describe('inline runs', () => {
       ]),
     ).toBe(`**Send the** [**info / asset request**](${url}) **early.**`);
   });
+
+  it('a styled run of nothing but whitespace goes out unstyled (ticket 30)', () => {
+    // A bold newline is not a thing: the newline is a line break, and a line
+    // break carries no emphasis.
+    expect(inlineMarkdown([text('a'), text('\n', { bold: true }), text('b')])).toBe('a\\\nb');
+    expect(inlineMarkdown([text('a'), text('\n', { bold: true, italic: true }), text('b')])).toBe(
+      'a\\\nb',
+    );
+  });
+});
+
+describe('the edges of a block (ticket 30)', () => {
+  it('trims a space at the very start and the very end of a block', () => {
+    expect(
+      inlineMarkdown([text('Next step: '), linked('Contract', 'Contract.md'), text(' ')]),
+    ).toBe('Next step: [Contract](Contract.md)');
+    expect(one('bulleted_list_item', { rich_text: [text(' SA: Creates the estimate')] })).toBe(
+      '- SA: Creates the estimate\n',
+    );
+    expect(one('heading_2', { rich_text: [text('  Title  ')] })).toBe('## Title\n');
+    // The space a styled run sheds at the block's edge goes the same way.
+    expect(inlineMarkdown([text(' who ', { bold: true })])).toBe('**who**');
+  });
+
+  it('trims the edges of a table cell', () => {
+    const row = (...cells: string[]): NotionBlock => ({
+      object: 'block',
+      id: `r${cells[0]}`,
+      type: 'table_row',
+      has_children: false,
+      table_row: { cells: cells.map((cell) => [text(cell)]) },
+    });
+    const table: NotionBlock = {
+      ...block('table', { table_width: 2, has_column_header: true, has_row_header: false }),
+      has_children: true,
+      children: [row('Name', 'Value'), row('a ', ' b')],
+    };
+    expect(markdown([table])).toBe('| Name | Value |\n| ---- | ----- |\n| a    | b     |\n');
+  });
+
+  it('leaves the spaces inside the block alone', () => {
+    expect(inlineMarkdown([text('one  two')])).toBe('one  two');
+    expect(inlineMarkdown([text('a'), text(' b ', { italic: true }), text('c')])).toBe('a _b_ c');
+  });
 });
 
 describe('the escaping paragraph in the fixture', () => {

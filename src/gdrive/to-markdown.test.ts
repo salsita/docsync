@@ -177,10 +177,13 @@ describe('text runs', () => {
     expect(
       documentToMarkdown(doc([para([run('a'), run(' b ', { italic: true }), run('c\n')])])),
     ).toBe('a _b_ c\n');
-    // Leading spaces are the paragraph's, encoded as any leading space is.
-    expect(documentToMarkdown(doc([para([run('   ', { bold: true }), run('x\n')])]))).toBe(
-      '&#x20;  x\n',
-    );
+    // The spaces the run sheds are at the block's edge, so they go too
+    // (ticket 30).
+    expect(documentToMarkdown(doc([para([run('   ', { bold: true }), run('x\n')])]))).toBe('x\n');
+    // Inside the block they are the block's own text.
+    expect(
+      documentToMarkdown(doc([para([run('a'), run('   ', { bold: true }), run('b\n')])])),
+    ).toBe('a   b\n');
     expect(
       documentToMarkdown(
         doc([para([run(' x ', { bold: true, link: { url: 'https://example.com/' } }), run('\n')])]),
@@ -190,6 +193,68 @@ describe('text runs', () => {
 
   it('survives a run with no content at all', () => {
     expect(documentToMarkdown(doc([para([{ textRun: {} }, run('after\n')])]))).toBe('after\n');
+  });
+
+  it('a styled run of nothing but whitespace goes out unstyled (ticket 30)', () => {
+    // A bold line break is not a thing: `**\n**` is what the edge-space rule
+    // used to leave behind, and the writer then escaped it.
+    expect(
+      documentToMarkdown(doc([para([run('a'), run('\u000B', { bold: true }), run('b\n')])])),
+    ).toBe('a\\\nb\n');
+    expect(
+      documentToMarkdown(
+        doc([
+          para([
+            run('\u000B', { bold: true }),
+            run('Integration & Finalization', { bold: true }),
+            run(': \n'),
+          ]),
+        ]),
+      ),
+    ).toBe('\\\n**Integration & Finalization**:\n');
+  });
+});
+
+describe('the edges of a block (ticket 30)', () => {
+  it('trims a space at the very start and the very end of a block', () => {
+    expect(
+      documentToMarkdown(
+        doc([
+          para([run('Next step: '), run('Contract', { link: { url: 'Contract.md' } }), run(' \n')]),
+        ]),
+      ),
+    ).toBe('Next step: [Contract](Contract.md)\n');
+    expect(
+      documentToMarkdown(
+        doc([text('  Heading  ', { paragraphStyle: { namedStyleType: 'HEADING_2' } })]),
+      ),
+    ).toBe('## Heading\n');
+    expect(
+      documentToMarkdown(doc([item(' SA: Creates the estimate')], { lists: list(BULLET) })),
+    ).toBe('- SA: Creates the estimate\n');
+  });
+
+  it('trims the edges of a table cell', () => {
+    const cell = (content: string) => ({ content: [text(content)] });
+    const document = doc([
+      {
+        table: {
+          rows: 2,
+          columns: 2,
+          tableRows: [
+            { tableCells: [cell('Name'), cell('Value')] },
+            { tableCells: [cell('a '), cell(' b')] },
+          ],
+        },
+      },
+    ]);
+    expect(documentToMarkdown(document)).toBe(
+      '| Name | Value |\n| ---- | ----- |\n| a    | b     |\n',
+    );
+  });
+
+  it('leaves the spaces inside the block alone', () => {
+    expect(documentToMarkdown(doc([text('one  two')]))).toBe('one  two\n');
   });
 });
 

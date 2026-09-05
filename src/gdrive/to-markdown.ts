@@ -64,6 +64,14 @@ const CODE_FONT_SET = new Set(CODE_FONTS.map((font) => font.toLowerCase()));
 /** A soft line break inside a paragraph, which Docs stores as a vertical tab. */
 const VERTICAL_TAB = '\u000B';
 
+/** The characters a run can hold and still be styling nothing (ticket 30). */
+const WHITESPACE = new Set([' ', '\n', VERTICAL_TAB]);
+
+/** Whether a run is nothing but spaces and line breaks, and not empty. */
+function isWhitespace(text: string): boolean {
+  return text !== '' && [...text].every((character) => WHITESPACE.has(character));
+}
+
 /** Named paragraph styles that are headings, and the level they print at. */
 const HEADINGS: Record<string, 1 | 2 | 3 | 4 | 5 | 6> = {
   HEADING_1: 1,
@@ -513,7 +521,44 @@ function inline(elements: readonly ParagraphElement[], context: Context): Phrasi
   for (const element of elements) out.push(...inlineElement(element, context));
   // A paragraph ends in the newline Docs stores; it is not content.
   while (out.length > 0 && isEmptyText(out.at(-1))) out.pop();
-  return out;
+  return trimEdges(out);
+}
+
+/**
+ * A block's inline content, without the spaces at its very start and its very
+ * end (MANUAL §6). A space there is invisible in the Doc, and the writer has
+ * to encode it — `&#x20;SA: …`, `…(Contract.md)&#x20;` — so it is noise in
+ * every diff of every document that has one.
+ *
+ * Spaces only, and only at the block's own two edges: a space beside a line
+ * break inside the block is the block's text, and a space inside a link is the
+ * link's. The characters that go are characters of the document all the same,
+ * so the run's origin moves with them, exactly as `trimLeading` does it for a
+ * footnote's leading space; a patch addresses the document through those
+ * origins (ticket 16).
+ */
+function trimEdges(nodes: PhrasingContent[]): PhrasingContent[] {
+  const first = nodes[0];
+  if (first?.type === 'text') {
+    const value = first.value.replace(/^ +/, '');
+    const origin = originOf(first);
+    if (origin !== undefined) {
+      origin.start += first.value.length - value.length;
+      origin.text = value.length;
+    }
+    first.value = value;
+  }
+  const last = nodes.at(-1);
+  if (last?.type === 'text') {
+    const value = last.value.replace(/ +$/, '');
+    const origin = originOf(last);
+    if (origin !== undefined) {
+      origin.end -= last.value.length - value.length;
+      origin.text = value.length;
+    }
+    last.value = value;
+  }
+  return nodes;
 }
 
 function isEmptyText(node: PhrasingContent | undefined): boolean {
@@ -689,6 +734,17 @@ function annotate(
     // on nothing. The spaces at either edge go out unstyled, and what is left
     // of the run is what gets wrapped — possibly nothing, which gets nothing.
     const body = content.replace(/\n$/, '');
+    // A run of nothing but spaces and line breaks has nothing to wrap: a bold
+    // line break is not a thing, and `**\n**` is not Markdown anybody wrote.
+    // It goes out whole and unstyled, the way a shed space does (MANUAL §6).
+    if (isWhitespace(body)) {
+      return annotate(
+        content,
+        { ...style, bold: false, italic: false, strikethrough: false, underline: false },
+        context,
+        start,
+      );
+    }
     const lead = /^ +/.exec(body)?.[0] ?? '';
     const trail = body.length > lead.length ? (/ +$/.exec(body)?.[0] ?? '') : '';
     if (lead !== '' || trail !== '') {
