@@ -80,7 +80,8 @@ small and leave untouched paragraphs byte-identical.
   before you edit.
 - `docsync pull` and `docsync fetch` print which documents changed and who
   changed them. A fetch commit is authored by the person who edited the
-  document at the source, not by you.
+  document at the source, not by you. `--all` renders every document again
+  with the installed docsync; use it only when told to.
 - `docsync push` prints one line per document — created, updated or **trashed**
   — and then fast-forwards. "the source changed" means someone edited the
   document while you worked: `docsync pull`, resolve any conflict markers the

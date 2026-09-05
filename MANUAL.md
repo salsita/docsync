@@ -290,6 +290,14 @@ Thin wrappers over the git commands with docsync-specific output:
   alone: after `git push`, `origin/main` still points at what was pushed, and
   the follow-up commit only arrives with another fetch.
 - `pull` and `fetch` print which documents changed and who changed them.
+- `fetch --all` and `pull --all` fetch **every** document under every root
+  again, whatever its last-edit time says: each one is downloaded and
+  converted with the docsync you have now, which is how a fix to the
+  converter reaches a document nobody has edited since. What comes out byte
+  for byte as it already is is not a change, so a re-fetch of an up-to-date
+  checkout writes no commit. The flag reaches the helper as
+  `DOCSYNC_FETCH_ALL=1` in the environment of that one git run; plain
+  `git fetch` never sets it.
 
 You can always use plain `git pull` and `git push` instead.
 
@@ -418,7 +426,7 @@ below.
 | image, file, PDF, video with an **external** URL | `![caption](url)` for images, `[name](url)` for the rest. On push a bare link block becomes a `file` block. A PDF or video block therefore comes back as a `file` block after a push and fetch. |
 | image, file, PDF, video hosted by Notion | downloaded next to the page into `<title>.assets/` and linked relatively: `![caption](<title>.assets/photo.png)` for an image, `[caption](<title>.assets/spec.pdf)` for the rest, with the file's own name as the link text when it has no caption. The name comes from Notion's, or from the URL's last segment, made unique by the filename rules above and kept stable by the index. On push a link into that directory is uploaded and the block points at the upload; the block type follows the link form and the extension: `![]()` → image, `.pdf` → pdf, a video extension → video, anything else → file. A hosted block whose file could not be downloaded keeps the placeholder |
 | child page                                                                                               | its own file, not in the body                                                                                          |
-| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://www.notion.so/<id>)`, with `Untitled` when the page is not accessible. Inside a table cell the API labels every page mention `Untitled`; a target in the checkout is then named after its file. Both convert back to a mention on push. |
+| link to page, page mention | `[title](relative/path.md)` if the target is in the checkout, otherwise `[title](https://www.notion.so/<id>)`. The API labels a mention `Untitled` when the page is not shared with the integration, and for every page inside a table cell; a target in the checkout is then named after its file, and one outside it `{page title}`, since Notion shows the title there. Both convert back to a mention on push. |
 | user mention | `[@Name](notion://user/<id>)` |
 | date mention | `[2026-09-02](notion://date/2026-09-02)`; ranges and times appended to the path |
 | other mentions | `[text](url)` |
@@ -612,6 +620,17 @@ If anything changed, it writes one commit to `origin/main`:
 - author: the source's last editor, with their source email if available
 - date: the source's last-edit time
 - message: `Update <n> documents` and the list
+
+A re-fetch (`--all`) downloads every document instead of only the ones whose
+metadata moved, and the progress lines count every one of them. What the
+commit holds is still decided by the bytes: a document whose Markdown, or a
+file whose content, is identical to what the last commit holds is not a
+change. A commit that exists only because the conversion changed is authored
+by **docsync** and dated now, since nobody edited anything. A document that
+did change at the source during the same run is attributed as usual, and
+such a document authors the commit. The report lists the documents whose
+Markdown changed and marks `(re-rendered)` the ones whose source edit time
+did not move. Assets are re-downloaded and compared by checksum.
 
 A comment moves no last-edit time at either source, so on a root with
 `comments: true` comments are re-read for every document on every fetch:
@@ -921,8 +940,8 @@ docsync init    [<dir>] [<src>[=<path>]...]
 docsync add     <src>[=<path>]... [--no-fetch]
 docsync remove  <path>...
 docsync status
-docsync fetch
-docsync pull
+docsync fetch   [--all]
+docsync pull    [--all]
 docsync push
 docsync resolve <src>
 docsync auth    <source> [--logout]

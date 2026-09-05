@@ -32,3 +32,21 @@ again with the docsync I have now".
 
 `pnpm check` green; `docsync pull --all` on the owner's kickoff checkout
 rewrites the documents carrying this week's artifacts and nothing else.
+
+## Outcome
+
+Landed as `b1a7f79`. `--all` on `fetch` and `pull` sets `DOCSYNC_FETCH_ALL=1`
+for that one git run; the helper reads it and passes `all` into every
+root's fetch. Both adapters download and convert everything, assets
+included; the helper hashes what came back against the last commit's
+blobs, so an identical document is no change and a run with none makes no
+commit. Adapters report `sourceChanged` beside `changed` under `--all`, so
+only a real source edit can author the commit and a pure re-render is
+docsync's own, dated now. The report marks `(re-rendered)`. Progress counts
+every document.
+
+Deviation: an adapter cannot compare a document's bytes, since the previous
+Markdown lives in git, so `changed` keeps meaning "content present" and the
+byte verdict stays in the helper, where it already was; assets do compare
+by checksum in the adapter. The skill file gained one clause on `--all`.
+Manual §5, §7 and §13 gained the wording.
