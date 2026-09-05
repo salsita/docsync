@@ -36,3 +36,16 @@ are invisible at the source.
 
 `pnpm check` green; `docsync fetch --all` on the owner's checkout leaves no
 `&#x20;` and no `\*\*` in any document that has none of those at the source.
+
+## Outcome
+
+Landed as `872cb1a`. Both converters trim spaces at the top level of a
+block's inline content (every block shape, table cells included) and send a
+run of nothing but spaces and line breaks out unstyled; the Docs case was a
+bold run holding a vertical tab. Docs provenance moves with the trim so
+patches map onto the right indices. Deliberate limits: a space inside a
+link or `<span>` at the block edge stays (link text is content); only
+spaces are trimmed, so a block starting with a line break still opens with
+`\`. One old expectation changed (leading bold spaces now vanish). Manual §6
+extended in the landing commit. Verified on the owner's checkout with
+`docsync fetch --all`.

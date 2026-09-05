@@ -29,3 +29,14 @@ left behind `origin/main`, and nothing says what to do.
 
 `pnpm check` green; `docsync pull` on a work branch exits 0 and leaves
 `main` equal to `origin/main`.
+
+## Outcome
+
+Landed as `d29c649`. `GitRunner.branch()` reads the current branch; off
+`main`, `pull` and `fetch` run `git fetch origin`, print the report,
+fast-forward `main` with `git fetch . refs/remotes/origin/main:refs/heads/main`
+(no second network round trip, git's own fast-forward refusal, said on
+refusal, exit 0 either way) and end with the ticket's line. On a detached
+HEAD the branch slot reads `HEAD`. On `main` nothing changed. Manual §5
+extended in the landing commit. Follow-up: `docsync push` from a branch
+whose `main` was just moved is untouched.
