@@ -41,6 +41,38 @@ const hardBreak: Handle = (_node, _parent, state, info) => {
 };
 
 /**
+ * An escaped `_` with a letter or a digit on either side of it.
+ *
+ * CommonMark does not open emphasis on an underscore inside a word — `a_b` is
+ * three literal characters, which is the rule that lets `snake_case` be typed
+ * as it is read — so escaping one changes nothing about how the line renders.
+ */
+const INTRAWORD_UNDERSCORE = /(?<=[\p{L}\p{N}])\\_(?=[\p{L}\p{N}])/gu;
+
+/**
+ * Text, with the serializer's escape of an underscore *inside a word* taken
+ * back off.
+ *
+ * `mdast-util-to-markdown` escapes every `_` it writes in phrasing. That is
+ * safe but not canonical: the owner pushes `ALUMINUM_FENCE-25-26-WEB.pdf`, the
+ * fetch after the push writes `ALUMINUM\_FENCE-25-26-WEB.pdf`, and a change
+ * nobody made lands in the diff (ticket 32). Both spellings parse to the same
+ * text and both are stable under Prettier, so only the churn goes.
+ *
+ * The escape stays wherever the underscore is *not* unambiguously inside a
+ * word: at the edge of a word, and where the character before it is the end of
+ * another node — a run boundary, a closing `**` — since there the underscore
+ * could open emphasis.
+ */
+const text: Handle = (node, _parent, state, info) => {
+  const value = state.safe('value' in node ? String(node.value) : '', info);
+  // The character the output already ends with, so that a `_` at the start of
+  // this node is judged by what actually precedes it on the line.
+  const before = info.before.slice(-1);
+  return (before + value).replace(INTRAWORD_UNDERSCORE, '_').slice(before.length);
+};
+
+/**
  * The fixed serialization. Every field is spelled out even where it repeats a
  * remark default, so that a remark upgrade that changes a default does not
  * silently change our on-disk format.
@@ -69,7 +101,7 @@ export const MARKDOWN_OPTIONS: Readonly<StringifyOptions> = {
   quote: '"',
   resourceLink: false,
   tightDefinitions: true,
-  handlers: { break: hardBreak },
+  handlers: { break: hardBreak, text },
 };
 
 const FRONTMATTER = ['yaml'] as const;

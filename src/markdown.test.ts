@@ -86,6 +86,29 @@ describe('the markdown pipeline', () => {
     expect(stringifyMarkdown(tree)).toBe('| a       |\n| ------- |\n| one two |\n');
   });
 
+  it('leaves an underscore inside a word unescaped, since it opens nothing', () => {
+    // What the owner types is what the fetch after the push writes back
+    // (ticket 32): no `ALUMINUM\\_FENCE`, a change nobody made.
+    const line = 'A file (ALUMINUM_FENCE-25-26-WEB-150dpi.pdf) and snake_case_name.\n';
+    expect(stringifyMarkdown(parseMarkdown(line))).toBe(line);
+  });
+
+  it('keeps the escape where an underscore could open emphasis', () => {
+    expect(stringifyMarkdown(parseMarkdown('A \\_word\\_ and end_ and _start.\n'))).toBe(
+      'A \\_word\\_ and end\\_ and \\_start.\n',
+    );
+  });
+
+  it('keeps the escape at a run boundary, where what precedes is not a word', () => {
+    const tree = parseMarkdown('x\n');
+    (tree.children[0] as { children: unknown[] }).children = [
+      { type: 'strong', children: [{ type: 'text', value: 'Bold' }] },
+      { type: 'text', value: '_after' },
+    ];
+
+    expect(stringifyMarkdown(tree)).toBe('**Bold**\\_after\n');
+  });
+
   it('keeps ordered list numbers incrementing', () => {
     expect(stringifyMarkdown(parseMarkdown('1. a\n1. b\n'))).toBe('1. a\n2. b\n');
   });
