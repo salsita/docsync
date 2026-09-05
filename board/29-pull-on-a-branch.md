@@ -1,11 +1,11 @@
 # 29 — `docsync pull` on a branch other than main
 
-Phase 1. Manual §5 `pull`, §10 the loop.
+Phase 1. Manual §5 `pull`, §10.
 
 ## Problem
 
-The loop of §10 is: pull, branch, edit. A person or an agent on the branch
-who runs `docsync pull` gets git's "There is no tracking information for
+Most projects have people and agents work on a branch. Whoever runs
+`docsync pull` there gets git's "There is no tracking information for
 the current branch" and exit 1, after a fetch that did succeed. `main` is
 left behind `origin/main`, and nothing says what to do.
 
