@@ -7,6 +7,7 @@
 import { createInterface } from 'node:readline';
 import type { CredentialProvider } from '../auth/index.js';
 import type { SourceRegistry } from '../source.js';
+import { createStreamWriter } from '../stdio.js';
 import { runHelper } from './run.js';
 
 export interface ProcessLike {
@@ -37,36 +38,16 @@ export interface LineWriter {
  * an 'error' listener that is an unhandled event and the helper dies, which
  * git reports as exit 128 (ticket 22). There is nobody left to tell, so the
  * writer goes quiet instead and lets the run end on its own terms.
+ *
+ * The guard itself is `src/stdio.ts`, which the front end uses as well; the
+ * protocol's unit is a line, so this is that writer plus the newline.
  */
 export function createLineWriter(stream: NodeJS.WritableStream): LineWriter {
-  let broken = false;
-  const pending = new Set<Promise<void>>();
-  stream.on('error', () => {
-    broken = true;
-  });
+  const writer = createStreamWriter(stream);
   return {
-    write(line) {
-      if (broken) return;
-      const written = new Promise<void>((done) => {
-        try {
-          stream.write(`${line}\n`, (error) => {
-            if (error) broken = true;
-            done();
-          });
-        } catch {
-          // A stream destroyed under us throws where a live one would have
-          // called back with the error.
-          broken = true;
-          done();
-        }
-      });
-      pending.add(written);
-      void written.then(() => pending.delete(written));
-    },
-    broken: () => broken,
-    async flush() {
-      while (pending.size > 0) await Promise.all([...pending]);
-    },
+    write: (line) => writer.write(`${line}\n`),
+    broken: () => writer.broken(),
+    flush: () => writer.flush(),
   };
 }
 

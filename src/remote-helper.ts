@@ -8,10 +8,15 @@
 import { createCredentialProvider } from './auth/index.js';
 import { main } from './helper/main.js';
 import { sources } from './source.js';
+import { createStreamWriter } from './stdio.js';
 import { version } from './version.js';
 
 if (process.argv.includes('--version')) {
-  process.stdout.write(`${version}\n`);
+  // Guarded like every other write of ours (`src/stdio.ts`): the reader of a
+  // `--version` is often a script that takes the one line and closes the pipe.
+  const out = createStreamWriter(process.stdout);
+  out.write(`${version}\n`);
+  await out.flush();
 } else {
   process.exitCode = await main(sources, createCredentialProvider());
 }
