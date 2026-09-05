@@ -138,7 +138,7 @@ function paragraphs(...content: string[][]): DocsDocument {
 }
 
 describe('a paragraph', () => {
-  it('split by a page break maps to two blocks inside one element', () => {
+  it('split by a page break maps to three blocks inside one element', () => {
     const doc = paragraphs(['Before\n']);
     const element = doc.body?.content?.[1];
     const paragraph = element?.paragraph;
@@ -153,9 +153,14 @@ describe('a paragraph', () => {
 
     const live = readLive(doc);
     expect(live.markdown).toBe('Before\n\n<!-- docsync:pagebreak -->\n\nAfter\n');
-    const [before, after] = live.blocks;
+    // The break is a block of its own (MANUAL §6), covering the one code unit
+    // it occupies: deleting it deletes the break and not the text around it.
+    const [before, split, after] = live.blocks;
     expect(before?.start).toBe(1);
     expect(before?.end).toBe(7);
+    expect(split?.block.type).toBe('pagebreak');
+    expect(split?.start).toBe(7);
+    expect(split?.end).toBe(8);
     expect(after?.start).toBe(8);
     expect(after?.end).toBe(14);
   });

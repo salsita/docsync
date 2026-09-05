@@ -39,7 +39,8 @@ export interface DiffBlock {
    * The dialect's type, fine enough that two blocks of the same type can be
    * patched into one another: `paragraph`, `heading:2`, `listItem:todo`,
    * `quote`, `callout`, `toggle`, `toggleHeading:1`, `code`, `divider`,
-   * `table`, `tableRow`, `equation`, `image`, `file`, `placeholder:embed`.
+   * `table`, `tableRow`, `equation`, `image`, `file`, `pagebreak`,
+   * `placeholder:embed`.
    */
   type: string;
   /**
@@ -82,8 +83,18 @@ const RENAME_THRESHOLD = 0.5;
 /** The most cells the block alignment will fill in. See `text.ts`. */
 const MAX_CELLS = 4_000_000;
 
-const ATTRIBUTE_COMMENT = /^<!--\s*docsync:\s*(?!block\b)(.*?)\s*-->$/;
+const ATTRIBUTE_COMMENT = /^<!--\s*docsync:\s*(?!block\b|pagebreak\b)(.*?)\s*-->$/;
 const PLACEHOLDER_COMMENT = /^<!--\s*docsync:(?:block|object)\b.*?\btype=(\S+?)\s*-->$/;
+/**
+ * A page break is a **block** in the dialect (MANUAL §6), not an attribute of
+ * the block after it: it has a place of its own in the document and a range of
+ * its own in a Doc. Read as an attribute comment it would be glued to the next
+ * block's identity, so an insertion in front of that block would land in front
+ * of the break, deleting the block would take the break with it, and a new
+ * break would only ever be written as part of a block that was inserted
+ * anyway — which is exactly what ticket 32 found.
+ */
+const PAGE_BREAK_COMMENT = /^<!--\s*docsync:pagebreak\s*-->$/;
 const DETAILS_OPEN = /^<details\b/;
 const SUMMARY = /<summary>([\s\S]*?)<\/summary>/;
 const HEADING_SUMMARY = /^(#{1,6})\s+([\s\S]*)$/;
@@ -338,6 +349,10 @@ function flatten(nodes: readonly RootContent[]): DiffBlock[] {
           { type: `placeholder:${placeholder[1]}`, markdown: value, text: value, children: [] },
           [node],
         );
+        continue;
+      }
+      if (PAGE_BREAK_COMMENT.test(value)) {
+        push({ type: 'pagebreak', markdown: value, text: '', children: [] }, [node]);
         continue;
       }
       if (ATTRIBUTE_COMMENT.test(value)) {

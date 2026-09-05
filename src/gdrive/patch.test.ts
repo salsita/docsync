@@ -390,3 +390,40 @@ describe('a footnote body', () => {
     expect(applied(base, next)).toBe(next);
   });
 });
+
+describe('a page break', () => {
+  const base = 'One.\n\n<!-- docsync:pagebreak -->\n\nTwo.\n';
+
+  it('is a block of its own, so an insertion before it lands before it', () => {
+    const next = 'One.\n\nNew.\n\n<!-- docsync:pagebreak -->\n\nTwo.\n';
+    const patch = plan(base, next);
+
+    // The new paragraph is written at the start of the break's own block, not
+    // after it, because the break is a block and not a prefix of "Two.".
+    expect(kinds(patch.requests)[0]).toBe('insertText');
+    expect(patch.requests[0]?.insertText).toEqual({ location: { index: 6 }, text: 'New.\n' });
+    expect(applied(base, next)).toBe(next);
+  });
+
+  it('is created where the dialect puts it', () => {
+    const next =
+      'One.\n\n<!-- docsync:pagebreak -->\n\nTwo.\n\n<!-- docsync:pagebreak -->\n\nThree.\n';
+    const patch = plan(base, next);
+
+    expect(kinds(patch.requests)).toContain('insertPageBreak');
+    expect(applied(base, next)).toBe(next);
+  });
+
+  it('is deleted without the paragraph it splits', () => {
+    const next = 'One.\n\nTwo.\n';
+    const patch = plan(base, next);
+
+    // The break is one code unit of its own, and only it is deleted: the two
+    // paragraphs it split rejoin, and neither is rewritten.
+    expect(kinds(patch.requests)).toEqual(['deleteContentRange']);
+    expect(patch.requests[0]?.deleteContentRange).toEqual({
+      range: { startIndex: 6, endIndex: 7 },
+    });
+    expect(applied(base, next)).toBe(next);
+  });
+});
