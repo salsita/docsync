@@ -21,15 +21,16 @@ checkout; the manual stays the reference.
 | README | Rewritten around the quick start: install, `docsync auth`, `docsync init`, edit, `docsync push`, in the manual's §3 shape but shorter; a "for agents" paragraph pointing at the skill file; a link to the manual for everything else; requirements (Node ≥ 22, git, an OAuth app per source from the team) | Done-when of the ticket. |
 | Package contents | `npm pack --dry-run` reviewed in the ticket: `dist`, `skill`, `LICENSE`, `README.md`, `MANUAL.md`, `package.json`; no tests, no mocks, no maps of test files. `MANUAL.md` ships so `docsync --help` §13 and the skill's references resolve offline | 241 files today; trim `dist/**/*.test.js`, `*.mock.js` via `tsconfig.build.json` excludes if they are in |
 | Guarded stdout | `src/cli.ts` `out`/`err` and `src/remote-helper.ts` `--version` go through `createLineWriter` from `src/helper/main.ts` (or a small shared `src/stdio.ts` both import), so `docsync status \| head` cannot crash on EPIPE | Carried over from ticket 22. |
-| ai-starter | **Out of this ticket.** A setup step in ai-starter that installs docsync and provides the team's OAuth app values is a later task in that repo, once the package is on npm | Different repo. |
+| OAuth app values | **Not distributed by any repo or tool.** The owner sends `oauth-apps.yaml` to each interested person securely; the README says to ask the team for it and where to put it (§2). ai-starter is not involved | Owner's decision, 2026-09-05. |
 | Package contents, addendum | `files` gains `MANUAL.md`; `README.md` and `LICENSE` npm includes on its own. `npm pack --dry-run` today lists 241 files and no test or mock file (the build excludes them already) | Verified 2026-09-05. |
 
 ## Decided (2026-09-05)
 
 Repo public at release. License MIT (in place). npm: the owner is admin of
 `@salsita` and logged in; first publish by hand because the trusted-publisher
-setting is per package, CI from the next version. ai-starter is a later task
-in its own repo.
+setting is per package, CI from the next version. OAuth app values are
+handed to people directly and securely by the owner; no repo or setup tool
+carries them.
 
 ## Module
 
