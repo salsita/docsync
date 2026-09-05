@@ -19,7 +19,7 @@ import type {
   FetchOptions as SourceFetchOptions,
   FetchResult as SourceFetchResult,
 } from '../source.js';
-import type { SourceRef } from '../source-ref.js';
+import { type SourceRef, sourceUrl } from '../source-ref.js';
 import { createNotionApi, createNotionClient, type NotionApi, type RawObject } from './api.js';
 import { fetchPageAssets } from './assets.js';
 import { pageThreads } from './comments.js';
@@ -162,7 +162,7 @@ async function toFiles(
 
   const file: FetchedFile = {
     path: page.path,
-    text: serializeDocument({ id: page.ref, title: page.title }, body),
+    text: serializeDocument({ id: page.ref, title: page.title, url: sourceUrl(page.ref) }, body),
     body,
     entry,
     editor: await editorOf(page, api),

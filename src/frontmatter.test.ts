@@ -11,6 +11,18 @@ describe('serializeDocument', () => {
     );
   });
 
+  it('writes url after title when there is one (ticket 27)', () => {
+    expect(
+      serializeDocument(
+        { id: REF, title: 'Auth', url: 'https://www.notion.so/3cf715cbeb088035b511f0b4f06efbd5' },
+        'Hello.\n',
+      ),
+    ).toBe(
+      '---\nid: notion:3cf715cbeb088035b511f0b4f06efbd5\ntitle: Auth\n' +
+        'url: https://www.notion.so/3cf715cbeb088035b511f0b4f06efbd5\n---\n\nHello.\n',
+    );
+  });
+
   it('quotes a title YAML would otherwise misread', () => {
     const text = serializeDocument({ id: REF, title: '- yes: no #1' }, '');
     expect(text).toContain('title: "- yes: no #1"');
@@ -45,6 +57,24 @@ describe('parseDocument', () => {
 
   it('reports no frontmatter when the block is not first', () => {
     expect(parseDocument('Text.\n\n---\nid: notion:x\n---\n').frontmatter).toBeUndefined();
+  });
+
+  it('reads url and ignores it: docsync owns it, and writes it again (ticket 27)', () => {
+    const text = serializeDocument(
+      { id: REF, title: 'Auth', url: 'https://www.notion.so/3cf715cbeb088035b511f0b4f06efbd5' },
+      'Hello.\n',
+    );
+    const { frontmatter, body } = parseDocument(text);
+    // Not an error, not part of the identity, and not part of the body: an
+    // edited or a missing url means nothing at all to a push.
+    expect(frontmatter).toEqual({ id: REF, title: 'Auth' });
+    expect(stringifyMarkdown(body)).toBe('Hello.\n');
+    const read = (one: string) => {
+      const parsed = parseDocument(one);
+      return { frontmatter: parsed.frontmatter, body: stringifyMarkdown(parsed.body) };
+    };
+    expect(read(text.replace(/^url: .*$/m, 'url: https://elsewhere/'))).toEqual(read(text));
+    expect(read(text.replace(/^url: .*\n/m, ''))).toEqual(read(text));
   });
 
   it('drops keys docsync does not own', () => {

@@ -182,8 +182,9 @@ function world(options: { signedIn?: string; manifest?: string; state?: FakeStat
   return made;
 }
 
+/** A Notion document as a fetch writes it, `url` and all (MANUAL §6). */
 const frontmatter = (id: string, title: string, body: string): string =>
-  `---\nid: notion:${id}\ntitle: ${title}\n---\n\n${body}`;
+  `---\nid: notion:${id}\ntitle: ${title}\nurl: https://www.notion.so/${id}\n---\n\n${body}`;
 
 describe.skipIf(process.platform === 'win32')(
   'git-remote-docsync',

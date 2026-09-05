@@ -185,6 +185,36 @@ export function formatSourceRef(ref: SourceRef): string {
   return `${ref.source}:${ref.id}`;
 }
 
+/**
+ * The path Google serves a native type from. The keys are Drive's own mime
+ * types (`gdrive/walk.ts` names the same ones); anything else Drive holds is
+ * a file, and a folder is a folder.
+ */
+const GOOGLE_PATHS: Record<string, string> = {
+  'application/vnd.google-apps.document': 'document',
+  'application/vnd.google-apps.spreadsheet': 'spreadsheets',
+  'application/vnd.google-apps.presentation': 'presentation',
+  'application/vnd.google-apps.drawing': 'drawings',
+};
+
+const GOOGLE_FOLDER = 'application/vnd.google-apps.folder';
+
+/**
+ * Where a person opens this object: the `url:` of the frontmatter (MANUAL §6),
+ * and what an agent quotes in a report. Derived from the id alone, so it costs
+ * no request and no index field. `mimeType` is what Drive reported for the
+ * file; it decides nothing on Notion, whose bare-id URL redirects to the real
+ * one, workspace slug and all.
+ */
+export function sourceUrl(ref: SourceRef, mimeType?: string): string {
+  if (ref.source === 'notion') return `https://www.notion.so/${ref.id}`;
+  if (mimeType === GOOGLE_FOLDER) return `https://drive.google.com/drive/folders/${ref.id}`;
+  const kind = mimeType === undefined ? undefined : GOOGLE_PATHS[mimeType];
+  return kind === undefined
+    ? `https://drive.google.com/file/d/${ref.id}/view`
+    : `https://docs.google.com/${kind}/d/${ref.id}/edit`;
+}
+
 /** Whether two refs address the same object. */
 export function sourceRefEquals(a: SourceRef, b: SourceRef): boolean {
   return a.source === b.source && a.id === b.id;

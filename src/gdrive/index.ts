@@ -25,7 +25,7 @@ import type {
   FetchOptions as SourceFetchOptions,
   FetchResult as SourceFetchResult,
 } from '../source.js';
-import type { SourceRef } from '../source-ref.js';
+import { type SourceRef, sourceUrl } from '../source-ref.js';
 import { createGDriveApi, type DriveUser, type GDriveApi } from './api.js';
 import { fetchDocumentAssets, keptAssets } from './assets.js';
 import { threadsOf } from './comments.js';
@@ -304,7 +304,10 @@ async function toFiles(
       {
         ...common,
         entry,
-        text: serializeDocument({ id: file.ref, title: file.title }, body),
+        text: serializeDocument(
+          { id: file.ref, title: file.title, url: sourceUrl(file.ref, file.mimeType) },
+          body,
+        ),
         body,
       },
       ...assets.files,
@@ -336,7 +339,13 @@ async function toFiles(
     // The title is the Drive file name, which is what Drive shows and what a
     // push renames (MANUAL §6).
     ...(changed
-      ? { text: serializeDocument({ id: file.ref, title: file.title }, body), body }
+      ? {
+          text: serializeDocument(
+            { id: file.ref, title: file.title, url: sourceUrl(file.ref, file.mimeType) },
+            body,
+          ),
+          body,
+        }
       : {}),
   };
   if (threads.length === 0) return [document_, ...assets.files];

@@ -1,9 +1,9 @@
 /**
  * The YAML frontmatter docsync owns on every Markdown document (MANUAL §6).
  *
- * Two keys, `id` and `title`, in that order, and nothing else: keys the user
- * adds are dropped on the next fetch, so this module drops them on the way in
- * too rather than pretending to preserve them. Shared by both adapters — a
+ * Three keys — `id`, `title` and `url`, in that order — and nothing else: keys
+ * the user adds are dropped on the next fetch, so this module drops them on the
+ * way in too rather than pretending to preserve them. Shared by both adapters — a
  * Notion page and a Google Doc carry the same block, differing only in the
  * source of the ref.
  *
@@ -21,6 +21,13 @@ export interface Frontmatter {
   id?: SourceRef;
   /** The title as the source shows it. */
   title?: string;
+  /**
+   * Where the document opens at the source, derived from the id (MANUAL §6).
+   * Written on every fetch and never read back: docsync owns it as it owns
+   * `id`, and a file whose `url` was edited or deleted is not a change to
+   * push, not a rename, and not an error — the next fetch writes it again.
+   */
+  url?: string;
 }
 
 /** A document read off disk: its frontmatter, if any, and its body as mdast. */
@@ -34,6 +41,7 @@ function frontmatterNode(frontmatter: Frontmatter): Yaml {
   const fields: Record<string, string> = {};
   if (frontmatter.id) fields.id = formatSourceRef(frontmatter.id);
   if (frontmatter.title !== undefined) fields.title = frontmatter.title;
+  if (frontmatter.url !== undefined) fields.url = frontmatter.url;
   // `yaml` adds the trailing newline that the `---` fence supplies itself.
   return { type: 'yaml', value: stringifyYaml(fields).trimEnd() };
 }
@@ -71,7 +79,11 @@ export function parseDocument(text: string): ParsedDocument {
   };
 }
 
-/** The two keys docsync understands, ignoring anything else in the block. */
+/**
+ * The keys docsync reads, ignoring anything else in the block — `url` very
+ * much included. It is written by a fetch and derived from the id, so what a
+ * file says it is means nothing (MANUAL §6).
+ */
 function readFields(yaml: string): Frontmatter {
   let parsed: unknown;
   try {

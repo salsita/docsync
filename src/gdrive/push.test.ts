@@ -151,6 +151,38 @@ describe('a modified document', () => {
     expect(report[0]?.blocks).toEqual({ kept: 2, updated: 0, inserted: 2, deleted: 2 });
   });
 
+  it('has nothing to push when the frontmatter url is all that changed (ticket 27)', async () => {
+    // docsync owns `url` and derives it from the id (MANUAL §6): an edited or
+    // a deleted one is not a change, not a rename, and not an error.
+    const api = drive();
+    await seed(api, ELEMENTS_ID, base);
+    const withUrl = (url: string) =>
+      `---\nid: gdocs:${ELEMENTS_ID}\ntitle: Elements\n${url}---\n\n${base}`;
+
+    const report = await push(api, [
+      {
+        kind: 'modified',
+        path: 'drive/Elements.md',
+        text: withUrl('url: https://example.invalid/somewhere\n'),
+        previousText: withUrl(`url: https://docs.google.com/document/d/${ELEMENTS_ID}/edit\n`),
+      },
+      {
+        kind: 'modified',
+        path: 'drive/Elements.md',
+        text: withUrl(''),
+        previousText: withUrl(`url: https://docs.google.com/document/d/${ELEMENTS_ID}/edit\n`),
+      },
+    ]);
+
+    expect(api.markdown(ELEMENTS_ID)).toBe(base);
+    // The name is read to see whether the title moved; nothing is written.
+    expect(api.calls).toEqual([`getFile ${ELEMENTS_ID}`, `getFile ${ELEMENTS_ID}`]);
+    expect(report.map((one) => one.blocks)).toEqual([
+      { kept: 4, updated: 0, inserted: 0, deleted: 0 },
+      { kept: 4, updated: 0, inserted: 0, deleted: 0 },
+    ]);
+  });
+
   it('is refused when the live document is not the version pushed from', async () => {
     const api = drive();
     await seed(api, ELEMENTS_ID, 'Someone else wrote this.\n');

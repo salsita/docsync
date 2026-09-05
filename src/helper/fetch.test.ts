@@ -101,7 +101,8 @@ describe('fetchCommit', () => {
     ]);
     const auth = (await repo.git.catBlob(tree.get('Specs/Auth.md')?.sha ?? '')).toString();
     expect(auth).toBe(
-      `---\nid: notion:${fakeId('notion', 2)}\ntitle: Auth\n---\n\nLog in first.\n`,
+      `---\nid: notion:${fakeId('notion', 2)}\ntitle: Auth\n` +
+        `url: https://www.notion.so/${fakeId('notion', 2)}\n---\n\nLog in first.\n`,
     );
 
     const index = parseIndex((await repo.git.catBlob(tree.get(INDEX_PATH)?.sha ?? '')).toString());

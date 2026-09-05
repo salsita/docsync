@@ -46,9 +46,14 @@ describe('fetchRoot', () => {
     const result = await fetchRoot(root, provider, new Map(), options);
     const elements = result.files.find((file) => file.path === 'drive/Elements.md');
 
-    expect(elements?.text?.startsWith(`---\nid: gdocs:${ELEMENTS}\ntitle: Elements\n---\n`)).toBe(
-      true,
-    );
+    // `url` is derived from the id and the Drive type (MANUAL §6): a Doc
+    // opens in Docs.
+    expect(
+      elements?.text?.startsWith(
+        `---\nid: gdocs:${ELEMENTS}\ntitle: Elements\n` +
+          `url: https://docs.google.com/document/d/${ELEMENTS}/edit\n---\n`,
+      ),
+    ).toBe(true);
     // The body is the same text without the frontmatter block.
     expect(elements?.text?.endsWith(elements.body ?? '')).toBe(true);
     expect(elements?.body).toContain('<!-- docsync: style=title -->');

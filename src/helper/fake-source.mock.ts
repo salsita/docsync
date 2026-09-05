@@ -34,7 +34,7 @@ import type {
   SourceName,
   SourceRegistry,
 } from '../source.js';
-import type { SourceRef } from '../source-ref.js';
+import { type SourceRef, sourceUrl } from '../source-ref.js';
 
 export type FakeKind = 'page' | 'doc' | 'folder' | 'file' | 'export';
 
@@ -91,6 +91,9 @@ export interface FakeStore {
 export const PUSHER: Editor = { id: 'pusher', name: 'Push Er', email: 'pusher@example.com' };
 
 const EPOCH = Date.parse('2026-03-01T12:00:00Z');
+
+/** What Drive calls a Google Doc, so the fake's URLs read like the real ones. */
+const DOCUMENT_MIME = 'application/vnd.google-apps.document';
 
 export const emptyState = (): FakeState => ({ objects: {}, pushes: [], clock: 0 });
 
@@ -273,7 +276,11 @@ export function createFakeSource(store: FakeStore): Source {
         if (bytes !== undefined) file.bytes = bytes;
         else {
           file.body = object.body ?? '';
-          file.text = serializeDocument({ id: ref, title: object.title }, file.body);
+          // The adapters write `url` on every fetch (MANUAL §6); so does this.
+          file.text = serializeDocument(
+            { id: ref, title: object.title, url: sourceUrl(ref, DOCUMENT_MIME) },
+            file.body,
+          );
         }
       }
       files.push(file);

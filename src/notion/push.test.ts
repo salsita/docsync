@@ -270,6 +270,38 @@ describe('pushRoot', () => {
     expect(patchCalls(api)).toEqual(['delete:x1']);
   });
 
+  it('has nothing to push when the frontmatter url is all that changed (ticket 27)', async () => {
+    // docsync owns `url` and derives it from the id (MANUAL §6): an edited or
+    // a deleted one is not a change, not a rename, and not an error.
+    const api = fake();
+    const before = await given(api, BLOCKS_ID, 'One.\n\nTwo.\n');
+    const withUrl = (url: string) =>
+      `---\nid: notion:${BLOCKS_ID}\ntitle: Blocks\n${url}---\n\n${before}`;
+    const was = `url: https://www.notion.so/${BLOCKS_ID}\n`;
+
+    const report = await push(api, [
+      {
+        kind: 'modified',
+        path: 'notion/Docsync test/Blocks.md',
+        text: withUrl('url: https://example.invalid/somewhere\n'),
+        previousText: withUrl(was),
+      },
+      {
+        kind: 'modified',
+        path: 'notion/Docsync test/Blocks.md',
+        text: withUrl(''),
+        previousText: withUrl(was),
+      },
+    ]);
+
+    expect(patchCalls(api)).toEqual([]);
+    expect(blocksToMarkdown(api.bodyOf(BLOCKS_ID), {})).toBe(before);
+    expect(report.map((one) => one.blocks)).toEqual([
+      { kept: 2, updated: 0, inserted: 0, deleted: 0 },
+      { kept: 2, updated: 0, inserted: 0, deleted: 0 },
+    ]);
+  });
+
   it('refuses a page that is not the version the push started from', async () => {
     const api = fake();
     await given(api, BLOCKS_ID, 'What Notion holds.\n');

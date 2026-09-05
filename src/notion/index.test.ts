@@ -39,8 +39,10 @@ describe('fetchRoot', () => {
     const { files } = await fetch();
     const leaf = files.find((file) => file.path.endsWith('Leaf.md'));
 
+    // `url` is derived from the id and written on every fetch (MANUAL §6).
     expect(leaf?.text).toBe(
-      `---\nid: notion:${LEAF_ID}\ntitle: Leaf\n---\n\nA page with no children. One paragraph, nothing else.\n`,
+      `---\nid: notion:${LEAF_ID}\ntitle: Leaf\nurl: https://www.notion.so/${LEAF_ID}\n---\n\n` +
+        'A page with no children. One paragraph, nothing else.\n',
     );
     expect(parseDocument(leaf?.text ?? '').frontmatter).toEqual({
       id: { source: 'notion', id: LEAF_ID },

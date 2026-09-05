@@ -7,6 +7,7 @@ import {
   parseSourceRefOrUrl,
   type SourceRef,
   sourceRefEquals,
+  sourceUrl,
 } from './source-ref.js';
 
 /** A canonical Notion id, and the same id in the forms people paste. */
@@ -221,5 +222,48 @@ describe('sourceRefEquals', () => {
     expect(sourceRefEquals({ source: 'notion', id: NID }, { source: 'notion', id: OTHER })).toBe(
       false,
     );
+  });
+});
+
+describe('sourceUrl', () => {
+  it('a Notion page, without a workspace slug', () => {
+    // The slug is decoration: Notion redirects a bare id to the real URL.
+    expect(sourceUrl({ source: 'notion', id: NID })).toBe(`https://www.notion.so/${NID}`);
+  });
+
+  it('every Google kind, by the mime type Drive reports', () => {
+    const url = (mimeType: string) => sourceUrl({ source: 'gdocs', id: GID }, mimeType);
+    expect(url('application/vnd.google-apps.document')).toBe(
+      `https://docs.google.com/document/d/${GID}/edit`,
+    );
+    expect(url('application/vnd.google-apps.spreadsheet')).toBe(
+      `https://docs.google.com/spreadsheets/d/${GID}/edit`,
+    );
+    expect(url('application/vnd.google-apps.presentation')).toBe(
+      `https://docs.google.com/presentation/d/${GID}/edit`,
+    );
+    expect(url('application/vnd.google-apps.drawing')).toBe(
+      `https://docs.google.com/drawings/d/${GID}/edit`,
+    );
+    expect(url('application/vnd.google-apps.folder')).toBe(
+      `https://drive.google.com/drive/folders/${GID}`,
+    );
+    // Anything else Drive holds is a file, and an unnamed type is one too.
+    expect(url('application/pdf')).toBe(`https://drive.google.com/file/d/${GID}/view`);
+    expect(sourceUrl({ source: 'gdocs', id: GID })).toBe(
+      `https://drive.google.com/file/d/${GID}/view`,
+    );
+  });
+
+  it('answers a URL that parses back to the ref it came from', () => {
+    for (const [ref, mimeType] of [
+      [{ source: 'notion', id: NID }, undefined],
+      [{ source: 'gdocs', id: GID }, 'application/vnd.google-apps.document'],
+      [{ source: 'gdocs', id: GID }, 'application/vnd.google-apps.spreadsheet'],
+      [{ source: 'gdocs', id: GID }, 'application/vnd.google-apps.folder'],
+      [{ source: 'gdocs', id: GID }, 'application/pdf'],
+    ] as [SourceRef, string | undefined][]) {
+      expect(parseSourceRefOrUrl(sourceUrl(ref, mimeType))).toEqual(ref);
+    }
   });
 });
