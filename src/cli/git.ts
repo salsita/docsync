@@ -25,6 +25,13 @@ export interface RunOptions {
   relay?: boolean;
   /** Run in this directory instead of the runner's own. */
   cwd?: string;
+  /**
+   * The environment of this one run, in place of the runner's. It is how
+   * `docsync fetch --all` reaches the helper (MANUAL §5, §7): git hands its
+   * own environment to the helper it spawns, and no run but the one that asked
+   * for it carries the variable.
+   */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface GitRunner {
@@ -76,7 +83,7 @@ export function createGitRunner(options: GitRunnerOptions): GitRunner {
     return new Promise((resolve, reject) => {
       const child = spawn(binary, [...args], {
         cwd: run.cwd ?? options.cwd,
-        env: options.env ?? process.env,
+        env: run.env ?? options.env ?? process.env,
         // stdin is the user's: git may want to open an editor or ask a question.
         stdio: ['inherit', 'pipe', 'pipe'],
       });

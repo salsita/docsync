@@ -70,6 +70,27 @@ describe('formatFetchReport', () => {
     expect(out).toBe('a.md  by u-42  2026-09-03 10:00');
   });
 
+  it('marks a document the converter re-rendered rather than the source (§7)', () => {
+    const out = formatFetchReport(
+      fetched({
+        changed: [
+          { path: 'Specs/Auth.md', lastEditedTime: '2026-09-03T10:00:00Z', editor: ADA },
+          {
+            path: 'Specs/Old.md',
+            lastEditedTime: '2025-01-04T08:00:00Z',
+            editor: ADA,
+            reRendered: true,
+          },
+        ],
+      }),
+    );
+
+    expect(out.split('\n')).toEqual([
+      'Specs/Auth.md  by Ada Lovelace  2026-09-03 10:00',
+      'Specs/Old.md   by Ada Lovelace  2025-01-04 08:00  (re-rendered)',
+    ]);
+  });
+
   it('says when nothing moved at the source', () => {
     expect(formatFetchReport(fetched())).toBe('No documents changed at the source.');
   });
@@ -285,8 +306,8 @@ describe('COMMAND_REFERENCE', () => {
         'docsync add     <src>[=<path>]... [--no-fetch]',
         'docsync remove  <path>...',
         'docsync status',
-        'docsync fetch',
-        'docsync pull',
+        'docsync fetch   [--all]',
+        'docsync pull    [--all]',
         'docsync push',
         'docsync resolve <src>',
         'docsync auth    <source> [--logout]',

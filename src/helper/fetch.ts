@@ -9,6 +9,13 @@
  * editor at their edit time, committed by docsync now, with one line per
  * changed path. Nothing here touches a ref or the working tree; that is the
  * caller's.
+ *
+ * A re-fetch (`all`, from `docsync fetch --all`) downloads and converts every
+ * document again. Nothing else about this file changes: the blobs are hashed
+ * and compared as always, so a document that came out as it already is makes
+ * no change, and a run where none of them did makes no commit. What it does
+ * change is who signs the commit — a re-render is docsync's doing, not the
+ * last editor's (MANUAL §7).
  */
 import type { CredentialProvider } from '../auth/index.js';
 import { isSidecarPath, sameButForFetched } from '../comments/format.js';
@@ -33,6 +40,12 @@ export interface FetchDeps {
    * (ticket 10). Absent in a test that does not care.
    */
   report?: ReportWriter;
+  /**
+   * A re-fetch: every document under every root is downloaded and converted
+   * again, and the commit holds whatever came out differently (MANUAL §7).
+   * `docsync fetch --all` asks for it through `DOCSYNC_FETCH_ALL`.
+   */
+  all?: boolean;
 }
 
 export interface FetchOutcome {
@@ -78,23 +91,39 @@ export async function fetchCommit(
     // summary below, so `--quiet` silences both (MANUAL §7, §9).
     const result = await source.fetchRoot(root, deps.provider, previousIndex, {
       progress: deps.log,
+      ...(deps.all === true ? { all: true } : {}),
     });
     const changed = result.files.filter((file) => file.changed && file.entry !== undefined).length;
     deps.log(`${root.src.source}: ${changed === 0 ? 'unchanged' : `${changed} changed`}`);
 
     for (const file of result.files) {
-      files.set(file.path, { sha: await blobFor(git, file, previousTree) });
+      const sha = await blobFor(git, file, previousTree);
+      files.set(file.path, { sha });
       // A comment sidecar is a file of the commit and not a document of the
       // checkout: it has no entry, no editor and no last-edit time (MANUAL §6).
       const entry = file.entry;
       if (!file.changed || entry === undefined) continue;
+      // A re-fetch downloads a document the source never moved (MANUAL §7), so
+      // there the bytes decide: one that came out as it already is is nothing
+      // to report. A plain fetch has no such files and reports what moved.
+      const movedAtSource = file.sourceChanged ?? file.changed;
+      if (!movedAtSource && previousTree.get(file.path)?.sha === sha) continue;
       changedDocuments.push({
         path: file.path,
         lastEditedTime: entry.lastEditedTime,
         ...(file.editor === undefined ? {} : { editor: file.editor }),
+        // The source stood still and the conversion did not: this is docsync's
+        // own doing, and the report says so rather than blaming the editor.
+        ...(movedAtSource ? {} : { reRendered: true }),
       });
       const dated = { ...file, entry };
-      if (file.editor !== undefined && (latest === undefined || after(dated, latest))) {
+      // Only a real edit at the source can author the commit; a re-render is
+      // nobody's edit, and `authorOf` falls back to docsync.
+      if (
+        movedAtSource &&
+        file.editor !== undefined &&
+        (latest === undefined || after(dated, latest))
+      ) {
         latest = dated;
       }
     }

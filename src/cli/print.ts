@@ -17,8 +17,8 @@ export const COMMAND_REFERENCE = [
   'docsync add     <src>[=<path>]... [--no-fetch]',
   'docsync remove  <path>...',
   'docsync status',
-  'docsync fetch',
-  'docsync pull',
+  'docsync fetch   [--all]',
+  'docsync pull    [--all]',
   'docsync push',
   'docsync resolve <src>',
   'docsync auth    <source> [--logout]',
@@ -83,7 +83,15 @@ export function formatFetchReport(report: FetchReport | undefined): string {
     report.changed.length === 0
       ? [NOTHING]
       : columns(
-          report.changed.map((one) => [one.path, editorName(one), formatTime(one.lastEditedTime)]),
+          report.changed.map((one) => [
+            one.path,
+            editorName(one),
+            formatTime(one.lastEditedTime),
+            // Nobody edited it: the conversion changed and a re-fetch picked
+            // it up, so the editor and the time beside it are older news than
+            // the change itself (MANUAL §7).
+            ...(one.reRendered === true ? ['(re-rendered)'] : []),
+          ]),
         );
   return [...changed, ...skippedBlock(report.skipped)].join('\n');
 }

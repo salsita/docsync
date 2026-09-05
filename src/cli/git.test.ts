@@ -63,6 +63,17 @@ describe('the git runner', () => {
     expect(err.join('')).toContain('no-such-branch');
   });
 
+  it('adds to the environment of one run and no other', async () => {
+    git = runner();
+    const named = await git.run(['var', 'GIT_AUTHOR_IDENT'], {
+      env: { ...process.env, GIT_AUTHOR_NAME: 'Re Fetch', GIT_AUTHOR_EMAIL: 'all@example.com' },
+    });
+
+    expect(named.stdout).toContain('Re Fetch <all@example.com>');
+    // The runner's own environment is what every other call gets.
+    expect((await git.run(['var', 'GIT_AUTHOR_IDENT'])).stdout).not.toContain('Re Fetch');
+  });
+
   it('throws with git’s message when the command had to work', async () => {
     git = runner();
 

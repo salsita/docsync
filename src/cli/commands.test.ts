@@ -15,6 +15,7 @@ import {
   emptyState,
   type FakeState,
   fakeId,
+  rewriteObject,
 } from '../helper/fake-source.mock.js';
 import { createWorld, type World } from './harness.mock.js';
 
@@ -318,6 +319,56 @@ describe.skipIf(process.platform === 'win32')(
       expect(run.code).toBe(0);
       expect(run.out).toContain('Product Specs/Auth.md  by Ada Lovelace');
       expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in twice.');
+    });
+
+    it('pull --all re-renders a document the source never touched', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      // A converter fix: the same page comes out differently, and nothing at
+      // the source moved (MANUAL §7).
+      const state = w.store.load();
+      rewriteObject(state, AUTH, { body: 'Log in **first**.\n' });
+      w.store.save(state);
+
+      // The variable is set for the one git run that asks for it, so a plain
+      // pull is the fetch it always was.
+      const plain = await w.run(co, 'pull');
+      expect(plain.out).toContain('No documents changed at the source.');
+      expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in.');
+
+      const run = await w.run(co, 'pull', '--all');
+
+      expect(run.code).toBe(0);
+      expect(run.out).toContain('Product Specs/Auth.md');
+      expect(run.out).toContain('(re-rendered)');
+      expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in **first**.');
+      // Nobody edited anything, so the commit is docsync's own (MANUAL §7).
+      expect(w.git(co, 'log', '-1', '--format=%an <%ae>', 'origin/main')).toBe(
+        'docsync <docsync@salsita.com>',
+      );
+    });
+
+    it('fetch --all commits nothing when every document comes out as it is', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      const before = w.git(co, 'rev-parse', 'origin/main');
+
+      const run = await w.run(co, 'fetch', '--all');
+
+      expect(run.code).toBe(0);
+      expect(run.out).toContain('No documents changed at the source.');
+      expect(w.git(co, 'rev-parse', 'origin/main')).toBe(before);
+      // Every document was downloaded, so every one was counted (ticket 24).
+      expect(run.err).toContain('1 Product Specs.md');
+      expect(run.err).toContain('2 Product Specs/Auth.md');
+    });
+
+    it('names --all in the help of fetch and pull', async () => {
+      const w = world();
+
+      expect((await w.run(w.dir, 'fetch', '--help')).out).toContain('--all');
+      expect((await w.run(w.dir, 'pull', '--help')).out).toContain('--all');
+      expect((await w.run(w.dir, '--help')).out).toContain('docsync fetch   [--all]');
     });
 
     it('pull relays the progress the helper printed while it ran', async () => {

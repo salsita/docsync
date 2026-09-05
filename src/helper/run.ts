@@ -28,6 +28,16 @@ export const BRANCH = 'refs/heads/main';
 
 export const URL_PREFIX = 'docsync::';
 
+/**
+ * How `docsync fetch --all` reaches the helper (MANUAL §5, §7).
+ *
+ * Git's protocol has no option that could carry it, but git hands the helper
+ * its own environment: the CLI sets this on the one git run the user asked for
+ * and the helper reads it at startup. A plain `git fetch` never sets it, so a
+ * re-fetch only ever happens because someone typed the flag.
+ */
+export const FETCH_ALL_ENV = 'DOCSYNC_FETCH_ALL';
+
 export interface HelperOptions {
   /** `[<remote>, <url>]`, as git passes them after the program name. */
   argv: readonly string[];
@@ -105,6 +115,8 @@ export function createCommands(options: HelperOptions): Commands {
     now: options.now ?? (() => new Date()),
     // What `docsync fetch`, `pull` and `push` print afterwards (ticket 10).
     report: options.report ?? createReportWriter(gitDir),
+    // Every document again, because the user asked for it (MANUAL §7).
+    ...((options.env[FETCH_ALL_ENV] ?? '') === '' ? {} : { all: true }),
   };
 
   let manifest: Promise<Manifest> | undefined;

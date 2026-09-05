@@ -20,9 +20,9 @@ import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
 import { isUnderRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import type {
-  ProgressOptions,
   SourceDescription,
   FetchedFile as SourceFetchedFile,
+  FetchOptions as SourceFetchOptions,
   FetchResult as SourceFetchResult,
 } from '../source.js';
 import type { SourceRef } from '../source-ref.js';
@@ -44,7 +44,7 @@ export interface FetchResult extends SourceFetchResult {
   skipped: SkippedObject[];
 }
 
-export interface FetchOptions extends ProgressOptions {
+export interface FetchOptions extends SourceFetchOptions {
   /** The API to use. Tests pass a fixture-backed one; a fetch passes nothing. */
   api?: GDriveApi;
   /** Handed to the real API when one is built. Tests of that path pass it. */
@@ -95,20 +95,27 @@ export async function fetchRoot(
   const files: FetchedFile[] = [];
   const fetched = stamp(options.now?.() ?? new Date());
   const comments = root.comments === true;
+  // A re-fetch downloads every document again, whatever Drive's metadata says
+  // (MANUAL §7), so every one of them is counted.
+  const all = options.all === true;
   // Only changed documents are downloaded, so only they are counted; the walk
   // is over, so the total is known before the first one is named.
-  const total = walked.files.filter((file) => hasChanged(file, before.get(file.id))).length;
+  const total = all
+    ? walked.files.length
+    : walked.files.filter((file) => hasChanged(file, before.get(file.id))).length;
   let done = 0;
 
   for (const file of walked.files) {
     refuseSidecar(file.path);
-    if (hasChanged(file, before.get(file.id))) progress(`${++done}/${total} ${file.path}`);
+    if (all || hasChanged(file, before.get(file.id))) progress(`${++done}/${total} ${file.path}`);
     // On a root with comments a Doc's threads are read whether it moved or
     // not, and that is the slow half of such a fetch (MANUAL §6, §7).
     if (comments && file.kind === 'doc') progress(`comments ${file.path}`);
     // Comments are opt-in per root, because reading them costs a request per
     // document on every fetch (MANUAL §4, §7).
-    files.push(...(await toFiles(file, api, before.get(file.id), fetched, comments, previous)));
+    files.push(
+      ...(await toFiles(file, api, before.get(file.id), fetched, comments, previous, all)),
+    );
   }
 
   return {
@@ -249,6 +256,7 @@ async function toFiles(
   fetched: string,
   comments: boolean,
   index: ReadonlyMap<string, IndexEntry>,
+  all: boolean,
 ): Promise<FetchedFile[]> {
   const entry: IndexEntry = {
     path: file.path,
@@ -259,11 +267,15 @@ async function toFiles(
     ...(file.kind === 'export' ? { readOnly: true } : {}),
     ...(file.md5Checksum === undefined ? {} : { md5: file.md5Checksum }),
   };
-  const changed = hasChanged(file, previous);
+  const moved = hasChanged(file, previous);
+  // Under `--all` everything is downloaded and converted again; what came out
+  // differently is for the caller's blob comparison to say (MANUAL §7).
+  const changed = all || moved;
 
   const common = {
     path: file.path,
     changed,
+    ...(all ? { sourceChanged: moved } : {}),
     ...(editorOf(file.lastModifyingUser) === undefined
       ? {}
       : { editor: editorOf(file.lastModifyingUser) }),

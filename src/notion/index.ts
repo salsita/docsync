@@ -14,9 +14,9 @@ import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
 import { isUnderRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import type {
-  ProgressOptions,
   SourceDescription,
   FetchedFile as SourceFetchedFile,
+  FetchOptions as SourceFetchOptions,
   FetchResult as SourceFetchResult,
 } from '../source.js';
 import type { SourceRef } from '../source-ref.js';
@@ -39,7 +39,7 @@ export interface FetchResult extends SourceFetchResult {
   skipped: SkippedObject[];
 }
 
-export interface FetchOptions extends ProgressOptions {
+export interface FetchOptions extends SourceFetchOptions {
   /** The API to use. Tests pass a fixture-backed one; a fetch passes nothing. */
   api?: NotionApi;
   /** What a comment sidecar's `fetched:` is stamped with. Default: now. */
@@ -93,20 +93,23 @@ async function fetchWith(
   const files: FetchedFile[] = [];
   const fetched = `${(options.now?.() ?? new Date()).toISOString().slice(0, 19)}Z`;
   const comments = root.comments === true;
+  // A re-fetch converts every page again, whatever its time says (MANUAL §7).
+  const all = options.all === true;
   // Notion has no "list the child pages" call: the tree is discovered as it is
   // walked, so a page can be numbered but there is no total to count against.
   let done = 0;
 
   for (const page of walked.pages) {
     refuseSidecar(page.path);
-    if (times.get(page.id) !== page.lastEditedTime) progress(`${++done} ${page.path}`);
+    // Under `--all` every page is converted, so every one is counted.
+    if (all || times.get(page.id) !== page.lastEditedTime) progress(`${++done} ${page.path}`);
     // Every page's threads are read whether it moved or not, one request per
     // block, which is the whole cost of such a fetch (MANUAL §6, §7).
     if (comments) progress(`comments ${page.path}`);
     // Comments are opt-in per root, because reading them costs one request per
     // block of every page on every fetch (MANUAL §4, §7).
     files.push(
-      ...(await toFiles(page, api, pages, times.get(page.id), fetched, comments, previous)),
+      ...(await toFiles(page, api, pages, times.get(page.id), fetched, comments, previous, all)),
     );
   }
 
@@ -144,10 +147,11 @@ async function toFiles(
   fetched: string,
   comments: boolean,
   previous: ReadonlyMap<string, IndexEntry>,
+  all: boolean,
 ): Promise<FetchedFile[]> {
   // The files this page hosts itself go on disk beside it and are linked from
   // the body, so the body cannot be written before they have names (§12).
-  const assets = await fetchPageAssets(api, page, previous);
+  const assets = await fetchPageAssets(api, page, previous, { all });
   const body = blocksToMarkdown(page.blocks, { pages, from: page.path, assets: assets.links });
   const entry: IndexEntry = {
     path: page.path,
@@ -162,7 +166,10 @@ async function toFiles(
     body,
     entry,
     editor: await editorOf(page, api),
-    changed: previousTime !== page.lastEditedTime,
+    // Every page is converted again under `--all`; whether the bytes came out
+    // differently is for the caller's blob comparison to say (MANUAL §7).
+    changed: all || previousTime !== page.lastEditedTime,
+    ...(all ? { sourceChanged: previousTime !== page.lastEditedTime } : {}),
   };
 
   // An asset is a file of the commit and a document of the index in its own
@@ -175,7 +182,7 @@ async function toFiles(
 
   // A comment moves nothing the walk can see, so every page's threads are read
   // on every fetch, changed or not (MANUAL §6).
-  const threads = await pageThreads(api, page.id, page.blocks, body);
+  const threads = await pageThreads(api, page.id, page.blocks, body, { pages, from: page.path });
   if (threads.length === 0) return [file, ...own];
   return [
     file,

@@ -9,6 +9,7 @@ import {
   emptyState,
   type FakeState,
   fakeId,
+  rewriteObject,
 } from './fake-source.mock.js';
 import { COMMITTER, type FetchDeps, fetchCommit } from './fetch.js';
 import { INDEX_PATH, parseIndex } from './index-file.js';
@@ -295,6 +296,113 @@ describe('fetchCommit', () => {
 
     expect(second.changed).toBe(false);
     expect(reports).toEqual([{ at: '2026-04-01T00:00:00.000Z', changed: [], skipped: [] }]);
+  });
+
+  describe('a re-fetch (MANUAL §7, `--all`)', () => {
+    /** The same deps, with every document downloaded and converted again. */
+    const everything = (): FetchDeps => ({ ...deps, all: true });
+
+    it('rewrites a document whose conversion came out differently', async () => {
+      reset();
+      const first = await fetchCommit(deps, manifest, undefined);
+      // A converter fix: the body differs, the source never moved.
+      const state = store.load();
+      rewriteObject(state, fakeId('notion', 2), { body: 'Log in **first**.\n' });
+      store.save(state);
+
+      // A plain fetch cannot see it: nothing at the source moved.
+      expect(await fetchCommit(deps, manifest, first.commit)).toMatchObject({ changed: false });
+
+      const second = await fetchCommit(everything(), manifest, first.commit);
+
+      expect(second.changed).toBe(true);
+      expect((await repo.git.diffTree(first.commit, second.commit)).map((one) => one.path)).toEqual(
+        ['Specs/Auth.md'],
+      );
+      const tree = await readTree(repo.git, second.commit);
+      expect((await repo.git.catBlob(tree.get('Specs/Auth.md')?.sha ?? '')).toString()).toContain(
+        'Log in **first**.\n',
+      );
+    });
+
+    it('is authored by docsync, dated now, when only the conversion moved', async () => {
+      reset();
+      const first = await fetchCommit(deps, manifest, undefined);
+      const state = store.load();
+      rewriteObject(state, fakeId('notion', 2), { body: 'Log in **first**.\n' });
+      store.save(state);
+
+      const second = await fetchCommit(everything(), manifest, first.commit);
+
+      // Not Ada: she edited the page a fetch ago, and this commit is not hers.
+      expect(await repo.git.text(['log', '-1', '--format=%an|%ae|%at|%B', second.commit])).toBe(
+        `${COMMITTER.name}|${COMMITTER.email}|${Date.parse('2026-04-01T00:00:00Z') / 1000}|` +
+          'Update 1 document\n\nSpecs/Auth.md\n',
+      );
+    });
+
+    it('credits the editor when a document really did change in the same run', async () => {
+      reset();
+      const first = await fetchCommit(deps, manifest, undefined);
+      const state = store.load();
+      rewriteObject(state, fakeId('notion', 2), { body: 'Log in **first**.\n' });
+      editObject(state, NOTION_ROOT, { body: 'The root page, edited.\n', editor: ADA });
+      store.save(state);
+
+      const second = await fetchCommit(everything(), manifest, first.commit);
+
+      expect(await repo.git.text(['log', '-1', '--format=%an <%ae>', second.commit])).toBe(
+        'Ada Lovelace <ada@example.com>',
+      );
+    });
+
+    it('commits nothing when every document comes out as it already is', async () => {
+      reset();
+      const first = await fetchCommit(deps, manifest, undefined);
+      logged = [];
+
+      const second = await fetchCommit(everything(), manifest, first.commit);
+
+      expect(second).toMatchObject({ commit: first.commit, changed: false });
+      expect(second.report.changed).toEqual([]);
+      // Every document was downloaded, so every one is counted (ticket 24).
+      expect(logged).toEqual([
+        'listing Specs.md',
+        '1 Specs.md',
+        '2 Specs/Auth.md',
+        'notion: 2 changed',
+        'listing Contracts/',
+        '1/1 Contracts/logo.png',
+        'gdocs: 1 changed',
+      ]);
+    });
+
+    it('marks a re-rendered document in the report and leaves the unmoved out', async () => {
+      reset();
+      const first = await fetchCommit(deps, manifest, undefined);
+      const state = store.load();
+      rewriteObject(state, fakeId('notion', 2), { body: 'Log in **first**.\n' });
+      editObject(state, NOTION_ROOT, { body: 'The root page, edited.\n', editor: ADA });
+      store.save(state);
+
+      const { report } = await fetchCommit(everything(), manifest, first.commit);
+
+      // The logo came down again and is byte for byte what it was, so it is
+      // not a change; the page nobody edited is one, and says why.
+      expect(report.changed).toEqual([
+        {
+          path: 'Specs.md',
+          lastEditedTime: store.load().objects[NOTION_ROOT]?.lastEditedTime,
+          editor: ADA,
+        },
+        {
+          path: 'Specs/Auth.md',
+          lastEditedTime: store.load().objects[fakeId('notion', 2)]?.lastEditedTime,
+          editor: ADA,
+          reRendered: true,
+        },
+      ]);
+    });
   });
 
   describe('the comment sidecar (MANUAL §6)', () => {

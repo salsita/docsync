@@ -30,6 +30,12 @@ export interface FetchedDocument {
   /** The source's last-edit time, ISO 8601, as the source reported it. */
   lastEditedTime: string;
   editor?: Editor;
+  /**
+   * The document changed because the conversion did, not because anyone edited
+   * it. Only a re-fetch (`--all`) produces one, and the printed report marks it
+   * `(re-rendered)` so that a converter fix is not read as an edit (MANUAL §7).
+   */
+  reRendered?: boolean;
 }
 
 /** What the last fetch did, for `docsync fetch` and `docsync pull` to print. */

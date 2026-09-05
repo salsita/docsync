@@ -116,6 +116,72 @@ describe('fetchRoot', () => {
     expect(second.files.every((file) => file.bytes === undefined)).toBe(true);
   });
 
+  describe('a re-fetch (MANUAL §7, `--all`)', () => {
+    const everything = { ...options, all: true };
+
+    /** The index a fetch that has already happened left behind. */
+    async function indexOfFirst(): Promise<Map<string, IndexEntry>> {
+      const first = await fetchRoot(root, provider, new Map(), options);
+      return new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+    }
+
+    it('downloads every document again, whatever its modified time says', async () => {
+      const previous = await indexOfFirst();
+
+      const second = await fetchRoot(root, provider, previous, everything);
+      const docs = documents(second.files).filter((file) => file.entry.type === 'gdoc');
+
+      expect(docs.every((file) => file.changed)).toBe(true);
+      expect(docs.every((file) => file.text !== undefined)).toBe(true);
+      // Drive did not move; only the conversion may have (MANUAL §7).
+      expect(docs.every((file) => file.sourceChanged === false)).toBe(true);
+      // A binary comes down again too, bytes and all.
+      expect(second.files.find((file) => file.path === 'drive/plain.txt')?.bytes).toBeDefined();
+    });
+
+    it('compares a re-downloaded image by its checksum', async () => {
+      const previous = await indexOfFirst();
+
+      const second = await fetchRoot(root, provider, previous, everything);
+      const assets = second.files.filter((file) => file.entry?.type === 'asset');
+
+      expect(assets).toHaveLength(1);
+      // The same bytes in the same place is the same file (MANUAL §12).
+      expect(assets[0]?.changed).toBe(false);
+    });
+
+    it('still says which documents Drive itself moved', async () => {
+      const previous = await indexOfFirst();
+      previous.set(
+        'drive/Elements.md',
+        entry({ path: 'drive/Elements.md', src: { source: 'gdocs', id: ELEMENTS } }),
+      );
+
+      const second = await fetchRoot(root, provider, previous, everything);
+
+      expect(
+        documents(second.files)
+          .filter((file) => file.sourceChanged === true)
+          .map((file) => file.path),
+      ).toEqual(['drive/Elements.md']);
+    });
+
+    it('numbers every document against the whole root', async () => {
+      const previous = await indexOfFirst();
+      const lines: string[] = [];
+
+      const second = await fetchRoot(root, provider, previous, {
+        ...everything,
+        progress: (line) => lines.push(line),
+      });
+      const total = documents(second.files).filter((file) => file.entry.type !== 'asset').length;
+
+      expect(lines[0]).toBe('listing drive/');
+      expect(lines[1]?.startsWith(`1/${total} `)).toBe(true);
+      expect(lines).toHaveLength(total + 1);
+    });
+  });
+
   it('sees a document whose modified time moved on', async () => {
     const first = await fetchRoot(root, provider, new Map(), options);
     const previous = new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));

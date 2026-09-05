@@ -150,6 +150,71 @@ describe('fetchRoot', () => {
     expect(files.every((file) => file.changed)).toBe(false);
   });
 
+  describe('a re-fetch (MANUAL §7, `--all`)', () => {
+    /** Every page of the root, downloaded and converted again. */
+    async function refetch(previous: Map<string, IndexEntry>) {
+      return fetchRoot(root, provider, previous, { api: fixtureApi(), all: true });
+    }
+
+    it('downloads and converts a page whose last-edit time never moved', async () => {
+      const first = await fetch();
+      const previous = new Map(first.entries.map((one) => [one.path, one]));
+
+      const { files } = await refetch(previous);
+      const pages = documents(files).filter((file) => file.entry.type === 'notion-page');
+
+      expect(pages).toHaveLength(documents(first.files).filter((f) => f.text !== undefined).length);
+      expect(pages.every((file) => file.changed)).toBe(true);
+      expect(pages.every((file) => file.text !== undefined)).toBe(true);
+      // The source did not move; only the conversion may have (MANUAL §7).
+      expect(pages.every((file) => file.sourceChanged === false)).toBe(true);
+    });
+
+    it('compares a re-downloaded asset by its bytes, not by the block time', async () => {
+      const first = await fetch();
+      const previous = new Map(first.entries.map((one) => [one.path, one]));
+
+      const { files } = await refetch(previous);
+      const assets = files.filter((file) => file.entry?.type === 'asset');
+
+      expect(assets.length).toBeGreaterThan(0);
+      // The bytes are the ones already checked out, so nothing changed.
+      expect(assets.every((file) => file.changed)).toBe(false);
+    });
+
+    it('still calls a page changed at the source when its time did move', async () => {
+      const first = await fetch();
+      const previous = new Map(first.entries.map((one) => [one.path, one]));
+      const stale = previous.get('Docsync test/Leaf.md');
+      if (stale) previous.set(stale.path, { ...stale, lastEditedTime: '2000-01-01T00:00:00.000Z' });
+
+      const { files } = await refetch(previous);
+
+      expect(
+        documents(files)
+          .filter((file) => file.sourceChanged === true)
+          .map((file) => file.path),
+      ).toEqual(['Docsync test/Leaf.md']);
+    });
+
+    it('numbers every page it downloads', async () => {
+      const first = await fetch();
+      const previous = new Map(first.entries.map((one) => [one.path, one]));
+      const lines: string[] = [];
+
+      await fetchRoot(root, provider, previous, {
+        api: fixtureApi(),
+        all: true,
+        progress: (line) => lines.push(line),
+      });
+
+      expect(lines[0]).toBe('listing Docsync test.md');
+      expect(lines).toHaveLength(
+        documents(first.files).filter((f) => f.text !== undefined).length + 1,
+      );
+    });
+  });
+
   it('marks only the page whose time moved', async () => {
     const first = await fetch();
     const previous = new Map(first.entries.map((one) => [one.path, one]));

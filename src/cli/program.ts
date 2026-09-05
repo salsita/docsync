@@ -92,15 +92,22 @@ export function buildProgram(context: Context, exit: (code: number) => void): Co
     )
     .action(() => run(() => status(context)));
 
+  // One flag on both commands: every document under every root is downloaded
+  // and converted again, and the fetch commit holds whatever came out
+  // differently (MANUAL §5, §7).
+  const ALL = 'Fetch every document again, whatever its last-edit time says.';
+
   program
     .command('fetch')
     .description('Print which documents changed at the source and who changed them.')
-    .action(() => run(() => fetch(context)));
+    .option('--all', ALL)
+    .action((options: { all?: boolean }) => run(() => fetch(context, { all: options.all })));
 
   program
     .command('pull')
     .description('Print which documents changed at the source and who changed them.')
-    .action(() => run(() => pull(context)));
+    .option('--all', ALL)
+    .action((options: { all?: boolean }) => run(() => pull(context, { all: options.all })));
 
   program
     .command('push')

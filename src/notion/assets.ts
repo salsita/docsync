@@ -10,7 +10,9 @@
  *
  * What it never does is download something it already has. A block carries a
  * `last_edited_time`; if it has not moved and the index already names the file,
- * nothing goes on the wire (MANUAL §7).
+ * nothing goes on the wire (MANUAL §7). A re-fetch (`--all`) is the exception:
+ * there every file comes down again and the checksum, not the time, says
+ * whether it is a change.
  */
 import { type AssetHint, assignAssetNames, checksumOf, mimeTypeOf } from '../assets.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
@@ -94,6 +96,7 @@ export async function fetchPageAssets(
   api: NotionApi,
   page: { path: string; blocks: readonly NotionBlock[] },
   previous: DocumentIndex,
+  options: { all?: boolean } = {},
 ): Promise<PageAssets> {
   const blocks = hostedBlocks(page.blocks);
   if (blocks.length === 0) return { files: [], links: new Map() };
@@ -125,27 +128,29 @@ export async function fetchPageAssets(
     // The block's time is what says the file moved; its URL says nothing,
     // because Notion signs a new one every hour (MANUAL §12 phase 2). A file
     // that changed place has to be written again wherever it landed.
-    const changed = was === undefined || was.path !== path || was.lastEditedTime !== lastEditedTime;
+    const moved = was === undefined || was.path !== path || was.lastEditedTime !== lastEditedTime;
 
-    if (!changed) {
+    // A re-fetch downloads every file again and compares the bytes, which is
+    // what lets a change of name scheme land (MANUAL §7).
+    if (!moved && options.all !== true) {
       files.push({ path, entry: { ...was, path }, changed: false });
       links.set(id, path);
       continue;
     }
     const bytes = await downloadBlockFile(api, block);
-    files.push({
+    const checksum = checksumOf(bytes);
+    const changed = moved || was === undefined || was.checksum !== checksum;
+    const entry: IndexEntry = {
       path,
-      bytes,
-      entry: {
-        path,
-        src: { source: 'notion', id },
-        type: 'asset',
-        lastEditedTime,
-        document: page.path,
-        checksum: checksumOf(bytes),
-      },
-      changed: true,
-    });
+      src: { source: 'notion', id },
+      type: 'asset',
+      lastEditedTime,
+      document: page.path,
+      checksum,
+    };
+    // The same bytes in the same place is the same file: the commit keeps the
+    // blob it has, and the diff stays quiet.
+    files.push(changed ? { path, bytes, entry, changed: true } : { path, entry, changed: false });
     links.set(id, path);
   }
   return { files, links };

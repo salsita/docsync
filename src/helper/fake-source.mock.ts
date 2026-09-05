@@ -24,6 +24,7 @@ import { stringifyMarkdown } from '../markdown.js';
 import { PushError } from '../push-types.js';
 import type {
   FetchedFile,
+  FetchOptions,
   FetchResult,
   FileChange,
   ProgressOptions,
@@ -148,6 +149,17 @@ export function editObject(state: FakeState, id: string, patch: Partial<FakeObje
   Object.assign(object, patch, { lastEditedTime: timeAt(state.clock) });
 }
 
+/**
+ * Changes what a document comes out as without moving its last-edit time: what
+ * a fix to the converter does to a document nobody touched (MANUAL §7, the
+ * `--all` fetch). A plain fetch cannot see this; only a re-fetch can.
+ */
+export function rewriteObject(state: FakeState, id: string, patch: Partial<FakeObject>): void {
+  const object = state.objects[id];
+  if (object === undefined) throw new Error(`no fake object ${id}`);
+  Object.assign(object, patch);
+}
+
 function md5(bytes: Uint8Array): string {
   return createHash('md5').update(bytes).digest('hex');
 }
@@ -205,7 +217,7 @@ export function createFakeSource(store: FakeStore): Source {
     root: Root,
     provider: CredentialProvider,
     previous: DocumentIndex,
-    options: ProgressOptions = {},
+    options: FetchOptions = {},
   ): Promise<FetchResult> {
     await provider.accessToken(root.src.source);
     const state = store.load();
@@ -225,13 +237,16 @@ export function createFakeSource(store: FakeStore): Source {
         before.md5 !== (bytes === undefined ? undefined : md5(bytes))
       );
     };
-    const total = laid.filter(moved).length;
+    // A re-fetch downloads everything, so everything is counted (MANUAL §7).
+    const all = options.all === true;
+    const total = all ? laid.length : laid.filter(moved).length;
     let done = 0;
 
     const files: FetchedFile[] = [];
     for (const one of laid) {
       const [path, object] = one;
-      const changed = moved(one);
+      const sourceChanged = moved(one);
+      const changed = all || sourceChanged;
       if (changed) {
         progress(root.src.source === 'notion' ? `${++done} ${path}` : `${++done}/${total} ${path}`);
       }
@@ -249,6 +264,9 @@ export function createFakeSource(store: FakeStore): Source {
         path,
         entry,
         changed,
+        // Under `--all` everything is downloaded, so what the source itself
+        // moved has to be said separately (MANUAL §7).
+        ...(all ? { sourceChanged } : {}),
         ...(object.editor === undefined ? {} : { editor: object.editor }),
       };
       if (changed) {

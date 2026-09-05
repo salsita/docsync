@@ -51,8 +51,21 @@ export interface FetchedFile {
    * Whether the source's last-edit time — or, for a binary, its checksum —
    * differs from the one in the index the caller passed. A first fetch marks
    * everything changed, and content is present exactly when this is true.
+   *
+   * Under a re-fetch (`all`) every document is downloaded and converted again,
+   * so this is true for all of them and what the commit holds is decided by
+   * the bytes: a blob identical to the one the last commit already has is no
+   * change at all (MANUAL §7).
    */
   changed: boolean;
+  /**
+   * Whether the source itself moved: the last-edit time, or a binary's
+   * checksum. Only a re-fetch sets it, because only there can a file be
+   * downloaded without the source having moved; absent means the same as
+   * `changed`. It is what keeps the attribution of MANUAL §7 truthful — a
+   * commit that exists only because the conversion changed is docsync's own.
+   */
+  sourceChanged?: boolean;
 }
 
 /** Something at the source that is not checked out, so a caller can say so. */
@@ -131,6 +144,17 @@ export interface ProgressOptions {
   progress?: Progress;
 }
 
+/** What a fetch takes on top of that. */
+export interface FetchOptions extends ProgressOptions {
+  /**
+   * Download and convert every document under the root again, whatever its
+   * last-edit time says: `docsync fetch --all` (MANUAL §5, §7). What comes out
+   * byte for byte as it already is is not a change, so a re-fetch of an
+   * unchanged checkout writes no commit.
+   */
+  all?: boolean;
+}
+
 /** What a push did to one document, for the CLI to print. */
 export interface PushedDocument {
   path: string;
@@ -193,7 +217,7 @@ export interface Source {
     root: Root,
     provider: CredentialProvider,
     previous: ReadonlyMap<string, IndexEntry>,
-    options?: ProgressOptions,
+    options?: FetchOptions,
   ): Promise<FetchResult>;
 
   /**
