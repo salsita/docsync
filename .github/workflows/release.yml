@@ -79,7 +79,7 @@ jobs:
       # Every commit on main proves the publish still works, without publishing.
       - name: Publish (dry run)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: npm publish --dry-run
+        run: npm publish --access public --dry-run
 
       - name: Publish to npm
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
