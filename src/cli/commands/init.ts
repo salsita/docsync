@@ -12,7 +12,7 @@ import { join, resolve as resolvePath } from 'node:path';
 import { readFetchReport } from '../../helper/report.js';
 import { serializeManifest } from '../../manifest/index.js';
 import type { Manifest } from '../../manifest/types.js';
-import { SKILL_PATHS } from '../../skill.js';
+import { REFRESHED_EXCLUDES } from '../../skill.js';
 import { CliError, type Context, inDirectory, say, sayBlock } from '../context.js';
 import { formatFetchReport } from '../print.js';
 import { appendRoots, looksLikeSource, parseSpec } from './add.js';
@@ -44,13 +44,14 @@ export const EDITORCONFIG = [
 export const GITATTRIBUTES = '*.assets/** binary\n';
 
 /**
- * What git must not see (MANUAL §5 step 4, §6, §10): the manifest, the three
- * skill files, and the two formatter files. They belong to the checkout, not
- * to the documents, and every one of them is rewritten by docsync itself.
+ * What git must not see (MANUAL §5 step 5, §6, §10): the manifest, the three
+ * skill files, the formatter files, and what an operating system drops into a
+ * directory. The first belong to the checkout, not to the documents, and are
+ * rewritten by docsync itself; the last would otherwise be pushed as assets.
  */
 export const EXCLUDED = [
   MANIFEST_NAME,
-  ...SKILL_PATHS,
+  ...REFRESHED_EXCLUDES,
   '.prettierrc',
   '.editorconfig',
   '.gitattributes',

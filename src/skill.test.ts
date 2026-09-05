@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BUNDLED_SKILL, refreshSkillFiles, SKILL_PATHS } from './skill.js';
+import { BUNDLED_SKILL, REFRESHED_EXCLUDES, refreshSkillFiles, SKILL_PATHS } from './skill.js';
 
 const bundled = readFileSync(BUNDLED_SKILL);
 const [FIRST_SKILL] = SKILL_PATHS;
@@ -85,7 +85,7 @@ describe.skipIf(process.platform === 'win32')('refreshSkillFiles', () => {
     expect(same.map((path) => statSync(path).mtimeMs)).toEqual(before);
   });
 
-  it('appends the three paths to .git/info/exclude, once', async () => {
+  it('appends the three paths and the OS junk names to .git/info/exclude, once', async () => {
     const dir = repo();
     write(join(dir, '.git', 'info', 'exclude'), '# git own comment\nbuild/\n');
 
@@ -94,14 +94,15 @@ describe.skipIf(process.platform === 'win32')('refreshSkillFiles', () => {
 
     const text = excludeOf(dir);
     expect(text).toContain('build/');
-    for (const relative of SKILL_PATHS) {
+    for (const relative of REFRESHED_EXCLUDES) {
       expect(text.split('\n').filter((line) => line === relative)).toHaveLength(1);
     }
+    expect(text).toContain('.DS_Store');
   });
 
   it('leaves an exclude file that already lists the paths untouched', async () => {
     const dir = repo();
-    const already = `${SKILL_PATHS.join('\n')}\n`;
+    const already = `${REFRESHED_EXCLUDES.join('\n')}\n`;
     write(join(dir, '.git', 'info', 'exclude'), already);
 
     await refreshSkillFiles(dir);

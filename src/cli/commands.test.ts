@@ -128,6 +128,8 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.read(co, '.gitattributes')).toBe('*.assets/** binary\n');
       expect(readFileSync(join(co, '.git/info/exclude'), 'utf8')).toContain('.prettierrc');
       expect(readFileSync(join(co, '.git/info/exclude'), 'utf8')).toContain('.gitattributes');
+      expect(readFileSync(join(co, '.git/info/exclude'), 'utf8')).toContain('.DS_Store');
+      expect(readFileSync(join(co, '.git/info/exclude'), 'utf8')).toContain('.gitignore');
       expect(w.git(co, 'status', '--porcelain')).toBe('');
 
       expect(w.git(co, 'remote', 'get-url', 'origin')).toBe('docsync::.docsync.yaml');

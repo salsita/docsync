@@ -231,7 +231,11 @@ Creates a checkout.
 4. `git init -b main`, with `core.autocrlf=false` so line endings are LF
    everywhere.
 5. Adds `.docsync.yaml`, the skill file paths, `.prettierrc`,
-   `.editorconfig` and `.gitattributes` to `.git/info/exclude`.
+   `.editorconfig`, `.gitattributes`, `.gitignore` and the files operating
+   systems drop into directories (`.DS_Store`, `Thumbs.db`, `desktop.ini`) to
+   `.git/info/exclude`, so none of them can be staged and pushed as an asset.
+   A `.gitignore` you write for yourself works untracked; git reads it either
+   way.
 6. Writes the skill file (§10), `.prettierrc` and `.editorconfig` (§6
    "Formatters and editors"), and `.gitattributes` marking `*.assets/**`
    as binary so diffs stay readable.
@@ -872,8 +876,9 @@ the installed version and overwrites them when they differ, so upgrading
 docsync updates every checkout the next time it is touched. Do not edit them;
 your edits will be overwritten. A refresh that cannot write, on a read-only
 checkout say, says so on stderr and never fails the command that ran it. The
-same run adds the three paths to `.git/info/exclude` when they are missing,
-so a checkout made by an older version gets them.
+same run adds the three paths, `.gitignore` and the operating-system junk
+names of §5 step 5 to `.git/info/exclude` when they are missing, so a checkout made by an
+older version gets them.
 
 ### The loop
 

@@ -28,6 +28,20 @@ export const SKILL_PATHS: readonly string[] = [
 ];
 
 /**
+ * What an operating system drops into any directory it shows: never a
+ * document, and under a root a `git add` away from being pushed to a client's
+ * folder as an asset. Excluded next to the skill paths (MANUAL §5 step 5, §10).
+ */
+export const OS_JUNK: readonly string[] = ['.DS_Store', 'Thumbs.db', 'desktop.ini'];
+
+/**
+ * Every line the refresh keeps in `info/exclude`: the skill paths, the OS junk,
+ * and `.gitignore` itself, which is a person's local ignore list in a checkout
+ * and never a document. Git reads it whether or not it is tracked.
+ */
+export const REFRESHED_EXCLUDES: readonly string[] = [...SKILL_PATHS, ...OS_JUNK, '.gitignore'];
+
+/**
  * The file the package ships. Resolved relative to this module, so it is found
  * from `dist/skill.js` and from `src/skill.ts` alike: both sit one directory
  * below the package root, next to `skill/`.
@@ -63,8 +77,8 @@ async function isCurrent(path: string, bundled: Buffer): Promise<boolean> {
 }
 
 /**
- * Adds the three paths to the repository's `info/exclude`, keeping what is
- * there. `init` writes them for a new checkout; this is how a checkout made by
+ * Adds the three skill paths and the OS junk names to the repository's
+ * `info/exclude`, keeping what is there. `init` writes them for a new checkout; this is how a checkout made by
  * an older version gets them.
  *
  * The path comes from git rather than from `<worktree>/.git`, because a linked
@@ -92,7 +106,7 @@ async function excludeSkillPaths(worktree: string): Promise<void> {
     // A repository git made without an `info/exclude`; the file is ours to write.
   }
   const have = new Set(existing.split('\n').map((line) => line.trim()));
-  const missing = SKILL_PATHS.filter((one) => !have.has(one));
+  const missing = REFRESHED_EXCLUDES.filter((one) => !have.has(one));
   if (missing.length === 0) return;
   await mkdir(dirname(path), { recursive: true });
   const head = existing === '' || existing.endsWith('\n') ? existing : `${existing}\n`;
