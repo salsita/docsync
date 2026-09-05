@@ -465,7 +465,9 @@ below.
 
 Inline: bold, italic, strikethrough, code, links as in GFM; italic is
 written `_like this_`, bold `**like this**`. Bold italic nests as `**_like
-this_**`. Table cells are padded by display width, so an emoji or a CJK
+this_**`. An underscore inside a word is written unescaped (`snake_case`,
+`ALUMINUM_FENCE-25.pdf`), since one cannot open emphasis there; elsewhere it
+is escaped. Table cells are padded by display width, so an emoji or a CJK
 ideograph counts as two columns; that is how Prettier measures, and it is
 what keeps a formatted table identical to a fetched one. Underline is `<u>…</u>`. Text and
 background colours are `<span data-color="red">…</span>`. These are preserved
@@ -522,7 +524,7 @@ roman numerals are not represented either.
 | checklist                                     | `- [ ]` / `- [x]`. The Docs API does not report which box is ticked, so every item is fetched as `- [ ]`, and a pushed `- [x]` does not survive the next fetch. A pushed checklist is created as one                                                                                     |
 | table                                         | GFM table. Merged cells are not supported and make the table a placeholder.                           |
 | horizontal rule                               | `---`. The Docs API cannot create one, so a rule is dropped on push and does not survive                                                                                                 |
-| page break                                    | `<!-- docsync:pagebreak -->` on its own line. Docs keeps a page break inside a paragraph, so a paragraph containing one is fetched as two paragraphs around the comment                                                                          |
+| page break                                    | `<!-- docsync:pagebreak -->` on its own line. Docs keeps a page break inside a paragraph, so a paragraph containing one is fetched as two paragraphs around the comment. In the diff a page break is a block of its own: a block inserted before it lands before it, and deleting the comment deletes the break and not the paragraphs it splits, which rejoin                                                                          |
 | footnote                                      | `[^n]` with the definition at the end                                                                 |
 | image | downloaded into `<title>.assets/` and linked relatively where it sits, `![alt](<title>.assets/image-1.png)`, with the object's alt text as the alt and a name from its position and content type. An image the fetch did not download keeps `<!-- docsync:object gdocs:<objectId> type=image -->`, and a drawing is always that placeholder. On push an image is uploaded to Drive, shared for the one request that inserts it, then unshared and trashed; a file that is not an image is refused with "Google Docs cannot hold a file; link to it instead", and the alt text of a pushed image is lost, since the API cannot set it |
 | link                                          | `[text](url)`                                                                                         |
@@ -799,7 +801,9 @@ What is lost, per source:
   is reverted by the fetch after the push. A table that gained or
   lost a column is rewritten whole; a row added or removed leaves the other
   rows alone. A list item you nested deeper is written afresh at the level
-  it lands in. A fenced code block is written as Courier New paragraphs and
+  it lands in. Deleting a list item deletes everything nested under it; a
+  nested item you kept while deleting its parent is written afresh at the
+  level it lands in. A fenced code block is written as Courier New paragraphs and
   a blockquote as plain paragraphs, since Docs has neither. Everything else
   on text you did not touch, colour, highlight, fonts, sizes, alignment,
   inline images, footnotes, page breaks and comment anchors, survives,
