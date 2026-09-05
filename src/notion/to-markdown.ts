@@ -374,32 +374,120 @@ export function inline(
   richText: readonly RichText[],
   options: ToMarkdownOptions = {},
 ): PhrasingContent[] {
-  return richText.flatMap((part) => annotate(part, options));
+  return mergeRuns(richText).flatMap((part) => annotate(part, options));
+}
+
+/** The annotations that decide whether two runs are really one. */
+const FLAGS = ['bold', 'italic', 'strikethrough', 'underline', 'code'] as const;
+
+/** The link a run carries, from its own `text.link` or the `href` Notion adds. */
+function linkOf(part: RichText): string | null {
+  const body = part.text;
+  const link = typeof body === 'object' && body !== null ? (body as RawObject).link : undefined;
+  const url = typeof link === 'object' && link !== null ? (link as RawObject).url : undefined;
+  if (typeof url === 'string') return url;
+  return typeof part.href === 'string' ? part.href : null;
+}
+
+/** A text run: neither a mention nor an equation, which are atomic. */
+function isText(part: RichText): boolean {
+  const type = part.type ?? 'text';
+  return type !== 'mention' && type !== 'equation';
+}
+
+/**
+ * Two adjacent runs that agree on every annotation and on their link are one
+ * run. Notion cuts a run wherever an edit or a comment started, and renders
+ * the pieces as one; `**early****.**` is not what the dialect means by that,
+ * so the runs are joined before anything is wrapped (MANUAL §6).
+ */
+function mergeRuns(richText: readonly RichText[]): RichText[] {
+  const out: RichText[] = [];
+  for (const part of richText) {
+    const last = out.at(-1);
+    if (last !== undefined && mergeable(last, part)) {
+      const content = (last.plain_text ?? '') + (part.plain_text ?? '');
+      const body = last.text;
+      out[out.length - 1] = {
+        ...last,
+        plain_text: content,
+        ...(typeof body === 'object' && body !== null
+          ? { text: { ...(body as RawObject), content } }
+          : {}),
+      };
+      continue;
+    }
+    out.push(part);
+  }
+  return out;
+}
+
+function mergeable(a: RichText, b: RichText): boolean {
+  if (!isText(a) || !isText(b)) return false;
+  if (linkOf(a) !== linkOf(b)) return false;
+  const one = a.annotations ?? {};
+  const two = b.annotations ?? {};
+  if (!FLAGS.every((flag) => (one[flag] === true) === (two[flag] === true))) return false;
+  return (one.color ?? DEFAULT_COLOR) === (two.color ?? DEFAULT_COLOR);
 }
 
 /**
  * One rich-text run: its content, wrapped in its annotations from the inside
  * out. The order is fixed — colour, underline, strikethrough, italic, bold,
  * link — so that the same annotations always produce the same Markdown.
+ *
+ * Notion styles a space as readily as a letter, and shows a bold space as
+ * nothing at all, while Markdown cannot open emphasis on a space: the run
+ * would print as `**Send the&#x20;**`. So a run whose emphasis would wrap a
+ * space at either edge sheds those spaces, and wraps what is left — possibly
+ * nothing, which gets nothing. `<u>` and `<span>` hold a space perfectly
+ * well, so they stay around all of the pieces, and so does the link. This is
+ * the rule the Docs converter got in `0137c02`.
  */
 function annotate(part: RichText, options: ToMarkdownOptions): PhrasingContent[] {
   const annotations = part.annotations ?? {};
-  let nodes = base(part, options);
 
-  const color = annotations.color;
-  if (typeof color === 'string' && color !== DEFAULT_COLOR) {
-    nodes = wrapHtml(nodes, `<span data-color="${color}">`, '</span>');
-  }
-  if (annotations.underline) nodes = wrapHtml(nodes, '<u>', '</u>');
-  if (annotations.strikethrough) nodes = [{ type: 'delete', children: nodes }];
-  if (annotations.italic) nodes = [{ type: 'emphasis', children: nodes }];
-  if (annotations.bold) nodes = [{ type: 'strong', children: nodes }];
-
+  const html = (nodes: PhrasingContent[]): PhrasingContent[] => {
+    let out = nodes;
+    const color = annotations.color;
+    if (typeof color === 'string' && color !== DEFAULT_COLOR) {
+      out = wrapHtml(out, `<span data-color="${color}">`, '</span>');
+    }
+    return annotations.underline ? wrapHtml(out, '<u>', '</u>') : out;
+  };
+  const emphasis = (nodes: PhrasingContent[]): PhrasingContent[] => {
+    let out = nodes;
+    if (annotations.strikethrough) out = [{ type: 'delete', children: out }];
+    if (annotations.italic) out = [{ type: 'emphasis', children: out }];
+    if (annotations.bold) out = [{ type: 'strong', children: out }];
+    return out;
+  };
   // A link on a mention is already part of the mention's own node.
   const href = part.type === 'mention' ? undefined : (part.href ?? undefined);
-  if (typeof href === 'string') nodes = [{ type: 'link', url: href, children: nodes }];
+  const link = (nodes: PhrasingContent[]): PhrasingContent[] =>
+    typeof href === 'string' && nodes.length > 0
+      ? [{ type: 'link', url: href, children: nodes }]
+      : nodes;
 
-  return nodes;
+  const wraps =
+    annotations.bold === true || annotations.italic === true || annotations.strikethrough === true;
+  // The spaces inside a code run are its content, not its edges.
+  if (wraps && annotations.code !== true && isText(part)) {
+    const content = part.plain_text ?? '';
+    const lead = /^ +/.exec(content)?.[0] ?? '';
+    const trail = content.length > lead.length ? (/ +$/.exec(content)?.[0] ?? '') : '';
+    if (lead !== '' || trail !== '' || content === '') {
+      const core = content.slice(lead.length, content.length - trail.length);
+      const piece = (value: string, styled: boolean): PhrasingContent[] => {
+        if (value === '') return [];
+        const nodes = html(textNodes(value));
+        return styled ? emphasis(nodes) : nodes;
+      };
+      return link([...piece(lead, false), ...piece(core, true), ...piece(trail, false)]);
+    }
+  }
+
+  return link(emphasis(html(base(part, options))));
 }
 
 function wrapHtml(nodes: PhrasingContent[], open: string, close: string): PhrasingContent[] {
@@ -420,8 +508,15 @@ function base(part: RichText, options: ToMarkdownOptions): PhrasingContent[] {
 
   const text = part.plain_text ?? '';
   if (part.annotations?.code) return [{ type: 'inlineCode', value: text }];
-  // A line break inside one block is two trailing spaces (MANUAL §6), which is
-  // what a `break` node prints under our stringifier options.
+  return textNodes(text);
+}
+
+/**
+ * Plain text as mdast. A line break inside one block is two trailing spaces
+ * (MANUAL §6), which is what a `break` node prints under our stringifier
+ * options.
+ */
+function textNodes(text: string): PhrasingContent[] {
   return text
     .split('\n')
     .flatMap((line, index) =>

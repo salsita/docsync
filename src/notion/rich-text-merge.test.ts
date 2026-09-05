@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from '../markdown.js';
 import type { RawObject } from './api.js';
 import { mergeRichText } from './rich-text-merge.js';
-import type { RichText } from './to-markdown.js';
+import { blocksToMarkdown, type RichText } from './to-markdown.js';
 
 /** The phrasing content of a one-paragraph Markdown snippet. */
 function phrasing(markdown: string): PhrasingContent[] {
@@ -183,6 +183,45 @@ describe('mergeRichText', () => {
     );
     expect(merged.map((one) => (one.text as RawObject).content).join('')).toBe('See a chart there');
     expect(JSON.stringify(merged)).not.toContain('￼');
+  });
+
+  it('cuts the runs the converter merged and shed spaces from (ticket 28)', () => {
+    // The five runs Notion stores for one bold sentence around a link. The
+    // converter merges the last three and moves the bold spaces outside the
+    // emphasis, so the Markdown no longer stands one-to-one with the runs.
+    // The merge is by character, not by run, so it still holds: the untouched
+    // live runs survive the edit whole, bold spaces and all.
+    const url = 'https://example.com/asset-request';
+    const live: RichText[] = [
+      run('Send the ', { bold: true }),
+      {
+        ...run('info / asset request', { bold: true }),
+        text: { content: 'info / asset request', link: { url } },
+        href: url,
+      },
+      run(' ', { bold: true }),
+      run('early', { bold: true }),
+      run('.', { bold: true }),
+    ];
+    const base = blocksToMarkdown([
+      {
+        object: 'block',
+        id: 'b1',
+        type: 'paragraph',
+        has_children: false,
+        paragraph: { rich_text: live },
+      },
+    ]).trim();
+    expect(base).toBe(`**Send the** [**info / asset request**](${url}) **early.**`);
+
+    const merged = mergeRichText(live, phrasing(base), phrasing(base.replace('early', 'soon')));
+    // Not the whole-block rewrite: that would be built from the Markdown alone
+    // and would have lost the bold the live spaces carry.
+    expect(shape(merged)).toEqual([
+      { text: 'Send the ', bold: true },
+      { text: 'info / asset request', bold: true, link: url },
+      { text: ' soon.', bold: true },
+    ]);
   });
 
   it('answers the live runs unchanged when nothing changed', () => {

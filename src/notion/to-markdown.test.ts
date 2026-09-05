@@ -35,6 +35,15 @@ function text(value: string, annotations: Record<string, unknown> = {}): RichTex
   };
 }
 
+/** A rich-text run of text that carries a link. */
+function linked(value: string, url: string, annotations: Record<string, unknown> = {}): RichText {
+  return {
+    ...text(value, annotations),
+    text: { content: value, link: { url } },
+    href: url,
+  };
+}
+
 /** What one block converts to, without the trailing blank line. */
 function markdown(blocks: NotionBlock[], from?: string, pages?: Map<string, string>): string {
   return blocksToMarkdown(blocks, { from, pages });
@@ -504,6 +513,75 @@ describe('rich text', () => {
     expect(inlineMarkdown([{ type: 'text' }])).toBe('');
     expect(inlineMarkdown([{ type: 'equation' }])).toBe('$$');
     expect(inlineMarkdown([{ type: 'mention', plain_text: 'x' }])).toBe('x');
+  });
+});
+
+describe('inline runs', () => {
+  it('moves the spaces at the edges of a styled run outside it', () => {
+    expect(inlineMarkdown([text('Send the ', { bold: true }), text('memo')])).toBe(
+      '**Send the** memo',
+    );
+    expect(inlineMarkdown([text('a'), text(' b ', { italic: true }), text('c')])).toBe('a _b_ c');
+    expect(inlineMarkdown([text('a'), text(' b ', { strikethrough: true }), text('c')])).toBe(
+      'a ~~b~~ c',
+    );
+    // A run that is nothing but spaces has nothing to wrap, and so wraps nothing.
+    expect(inlineMarkdown([text('a'), text(' ', { bold: true }), text('b')])).toBe('a b');
+    expect(inlineMarkdown([text('', { bold: true }), text('x')])).toBe('x');
+  });
+
+  it('keeps the link and the html wrappers around all of the pieces', () => {
+    expect(inlineMarkdown([linked(' x ', 'https://example.com/', { bold: true })])).toBe(
+      '[ **x** ](https://example.com/)',
+    );
+    // `<u>` and `<span>` hold a space perfectly well, so they stay outside the
+    // pieces rather than being shed with the emphasis.
+    expect(inlineMarkdown([text(' x ', { bold: true, underline: true, color: 'red' })])).toBe(
+      '<u><span data-color="red"> </span></u>' +
+        '**<u><span data-color="red">x</span></u>**' +
+        '<u><span data-color="red"> </span></u>',
+    );
+  });
+
+  it('leaves a code run and a mention alone', () => {
+    // The spaces are the code's own content, and a mention is atomic.
+    expect(inline([text(' b ', { code: true, bold: true })])).toEqual([
+      { type: 'strong', children: [{ type: 'inlineCode', value: ' b ' }] },
+    ]);
+    // A mention is atomic: its label is the source's, not text we may cut.
+    expect(
+      inlineMarkdown([{ type: 'mention', plain_text: ' who ', annotations: { bold: true } }]),
+    ).toBe('**&#x20;who&#x20;**');
+  });
+
+  it('merges adjacent runs that agree on their annotations and their link', () => {
+    expect(inlineMarkdown([text('early', { bold: true }), text('.', { bold: true })])).toBe(
+      '**early.**',
+    );
+    expect(inlineMarkdown([text('one'), text(' two')])).toBe('one two');
+    // A bold run before a bold link is not the same run: the link differs.
+    expect(
+      inlineMarkdown([text('a ', { bold: true }), linked('b', 'https://example.com/', {})]),
+    ).toBe('**a** [b](https://example.com/)');
+    expect(inlineMarkdown([text('a', { bold: true }), text('b', { italic: true })])).toBe(
+      '**a**_b_',
+    );
+    expect(inlineMarkdown([text('a', { color: 'red' }), text('b', { color: 'blue' })])).toBe(
+      '<span data-color="red">a</span><span data-color="blue">b</span>',
+    );
+  });
+
+  it('the bold sentence Notion splits around a link (ticket 28)', () => {
+    const url = 'https://example.com/asset-request';
+    expect(
+      inlineMarkdown([
+        text('Send the ', { bold: true }),
+        linked('info / asset request', url, { bold: true }),
+        text(' ', { bold: true }),
+        text('early', { bold: true }),
+        text('.', { bold: true }),
+      ]),
+    ).toBe(`**Send the** [**info / asset request**](${url}) **early.**`);
   });
 });
 
