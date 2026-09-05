@@ -35,3 +35,24 @@ The Docs converter got the edge-space rule on 2026-09-04 (commit
 
 `pnpm check` green; the sentence above converts to
 `**Send the** [**info / asset request**](…) **early.**`.
+
+## Outcome
+
+Landed as `f5225d1`. `inline()` merges adjacent runs that agree on every
+annotation and on their link before conversion; mentions and equations stay
+atomic. `annotate()` sheds a run's edge spaces when bold, italic or
+strikethrough would open on one, wraps what is left, and the link goes
+around all the pieces. Deviation from the ticket, deliberate and tested:
+underline and colour do not trigger shedding, because `<u>` and `<span>`
+hold a space and zeroing them would drop the colour of the shed space. Code
+runs keep their spaces. The push-time `mergeRichText` compares plain text,
+which neither rule changes; a test proves the live bold spaces survive an
+edit next to them. No snapshot moved. Verified on the owner's checkout with
+`docsync fetch --all`: the Pre-discovery sentence now reads
+`**Send the** [**info / asset request**](…) **early.**`.
+
+Follow-ups: a bold code run with edge spaces still prints padded and
+escaped; a mention whose label has edge spaces still prints `&#x20;` under
+emphasis (theoretical, Notion trims titles). The remaining `&#x20;` in the
+owner's checkout are unstyled trailing or leading spaces of a block, and
+`\*\*\&#xA;\*\*` is a Docs bold run holding only a newline: ticket 30.

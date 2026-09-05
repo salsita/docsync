@@ -33,3 +33,15 @@ the URL from the id by hand. Agents have the same problem when they report.
 
 `pnpm check` green; every Markdown document in the owner's kickoff checkout
 carries a working `url:` after the next `docsync pull --all` (ticket 26).
+
+## Outcome
+
+Landed as `6b3ccd2`. `sourceUrl(ref, mimeType?)` in `src/source-ref.ts`
+derives the URL per kind as the table says, plus a folder URL the ticket
+did not list (nothing writes it yet). `serializeDocument` writes `url`
+after `title`; `parseDocument` drops it like any unknown key, and both
+adapters' push compare bodies, so an edited or deleted `url` is nothing to
+push (tested on both sides). The fake source writes it too, so the helper
+e2e covers it. Manual §6 "Identity" and the skill's Frontmatter bullet
+updated in `b10b6f5`. Verified on the owner's checkout after
+`docsync fetch --all`: every document carries a working `url:`.
