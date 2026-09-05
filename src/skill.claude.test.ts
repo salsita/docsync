@@ -4,8 +4,9 @@
  * A checkout is built from the fake source and the fake helper — no network,
  * no credential, no real document anywhere — and Claude Code is asked to make
  * one editorial change in it. What is asserted is the working habit the skill
- * teaches, not the wording: the agent pulled, worked on a branch, committed,
- * left `main` and the files docsync owns alone, and did not push.
+ * teaches, not the wording: the agent edited the document, left the files
+ * docsync owns alone, and did not push. Whether it branched or committed is
+ * the project's process, not the skill's, so neither is asserted.
  *
  * A `pre-push` hook that touches a marker file and exits 1 is the belt to that
  * brace: the marker proves whether a push was ever attempted, and the exit
@@ -17,7 +18,7 @@
 process.env.TZ = 'UTC';
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createWorld, type World } from './cli/harness.mock.js';
@@ -93,7 +94,7 @@ describe.skipIf(process.env.DOCSYNC_SKILL_TEST !== '1' || claude === undefined)(
       for (const one of worlds.splice(0)) one.remove();
     });
 
-    it('makes the edit on a branch and does not push', async () => {
+    it('makes the edit and does not push', async () => {
       const w = createWorld(seed());
       worlds.push(w);
       const init = await w.run(w.dir, 'init', 'my-docs', `notion:${SPECS}`);
@@ -138,30 +139,25 @@ describe.skipIf(process.env.DOCSYNC_SKILL_TEST !== '1' || claude === undefined)(
       process.stdout.write(`\n--- claude transcript ---\n${transcript}\n--- end ---\n`);
       expect(run.error).toBeUndefined();
       // Said plainly, because everything below it would otherwise fail as
-      // "the agent made no branch" when the real reason is that it never ran.
+      // "the document did not change" when the real reason is that it never ran.
       expect(run.status, `claude exited ${run.status}: ${transcript.trim()}`).toBe(0);
 
-      // It worked on a branch, and `main` did not move.
-      const branches = w
-        .git(co, 'for-each-ref', '--format=%(refname:short)', 'refs/heads')
-        .split('\n')
-        .filter((name) => name !== '' && name !== 'main');
-      expect(branches).not.toHaveLength(0);
-      const branch = branches.find(
-        (name) => w.git(co, 'rev-list', '--count', `main..${name}`) !== '0',
-      );
-      expect(branch, `no branch of ${branches.join(', ')} has a commit`).toBeDefined();
-      expect(w.git(co, 'rev-parse', 'main')).toBe(before.main);
-
-      // The edit is in the document, committed.
-      const after = w.git(co, 'show', `${branch}:${DOCUMENT}`);
+      // The edit is in the working tree; committed or not is not the skill's call.
+      const after = readFileSync(join(co, DOCUMENT), 'utf8');
       expect(after).toMatch(/30 days/);
       expect(after).not.toBe(before.document);
 
       // The frontmatter and the index are docsync's, and untouched.
       expect(parseDocument(after).frontmatter).toEqual(parseDocument(before.document).frontmatter);
-      expect(w.git(co, 'show', `${branch}:.docsync/index.yaml`)).toBe(before.index);
-      expect(w.git(co, 'diff', '--name-only', `main..${branch}`)).toBe(DOCUMENT);
+      expect(readFileSync(join(co, '.docsync/index.yaml'), 'utf8')).toBe(before.index);
+      const touched = w
+        .git(co, 'status', '--porcelain', '--untracked-files=all')
+        .split('\n')
+        .filter((line) => line !== '')
+        .map((line) => line.slice(3));
+      const committed = w.git(co, 'diff', '--name-only', `${before.main}..HEAD`).split('\n');
+      const changed = new Set([...touched, ...committed].filter((path) => path !== ''));
+      expect([...changed]).toEqual([DOCUMENT]);
 
       // Nothing was pushed: the hook never ran, and the source never moved.
       expect(existsSync(marker)).toBe(false);

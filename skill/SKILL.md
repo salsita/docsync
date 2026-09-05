@@ -11,12 +11,13 @@ _is_ the remote; `.docsync/index.yaml` maps every path to its source object.
 Nothing reaches a source until someone pushes. Do not edit files that are
 outside a root — only the roots in `.docsync.yaml` are documents.
 
-## The loop
+## Before you edit
 
-1. `docsync pull` — start from the current state of the source.
-2. `git switch -c <branch>` — never work on `main`.
-3. Edit the Markdown, then `git add <paths>` and `git commit`.
-4. Stop, and say what you changed and which branch it is on.
+Run `docsync pull` first, or check `docsync status`: "moved" means the source
+changed since the last fetch and you would be editing stale text. Beyond
+that, this skill only tells you how docsync behaves. How you branch, commit
+and hand your work over is the project's process, not docsync's; follow the
+instructions that apply where you work.
 
 **Do not run `docsync push` or `git push` unless the person asked for it in
 this conversation.** A push writes to real documents other people own; being

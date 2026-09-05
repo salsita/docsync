@@ -833,9 +833,12 @@ files under `.git/docsync/` are the record.
 
 ### The skill file
 
-Every checkout contains a skill file that tells an agent how to work in a
-docsync checkout: pull first, edit on a branch, never touch frontmatter or the
-index, never edit inside placeholders, and never push unless asked.
+Every checkout contains a skill file that tells an agent how docsync behaves:
+pull first, never touch frontmatter or the index, never edit inside
+placeholders, how to read the dialect and the reports, and never push unless
+asked. It describes the tool only. Whether the agent works on a branch, when
+it commits and how it hands over are the project's process and belong in the
+project's own instructions, not in the skill.
 
 The same file is written to the three locations the supported agents read:
 
@@ -857,9 +860,10 @@ so a checkout made by an older version gets them.
 ### The loop
 
 1. `docsync pull` so the agent starts from the current source state.
-2. The agent edits files on a branch and commits.
-3. You review with `git diff main..agent/foo`.
-4. Merge, `docsync push`.
+2. The agent edits files. Your project's instructions decide whether it works
+   on a branch and commits; docsync does not.
+3. You review the diff.
+4. Commit or merge, `docsync push`.
 
 ---
 
