@@ -24,6 +24,14 @@ export interface Root {
    * (MANUAL §7).
    */
   comments?: boolean;
+  /**
+   * Whether this root is pulled for context and never pushed to (MANUAL §4,
+   * §7 step 3); the manifest spells it `readonly`. Absent means off. A push
+   * that adds, modifies, deletes or renames any file under such a root —
+   * document, asset and sidecar alike — is refused before a request goes out.
+   * Fetch is unchanged: read-only is about push.
+   */
+  readOnly?: boolean;
 }
 
 /** A parsed manifest. */

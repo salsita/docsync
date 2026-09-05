@@ -26,6 +26,8 @@ const CONTRACTS = fakeId('gdocs', 1);
 const TERMS = fakeId('gdocs', 2);
 const LOGO = fakeId('gdocs', 3);
 const ROADMAP = fakeId('gdocs', 4);
+const INPUTS = fakeId('gdocs', 5);
+const BRIEF = fakeId('gdocs', 6);
 const ADA = { id: 'ada', name: 'Ada Lovelace', email: 'ada@example.com' };
 
 function seed(): FakeState {
@@ -79,6 +81,17 @@ function seed(): FakeState {
     kind: 'doc',
     title: 'Roadmap',
     body: 'Later.\n',
+    editor: ADA,
+  });
+  // The client's own folder: pulled for context, never pushed to (ticket 25).
+  addObject(state, { id: INPUTS, source: 'gdocs', kind: 'folder', title: 'Inputs' });
+  addObject(state, {
+    id: BRIEF,
+    source: 'gdocs',
+    kind: 'doc',
+    title: 'Brief',
+    parent: INPUTS,
+    body: 'What they want.\n',
     editor: ADA,
   });
   return state;
@@ -285,6 +298,51 @@ describe.skipIf(process.platform === 'win32')(
       const moved = await w.run(co, 'status');
       expect(moved.out).toContain('1 changed at source');
       expect(moved.out).toContain('Contracts/  fetched 20');
+    });
+
+    it('add --readonly marks the root, status says so, and fetch still fills it', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      const added = await w.run(co, 'add', '--readonly', `gdocs:${INPUTS}`);
+
+      expect(added.code).toBe(0);
+      expect(w.read(co, '.docsync.yaml')).toContain('readonly: true');
+      // Read-only is about push only: the fetch is the fetch it always was.
+      expect(w.read(co, 'Inputs/Brief.md')).toContain('What they want.');
+
+      const shown = await w.run(co, 'status');
+      expect(shown.out).toContain('Inputs/');
+      const line = shown.out.split('\n').find((one) => one.includes('Inputs/')) ?? '';
+      expect(line.endsWith('read-only')).toBe(true);
+      // Only the root that asked for it says so.
+      expect(shown.out.split('\n').filter((one) => one.includes('read-only'))).toHaveLength(1);
+    });
+
+    it('push refuses a change under a read-only root and pushes the sibling root', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+      expect((await w.run(co, 'add', '--readonly', `gdocs:${INPUTS}`)).code).toBe(0);
+
+      w.write(co, 'Inputs/Brief.md', `${w.read(co, 'Inputs/Brief.md')}Mine now.\n`);
+      w.git(co, 'commit', '--quiet', '-a', '-m', 'Edit the client folder');
+
+      const refused = await w.run(co, 'push');
+
+      expect(refused.code).not.toBe(0);
+      expect(refused.all).toContain('Inputs/Brief.md is under a read-only root (Inputs/)');
+      expect(refused.all).toContain('git checkout -- Inputs/Brief.md');
+      expect(w.store.load().objects[BRIEF]?.body).not.toContain('Mine now.');
+
+      // The other root is untouched by the rule, and pushes.
+      w.git(co, 'reset', '--quiet', '--hard', 'origin/main');
+      w.write(co, 'Product Specs/Auth.md', `${w.read(co, 'Product Specs/Auth.md')}And out.\n`);
+      w.git(co, 'commit', '--quiet', '-a', '-m', 'Edit the spec');
+
+      const pushed = await w.run(co, 'push');
+
+      expect(pushed.code).toBe(0);
+      expect(w.store.load().objects[AUTH]?.body).toContain('And out.');
     });
 
     it('fetch prints what changed at the source and who changed it', async () => {

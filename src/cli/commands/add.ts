@@ -1,5 +1,5 @@
 /**
- * `docsync add <src>[=<path>]... [--no-fetch]` (MANUAL §5).
+ * `docsync add <src>[=<path>]... [--no-fetch] [--readonly]` (MANUAL §5).
  *
  * Resolves each ref at its source, turns the optional `=<path>` alias into the
  * path the manifest stores, rewrites the manifest with the user's comments
@@ -72,6 +72,7 @@ export async function appendRoots(
   manifest: Manifest,
   manifestPath: string,
   specs: readonly RootSpec[],
+  options: { readOnly?: boolean } = {},
 ): Promise<AddedRoot[]> {
   const resolved: AddedRoot[] = [];
   const added: Root[] = [];
@@ -84,7 +85,14 @@ export async function appendRoots(
       ...(description.ext === undefined ? {} : { ext: description.ext }),
     });
     if (!path.ok) throw new CliError(`${spec.input}: ${path.message}`);
-    const root: Root = { src: description.ref, path: path.path, ignore: [] };
+    const root: Root = {
+      src: description.ref,
+      path: path.path,
+      ignore: [],
+      // `--readonly` marks every root the one command adds: add is where the
+      // intent is known (MANUAL §4, §5).
+      ...(options.readOnly === true ? { readOnly: true } : {}),
+    };
     resolved.push({ description, root });
     added.push(root);
   }
@@ -144,6 +152,8 @@ export async function fastForward(
 export interface AddOptions {
   /** `--no-fetch`: stop once the manifest is written. */
   fetch: boolean;
+  /** `--readonly`: the roots are pulled for context and never pushed to (MANUAL §4). */
+  readOnly?: boolean;
 }
 
 export async function add(
@@ -153,7 +163,9 @@ export async function add(
 ): Promise<number> {
   const specs = args.map(parseSpec);
   const repo = await openRepo(context);
-  const resolved = await appendRoots(context, repo.manifest, repo.manifestPath, specs);
+  const resolved = await appendRoots(context, repo.manifest, repo.manifestPath, specs, {
+    readOnly: options.readOnly === true,
+  });
 
   for (const one of resolved) say(context, `Added ${one.root.path}`);
   if (!options.fetch) return 0;

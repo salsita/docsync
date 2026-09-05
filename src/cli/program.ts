@@ -71,8 +71,12 @@ export function buildProgram(context: Context, exit: (code: number) => void): Co
     )
     .argument('<specs...>', '<src>[=<path>]...')
     .option('--no-fetch', 'Stop once the manifest is written.')
-    .action((specs: string[], options: { fetch: boolean }) =>
-      run(() => add(context, specs, { fetch: options.fetch })),
+    .option(
+      '--readonly',
+      'Mark the roots read-only: a push that changes a file under one is refused.',
+    )
+    .action((specs: string[], options: { fetch: boolean; readonly?: boolean }) =>
+      run(() => add(context, specs, { fetch: options.fetch, readOnly: options.readonly === true })),
     );
 
   program

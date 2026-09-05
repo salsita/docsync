@@ -6,9 +6,10 @@
  * root each one belongs to, whether the change is text or bytes, and when a
  * file that looks modified is really one object trashed and another made —
  * frontmatter added to a plain file or removed from a document. It refuses,
- * by path, what the manual refuses: a file outside every root, a touch of the
- * index, an edit to a read-only export, a copy of a document, a plain file
- * under Notion. Pure over an injected blob reader.
+ * by path, what the manual refuses: a file outside every root, anything under
+ * a read-only root, a touch of the index, an edit to a read-only export, a
+ * copy of a document, a plain file under Notion. Pure over an injected blob
+ * reader.
  */
 import { assetsDirOf, documentOfAssetsDir, isAssetPath } from '../assets.js';
 import { isSidecarPath } from '../comments/format.js';
@@ -109,6 +110,17 @@ export async function planChanges(
     const kind = entry.status[0];
     const root = rootOf(entry.path);
 
+    // A read-only root is pulled for context and never pushed to (MANUAL §4).
+    // Every file under it — document, asset and sidecar alike — and every kind
+    // of change, so this runs before the other refusals: a file in someone
+    // else's folder is named as what it is. The path it came from first, since
+    // that is the one `git checkout` restores.
+    for (const path of [entry.previousPath, entry.path]) {
+      if (path === undefined) continue;
+      const under = rootOf(path);
+      if (under?.readOnly === true) refuseReadOnlyRoot(path, under);
+    }
+
     // The sidecar is read-only: comments are only pulled in this version
     // (MANUAL §6). Refused before any source is touched, changed, added or
     // removed. Outside every root it is not ours, and a deletion there is
@@ -202,6 +214,14 @@ export async function planChanges(
     const changes = planned.get(root);
     return changes === undefined ? [] : [{ root, changes }];
   });
+}
+
+/** What a push says about any file under a `readonly: true` root (MANUAL §4). */
+function refuseReadOnlyRoot(path: string, root: Root): never {
+  throw new Error(
+    `${path} is under a read-only root (${root.path}); nothing under it is pushed. ` +
+      `Restore it with git checkout -- ${path}`,
+  );
 }
 
 /** What a push says about a `*.comments.md` somebody edited (MANUAL §6). */

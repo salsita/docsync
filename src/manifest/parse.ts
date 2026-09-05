@@ -3,7 +3,7 @@ import { parseSourceRef, type SourceRef } from '../source-ref.js';
 import type { Manifest, ManifestError, ParseResult, Root } from './types.js';
 
 const TOP_LEVEL_KEYS = new Set(['version', 'roots']);
-const ROOT_KEYS = new Set(['src', 'path', 'ignore', 'comments']);
+const ROOT_KEYS = new Set(['src', 'path', 'ignore', 'comments', 'readonly']);
 
 /**
  * Parses a manifest file (MANUAL §4).
@@ -146,6 +146,26 @@ function parseRoot(node: Node, report: Report): Root | undefined {
     }
   }
 
+  // A root pulled for context only (MANUAL §4). Absent is off; an explicit
+  // `false` is kept, for the same reason `comments: false` is.
+  let readOnly: boolean | undefined;
+  const readOnlyNode = node.get('readonly', true);
+  if (readOnlyNode !== undefined) {
+    const raw = isScalar(readOnlyNode) ? readOnlyNode.value : undefined;
+    if (typeof raw !== 'boolean') {
+      report(readOnlyNode as Node, '"readonly" must be true or false');
+      failed = true;
+    } else {
+      readOnly = raw;
+    }
+  }
+
   if (failed || !src || path === undefined) return undefined;
-  return { src, path, ignore, ...(comments === undefined ? {} : { comments }) };
+  return {
+    src,
+    path,
+    ignore,
+    ...(comments === undefined ? {} : { comments }),
+    ...(readOnly === undefined ? {} : { readOnly }),
+  };
 }

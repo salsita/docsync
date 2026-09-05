@@ -87,6 +87,39 @@ roots:
     expect(serializeManifest(parsed(text))).toBe(text);
   });
 
+  it('writes `readonly` last on a root that is not pushed to (MANUAL §4)', () => {
+    const manifest: Manifest = {
+      version: 1,
+      roots: [
+        {
+          src: { source: 'gdocs', id: '1AbCdEfGhIjKlMnOpQrStUvWxYz-_012' },
+          path: 'Inputs/',
+          ignore: [],
+          comments: true,
+          readOnly: true,
+        },
+      ],
+    };
+    expect(serializeManifest(manifest)).toBe(`version: 1
+roots:
+  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012
+    path: Inputs/
+    comments: true
+    readonly: true
+`);
+  });
+
+  it('round-trips a root with `readonly: true` unchanged', () => {
+    const text = `version: 1
+roots:
+  # The client's own folder: pulled for context, never pushed to.
+  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012
+    path: Inputs/
+    readonly: true
+`;
+    expect(serializeManifest(parsed(text))).toBe(text);
+  });
+
   it('writes an empty checkout', () => {
     expect(serializeManifest({ version: 1, roots: [] })).toBe('version: 1\nroots: []\n');
   });

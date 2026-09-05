@@ -15,7 +15,14 @@ const LEAF: Root = {
   path: 'notes/roadmap.md',
   ignore: [],
 };
-const ROOTS = [NOTION, DRIVE, LEAF];
+/** A folder pulled for context and never pushed to (MANUAL §4, ticket 25). */
+const INPUTS: Root = {
+  src: { source: 'gdocs', id: '1InputsFolderIdXXXXXXXXX' },
+  path: 'Inputs/',
+  ignore: [],
+  readOnly: true,
+};
+const ROOTS = [NOTION, DRIVE, LEAF, INPUTS];
 
 const entry = (
   path: string,
@@ -40,6 +47,8 @@ const index = new Map(
     entry('Files/notes.md', 'drive-file'),
     entry('Files/Rates.xlsx', 'drive-file', { readOnly: true }),
     entry('notes/roadmap.md', 'gdoc'),
+    entry('Inputs/Brief.md', 'gdoc'),
+    entry('Inputs/contract.pdf', 'drive-file'),
     entry('Specs/Auth.assets/photo.png', 'asset', {
       document: 'Specs/Auth.md',
       checksum: 'a'.repeat(64),
@@ -68,6 +77,10 @@ const blobs: Record<string, string> = {
   'Specs/Auth.assets/photo.png': 'PNGBYTES',
   'Specs/Auth.assets/new.png': 'NEWPNG',
   'Files/Plan.assets/shot.png': 'SHOT',
+  'Inputs/Brief.md': `---\nid: gdocs:1IdInputsBrief\n---\n\nEdited brief.\n`,
+  'Inputs/Notes.md': FRONT,
+  'Inputs/contract.pdf': 'PDF',
+  'Inputs/Brief.assets/scan.png': 'SCAN',
 };
 const read = async (path: string): Promise<Uint8Array> => {
   const text = blobs[path];
@@ -316,6 +329,63 @@ describe('planChanges', () => {
 
     it('ignores one deleted outside every root, which is `docsync remove`', async () => {
       expect(await plan(D('gone/Auth.comments.md'))).toEqual([]);
+    });
+  });
+
+  describe('a read-only root is never pushed to (MANUAL §4, §7 step 3)', () => {
+    const refusal = (path: string): string =>
+      `${path} is under a read-only root (Inputs/); nothing under it is pushed. ` +
+      `Restore it with git checkout -- ${path}`;
+
+    it('refuses a modified document', async () => {
+      await expect(plan(M('Inputs/Brief.md'))).rejects.toThrow(refusal('Inputs/Brief.md'));
+    });
+
+    it('refuses an added file, document or not', async () => {
+      await expect(plan(A('Inputs/Notes.md'))).rejects.toThrow(refusal('Inputs/Notes.md'));
+      await expect(plan(A('Inputs/Brief.assets/scan.png'))).rejects.toThrow(
+        refusal('Inputs/Brief.assets/scan.png'),
+      );
+    });
+
+    it('refuses a deletion, which elsewhere would be an unsubscribe', async () => {
+      await expect(plan(D('Inputs/contract.pdf'))).rejects.toThrow(refusal('Inputs/contract.pdf'));
+    });
+
+    it('refuses a rename inside it, naming the path it came from', async () => {
+      await expect(plan(R('Inputs/Brief.md', 'Inputs/Summary.md'))).rejects.toThrow(
+        refusal('Inputs/Brief.md'),
+      );
+    });
+
+    it('refuses a rename out of it and a rename into it', async () => {
+      await expect(plan(R('Inputs/Brief.md', 'Files/Brief.md'))).rejects.toThrow(
+        refusal('Inputs/Brief.md'),
+      );
+      await expect(plan(R('Files/Plan.md', 'Inputs/Plan.md'))).rejects.toThrow(
+        refusal('Inputs/Plan.md'),
+      );
+    });
+
+    it('refuses a sidecar under it as a read-only root, not as a sidecar', async () => {
+      await expect(plan(M('Inputs/Brief.comments.md'))).rejects.toThrow(
+        refusal('Inputs/Brief.comments.md'),
+      );
+    });
+
+    it('refuses before any source is touched, whatever else the push holds', async () => {
+      await expect(plan(M('Specs/Auth.md'), M('Inputs/Brief.md'))).rejects.toThrow(
+        refusal('Inputs/Brief.md'),
+      );
+    });
+
+    it('leaves a sibling root that is not read-only alone', async () => {
+      expect(await plan(M('Files/logo.png'))).toEqual([
+        {
+          root: DRIVE,
+          changes: [{ kind: 'modified', path: 'Files/logo.png', bytes: Buffer.from('PNG2') }],
+        },
+      ]);
     });
   });
 

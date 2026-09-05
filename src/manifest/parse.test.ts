@@ -80,6 +80,27 @@ roots:
     expect(manifest.roots[0]?.comments).toBeUndefined();
   });
 
+  it('reads `readonly: true` on a root (MANUAL §4)', () => {
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    readonly: true\n',
+    );
+    expect(manifest.roots[0]?.readOnly).toBe(true);
+  });
+
+  it('keeps an explicit `readonly: false`', () => {
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    readonly: false\n',
+    );
+    expect(manifest.roots[0]?.readOnly).toBe(false);
+  });
+
+  it('leaves `readonly` absent on a root that does not mention it, which is off', () => {
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n',
+    );
+    expect(manifest.roots[0]?.readOnly).toBeUndefined();
+  });
+
   it('normalises paths to NFC', () => {
     // "Cafe" + combining acute (NFD) comes back precomposed.
     const manifest = manifestOf(
@@ -136,6 +157,12 @@ roots:
       'a comments value that is not a boolean',
       'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    comments: yes please\n',
       '"comments" must be true or false',
+      5,
+    ],
+    [
+      'a readonly value that is not a boolean',
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    readonly: sometimes\n',
+      '"readonly" must be true or false',
       5,
     ],
     [

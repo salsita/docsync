@@ -248,6 +248,23 @@ describe('formatStatusLine', () => {
     );
   });
 
+  it('says `read-only` for a root a push may not touch (MANUAL §4)', () => {
+    expect(formatStatusLine({ ...root, readOnly: true }, '2026-09-03T10:12:00Z', 0)).toBe(
+      'notion:2f3a…  Product Specs/  fetched 2026-09-03 10:12  up to date  read-only',
+    );
+    expect(
+      formatStatusLine({ ...root, comments: true, readOnly: true }, '2026-09-03T10:12:00Z', 0),
+    ).toBe(
+      'notion:2f3a…  Product Specs/  fetched 2026-09-03 10:12  up to date  comments on  read-only',
+    );
+  });
+
+  it('says nothing about read-only on a root that is pushed to', () => {
+    expect(formatStatusLine({ ...root, readOnly: false }, '2026-09-03T10:12:00Z', 0)).not.toContain(
+      'read-only',
+    );
+  });
+
   it('says when the source could not be reached', () => {
     expect(formatStatusLine(root, undefined, undefined)).toBe(
       'notion:2f3a…  Product Specs/  fetched unknown  not checked',

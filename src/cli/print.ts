@@ -167,7 +167,8 @@ function plural(count: number, noun: string): string {
  * One root's line under `git status` (MANUAL §5): what it is, where it is,
  * when it was last fetched, and how much of it has moved at the source since.
  * `changed` is undefined when the source could not be asked. A root that pulls
- * comment sidecars says so, since that is what its fetches cost (MANUAL §4).
+ * comment sidecars says so, since that is what its fetches cost, and a
+ * read-only root says so, since that is what a push will refuse (MANUAL §4).
  */
 export function formatStatusLine(
   root: Root,
@@ -186,6 +187,7 @@ export function formatStatusLine(
     `fetched ${formatTime(fetchedAt)}`,
     moved,
     ...(root.comments === true ? ['comments on'] : []),
+    ...(root.readOnly === true ? ['read-only'] : []),
   ].join('  ');
 }
 
