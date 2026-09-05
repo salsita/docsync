@@ -354,12 +354,21 @@ keeps the name it had for as long as its title still derives to it, so
 ---
 id: notion:2f3a9c…
 title: Auth
+url: https://www.notion.so/2f3a9c…
 ---
 ```
 
 - `id` is the identity. Renaming the file does not change which document it is.
 - `title` is what the source shows. Changing it and pushing renames the document
   at the source. The filename follows on the next fetch.
+- `url` is where the document opens at the source, derived from the id: a
+  Notion page `https://www.notion.so/<id>`, a Google Doc
+  `https://docs.google.com/document/d/<id>/edit`, a Sheet, Slides or Drawing
+  the same under its own kind, any other Drive file
+  `https://drive.google.com/file/d/<id>/view`. docsync owns it as it owns
+  `id`: written on every fetch and never read back, so changing or deleting it
+  is not an error, not a rename and nothing to push. A new file needs none;
+  the fetch after the push adds it.
 - A new `.md` file inside a root is a new document **when it starts with
   frontmatter**. The minimum is the two fences with nothing between them;
   `title` is optional and defaults to the filename without the extension:
@@ -441,6 +450,15 @@ background colours are `<span data-color="red">…</span>`. These are preserved
 so that a round trip does not strip them. A line break inside one block is a
 backslash at the end of the line. Push also accepts `*italic*` and the
 two-trailing-spaces line break, since that is what many editors produce.
+
+A source stores a styled span as runs and splits one wherever an edit or a
+comment began; adjacent runs that agree on every annotation and on their link
+are written as one. A run whose emphasis would open on a space sheds the
+spaces at its edges, so a bold sentence around a link reads
+`**Send the** [**info / asset request**](…) **early.**` and never
+`**Send the&#x20;**[…]**&#x20;****early****.**`: a styled space is invisible at
+the source, and Markdown cannot open emphasis on one. `<u>` and
+`<span data-color>` hold their spaces, and a link stays around all the pieces.
 
 **Block attributes.** What Notion stores on a block that GFM cannot express
 goes in an HTML comment on its own line directly above the block, only when

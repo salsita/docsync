@@ -28,8 +28,10 @@ moves the document to the source's trash.
 ## Do not touch
 
 - **Frontmatter.** `id` is the document's identity — never change or copy it.
-  Change `title` only when the person asked to rename the document. Adding
-  keys of your own does nothing; they are dropped.
+  `url` is the link that opens the document at its source; docsync derives it
+  from the id and rewrites it on every fetch, so quote it in reports and never
+  edit it. Change `title` only when the person asked to rename the document.
+  Adding keys of your own does nothing; they are dropped.
 - **`.docsync/index.yaml`** — docsync writes it; a push that changes it is
   refused.
 - **Placeholders**, `<!-- docsync:block … -->` and `<!-- docsync:object … -->`.
