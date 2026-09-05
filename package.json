@@ -1,6 +1,6 @@
 {
   "name": "@salsita/docsync",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A git workflow over documents that live in Notion and Google Drive",
   "license": "MIT",
   "author": "Salsita Software",
@@ -19,7 +19,8 @@
   },
   "files": [
     "dist",
-    "skill"
+    "skill",
+    "MANUAL.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/chmod-bins.js",
