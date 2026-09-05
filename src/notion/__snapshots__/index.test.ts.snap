@@ -8,7 +8,7 @@ fetched: 2026-09-03T16:31:07Z
 
 ## 3d0715cbeb0880e8a289001cb897f5e5 — comment
 
-> A paragraph with an inline equation $E = mc^2$ and a mention of a page: [Leaf](Leaf.md). And a link to a page outside any checkout: [Untitled](https://www.notion.so/38349858129f4c39a1210129743b666e).
+> A paragraph with an inline equation $E = mc^2$ and a mention of a page: [Leaf](Leaf.md). And a link to a page outside any checkout: [{page title}](https://www.notion.so/38349858129f4c39a1210129743b666e).
 
 in: Heading three
 

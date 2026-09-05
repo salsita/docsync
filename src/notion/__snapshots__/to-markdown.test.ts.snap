@@ -14,7 +14,7 @@ exports[`every fixture page > converts Blocks 1`] = `
 
 ### Heading three
 
-A paragraph with an inline equation $E = mc^2$ and a mention of a page: [Leaf](Leaf.md). And a link to a page outside any checkout: [Untitled](https://www.notion.so/38349858129f4c39a1210129743b666e).
+A paragraph with an inline equation $E = mc^2$ and a mention of a page: [Leaf](Leaf.md). And a link to a page outside any checkout: [{page title}](https://www.notion.so/38349858129f4c39a1210129743b666e).
 
 - Bullet one
 - Bullet two

@@ -431,12 +431,35 @@ function base(part: RichText, options: ToMarkdownOptions): PhrasingContent[] {
     );
 }
 
+/**
+ * What a rich-text part reads as in the Markdown: its plain text, except for a
+ * page mention the API labelled "Untitled", which it does for a page inside a
+ * table cell whatever the page is called, and for a page the integration
+ * cannot see. A page in the checkout is then named after its file, which came
+ * from its title; one outside it says `{page title}`, plainly, rather than
+ * pretend the page has none (MANUAL §6). The comment sidecar searches the body
+ * with this same text, and the push-time comparison runs the same rule on the
+ * live page, so all three agree.
+ */
+export function labelOf(part: RichText, options: ToMarkdownOptions = {}): string {
+  const label = part.plain_text ?? '';
+  if (part.type !== 'mention' || (label !== '' && label !== 'Untitled')) return label;
+  const raw = part.mention;
+  const body = typeof raw === 'object' && raw !== null ? (raw as RawObject) : {};
+  if (body.type !== 'page') return label;
+  const target = body.page;
+  const id =
+    typeof target === 'object' && target !== null ? String((target as RawObject).id ?? '') : '';
+  const path = options.pages?.get(bareId(id));
+  return path === undefined ? '{page title}' : stemOf(path);
+}
+
 /** A mention, as the table in MANUAL §6 spells it. */
 function mention(part: RichText, options: ToMarkdownOptions): PhrasingContent[] {
   const raw = part.mention;
   const body = typeof raw === 'object' && raw !== null ? (raw as RawObject) : {};
   const kind = typeof body.type === 'string' ? body.type : '';
-  const label = part.plain_text ?? '';
+  const label = labelOf(part, options);
   const link = (url: string): PhrasingContent[] => [
     { type: 'link', url, children: [{ type: 'text', value: label }] },
   ];
@@ -446,13 +469,7 @@ function mention(part: RichText, options: ToMarkdownOptions): PhrasingContent[] 
     const id =
       typeof target === 'object' && target !== null ? String((target as RawObject).id ?? '') : '';
     const path = kind === 'page' ? pathTo(id, options) : undefined;
-    if (path === undefined) return link(`https://www.notion.so/${bareId(id)}`);
-    // The API labels a mention with the page's title — except inside a table
-    // cell, where it says "Untitled" for a page that has one. The page is in
-    // the checkout, so its file name, which came from that title, stands in.
-    // The same rule runs on the live page at push time, so both sides agree.
-    const text = label === '' || label === 'Untitled' ? stemOf(path) : label;
-    return [{ type: 'link', url: path, children: [{ type: 'text', value: text }] }];
+    return link(path ?? `https://www.notion.so/${bareId(id)}`);
   }
   if (kind === 'user') {
     const user = body.user;

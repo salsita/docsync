@@ -405,9 +405,9 @@ describe('rich text', () => {
     expect(
       markdown([block('paragraph', { rich_text: [mention] })], 'Docsync test/Blocks.md', pages),
     ).toBe('[Lead Qualification](<Lead Qualification.md>)\n');
-    // Outside the checkout there is nothing better to call it.
+    // Outside the checkout the label says what Notion will show there.
     expect(inlineMarkdown([mention])).toBe(
-      '[Untitled](https://www.notion.so/3cf715cbeb08819db888c032d7bb60de)',
+      '[{page title}](https://www.notion.so/3cf715cbeb08819db888c032d7bb60de)',
     );
   });
 
@@ -419,7 +419,7 @@ describe('rich text', () => {
       href: 'https://app.notion.com/p/38349858129f4c39a1210129743b666e',
     };
     expect(inlineMarkdown([mention])).toBe(
-      '[Untitled](https://www.notion.so/38349858129f4c39a1210129743b666e)',
+      '[{page title}](https://www.notion.so/38349858129f4c39a1210129743b666e)',
     );
   });
 

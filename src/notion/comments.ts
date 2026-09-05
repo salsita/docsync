@@ -15,7 +15,7 @@
 import type { Thread } from '../comments/format.js';
 import { locate } from '../comments/locate.js';
 import type { NotionApi, NotionBlock, NotionComment, RawObject } from './api.js';
-import { bareId } from './to-markdown.js';
+import { bareId, labelOf, type RichText, type ToMarkdownOptions } from './to-markdown.js';
 
 /** How many comment requests are in flight at once. */
 const CONCURRENCY = 8;
@@ -39,20 +39,21 @@ export function commentableBlocks(blocks: readonly NotionBlock[]): string[] {
 }
 
 /** The plain text of a rich-text array, as Notion computed it. */
-function plainOf(value: unknown): string {
+/** The rich text as the body spells it, mention labels included. */
+function plainOf(value: unknown, options: ToMarkdownOptions): string {
   if (!Array.isArray(value)) return '';
-  return value.map((run) => String((run as { plain_text?: unknown }).plain_text ?? '')).join('');
+  return value.map((run) => labelOf(run as RichText, options)).join('');
 }
 
 /** What one block reads as: its own rich text, and a table row's cells. */
-function textOf(block: NotionBlock): string {
+function textOf(block: NotionBlock, options: ToMarkdownOptions): string {
   const body = block[block.type];
   if (typeof body !== 'object' || body === null) return '';
   const fields = body as RawObject;
   if (Array.isArray(fields.cells)) {
-    return (fields.cells as unknown[]).map((cell) => plainOf(cell)).join(' ');
+    return (fields.cells as unknown[]).map((cell) => plainOf(cell, options)).join(' ');
   }
-  return plainOf(fields.rich_text);
+  return plainOf(fields.rich_text, options);
 }
 
 /** Runs `work` over `items`, a few at a time, keeping the order of the answers. */
@@ -84,7 +85,7 @@ function entryOf(comment: NotionComment): { author: string; time: string; text: 
   return {
     author: name === '' ? 'Someone' : name,
     time: comment.created_time,
-    text: plainOf(comment.rich_text).trim(),
+    text: plainOf(comment.rich_text, {}).trim(),
   };
 }
 
@@ -98,6 +99,7 @@ export async function pageThreads(
   pageId: string,
   blocks: readonly NotionBlock[],
   body: string,
+  options: ToMarkdownOptions = {},
   concurrency: number = CONCURRENCY,
 ): Promise<Thread[]> {
   const ids = [bareId(pageId), ...commentableBlocks(blocks)];
@@ -105,7 +107,7 @@ export async function pageThreads(
 
   const text = new Map<string, string>();
   const at = (block: NotionBlock): void => {
-    text.set(bareId(block.id), textOf(block));
+    text.set(bareId(block.id), textOf(block, options));
     for (const child of block.children ?? []) at(child);
   };
   for (const block of blocks) at(block);
