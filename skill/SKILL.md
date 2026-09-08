@@ -25,6 +25,13 @@ merely finished is not a reason to push. The same goes for `docsync add`,
 `docsync remove` and deleting a tracked file: deleting a file and pushing
 moves the document to the source's trash.
 
+**Under a root with `suggest: true` in `.docsync.yaml`** a push does not
+write the document: it lands as suggestions the client reviews in Docs. Your
+file goes back to the source text on the next pull, with the suggestions in
+the `.comments.md` sidecar, and stays that way until they accept. That is
+not a lost edit. Only edits to documents already there can be pushed under
+such a root; creating, deleting and renaming are refused.
+
 ## Do not touch
 
 - **Frontmatter.** `id` is the document's identity — never change or copy it.
@@ -88,7 +95,8 @@ small and leave untouched paragraphs byte-identical.
   changed them. A fetch commit is authored by the person who edited the
   document at the source, not by you. `--all` renders every document again
   with the installed docsync; use it only when told to.
-- `docsync push` prints one line per document — created, updated or **trashed**
+- `docsync push` prints one line per document — created, updated, suggested
+  or **trashed**
   — and then fast-forwards. "the source changed" means someone edited the
   document while you worked: `docsync pull`, resolve any conflict markers the
   ordinary way, and stop.

@@ -174,11 +174,26 @@ Fields per root:
 | `ignore` | no       | List of patterns. Matching documents are not checked out.    |
 | `comments` | no     | `true` to pull comment threads and suggestions into sidecars (§6). Default `false`. |
 | `readonly` | no     | `true` to refuse any push that touches a file under this root. Default `false`. Fetch is unchanged. |
+| `suggest`  | no     | `true` to push every edit under this root as suggestions the client reviews in Docs (§7). Google Drive only, and only with `comments: true`. Default `false`. |
 
 A read-only root is pulled for context — a client's inputs, a signed
 contract — and never written to: a push that adds, modifies, deletes or
 renames any file under it, document, asset or sidecar alike, is refused (§7
 step 3). `docsync add --readonly` sets it.
+
+A suggest root belongs to someone else. A push does not write over its
+documents: an edit to a Google Doc already there is sent as suggestions,
+which the client accepts or rejects in Docs, and the fetch after the push
+takes your file back to the source text, since nothing at the source changed
+yet, with one sidecar thread per suggestion (§6). That commit is called
+`Suggested: <titles>`. Nothing else goes: adding, deleting or renaming a
+file, and a new revision of a binary, are refused (§7 step 3). The field is
+Google Drive's alone, Notion has no suggestions, and it needs
+`comments: true`, since the sidecar is where a suggestion is read;
+`docsync add --suggest` sets both. Suggesting is a Google Workspace Developer
+Preview feature: the Cloud project that owns the OAuth client must be
+enrolled in the program, or the API refuses the push and the refusal says
+so.
 
 ### Path rules
 
@@ -255,11 +270,12 @@ Creates a checkout.
 
 With no sources, the result is a repo with one empty commit. Add roots later.
 
-### `docsync add <src>[=<path>]... [--readonly]`
+### `docsync add <src>[=<path>]... [--readonly] [--suggest]`
 
 Resolves each source ref, appends roots to the manifest, then fetches and
 fast-forwards. `--readonly` marks every root the command adds as read-only
-(§4). An edit in progress is in the way only when git says the
+(§4); `--suggest` marks them suggesting and turns their comment sidecars on
+(§4), and is refused for a Notion ref. An edit in progress is in the way only when git says the
 fetch would overwrite it; then nothing is merged, the command says why, and
 `docsync pull` after a commit or a stash finishes the job.
 
@@ -292,13 +308,14 @@ push without that pull is refused as "the source changed".
 
 Like `git status`, plus one line per root: source, path, last fetched time,
 whether the source has moved since (a cheap metadata check, no download),
-`comments on` when the root pulls comment sidecars, and `read-only` when the
-root is (§4).
+`comments on` when the root pulls comment sidecars, `read-only` when the
+root is, and `suggest` when a push under it lands as suggestions (§4).
 
 Then, when the current branch is ahead of `origin/main`, `To push:` lists
 what `docsync push` would do, one line per file in the push report's own
-words: `create`, `update`, `rename <old> -> <new>` (followed by `update` when
-the renamed file was also edited), `trash`, `ignored <path>` for a deletion
+words: `create`, `update` (`suggest` under a root with `suggest: true`),
+`rename <old> -> <new>` (followed by `update` when the renamed file was also
+edited), `trash`, `ignored <path>` for a deletion
 under no root, and `refused <path>: <reason>` for everything a push would
 refuse (§7 steps 3 and 4). A closing `(<n> uncommitted changes are not
 pushed)` appears when the working tree is dirty: only commits are pushed. The
@@ -698,6 +715,13 @@ A comment moves no last-edit time at either source, so on a root with
 one comment listing per Google Doc, plus the document itself when it
 changed or had a thread, and on Notion one request per block of every page.
 
+A suggestion moves no last-edit time either, and neither does accepting or
+rejecting one, so on a root with `suggest: true` every Google Doc is read on
+every fetch and its sidecar rebuilt; the body is written only when it
+differs. That is one document read per Doc per fetch on top of the comment
+listing, and it is what makes a suggestion, or its resolution, show up on
+the next pull when nothing else changed.
+
 > **Warning.** Notion's API lists comments per block, so a root with
 > `comments: true` costs one request per block of every page on every
 > fetch, under a rate limit of about three requests a second. A root of a
@@ -731,10 +755,17 @@ Git sends the commits between `origin/main` and your branch. The helper:
    modified, deleted or renamed file under a root with `readonly: true` is
    refused first: "`<path>` is under a read-only root (`<root path>`);
    nothing under it is pushed. Restore it with `git checkout -- <path>`".
+   Under a root with `suggest: true` only an edit to a document that is
+   already there can be pushed; anything added, deleted or renamed, and a new
+   revision of a binary, is refused: "`<path>` is under a suggest root
+   (`<root path>`); only edits to existing documents can be suggested.
+   Restore it with `git checkout -- <path>`".
 4. Refuses content changes to read-only exports (Sheets, Slides, Drawings).
    Renaming or deleting one renames or trashes the source file.
 5. Diffs the tree per root and applies:
-   - **modified** → update the document (see Write-back below)
+   - **modified** → update the document (see Write-back below); under a
+     root with `suggest: true` the same requests are sent in suggesting
+     mode instead, and the body is left as it is (§4)
    - **added** → create the document, or upload the binary. Folders the
      path implies are created on Drive and listed in the report
    - **deleted** → trash the document (Notion archive, Drive trash). Never
@@ -747,6 +778,10 @@ Git sends the commits between `origin/main` and your branch. The helper:
    fast-forward behind. `docsync push` fast-forwards for you unless an edit in
    progress is in the way; after plain `git push`, run `git pull`. When the source only
    re-stamped edit times, that follow-up commit is `Update the index`.
+   After a push that suggested, this fetch is what takes your files back to
+   the source text: the documents did not change, the suggestions are waiting
+   in Docs, and the sidecars gain a thread each. That commit is called
+   `Suggested: <titles>`.
 
 The helper reports progress on stderr as the push runs: one line per
 document before its requests go out, one per file it uploads, and the list
@@ -840,8 +875,12 @@ What is lost, per source:
 
 The push report says how much was touched: `updated  Specs/Auth.md  (3
 blocks changed, 41 kept)`, where changed counts updated, inserted and
-deleted blocks. A document whose live version does not match the base is refused
-with "the source changed": fetch, merge, push again.
+deleted blocks. A document pushed as suggestions reads `suggested
+Client/Brief.md  (2 suggestions, 1 block changed, 5 kept)`, counting the
+suggestions the API reported, and the report closes with a note that your
+files are back to the source text until the client accepts them. A document
+whose live version does not match the base is refused with "the source
+changed": fetch, merge, push again.
 
 ### Conflicts
 
@@ -985,10 +1024,13 @@ phase.
 
 **Later:** replies and resolving from the checkout. Google Docs allows both
 through the API; Notion allows replies but has no resolve call and does not
-return resolved threads. Accepting and rejecting Docs suggestions, and
-**push as suggestions**, writing a push in suggesting mode so the client
-reviews it in Docs, both need the Google Workspace Developer Preview
-Program. Comments can be client-facing, so docsync will never write a
+return resolved threads. Accepting and rejecting Docs suggestions needs the
+Google Workspace Developer Preview Program. **Push as suggestions** is built:
+on a root with `suggest: true` a push sends every edit as suggestions the
+client reviews in Docs, and the body reverts on the next pull until they
+accept (§4, §7). It needs that same program on the project that owns the
+OAuth client; until the project is enrolled, only the fake API exercises
+it. Comments can be client-facing, so docsync will never write a
 comment on its own; only what you author.
 
 ### Later
@@ -1008,7 +1050,7 @@ comment on its own; only what you author.
 
 ```
 docsync init    [<dir>] [<src>[=<path>]...]
-docsync add     <src>[=<path>]... [--no-fetch] [--readonly]
+docsync add     <src>[=<path>]... [--no-fetch] [--readonly] [--suggest]
 docsync remove  <path>...
 docsync status
 docsync fetch   [--all]
