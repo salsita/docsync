@@ -8,8 +8,9 @@ description: How to work in a docsync checkout — Notion pages and Google Docs 
 This directory is a git repository whose documents live in Notion or Google
 Drive. Each document is a Markdown file; `.docsync.yaml` lists the roots and
 _is_ the remote; `.docsync/index.yaml` maps every path to its source object.
-Nothing reaches a source until someone pushes. Do not edit files that are
-outside a root — only the roots in `.docsync.yaml` are documents.
+Nothing reaches a source until someone pushes. Only the roots in
+`.docsync.yaml` are documents; anything else in the tree is a local file of
+the repository.
 
 ## Before you edit
 
@@ -18,6 +19,11 @@ changed since the last fetch and you would be editing stale text. Beyond
 that, this skill only tells you how docsync behaves. How you branch, commit
 and hand your work over is the project's process, not docsync's; follow the
 instructions that apply where you work.
+
+**A file outside every root in `.docsync.yaml` is local:** committed and
+pushed like any other file of the branch but never sent to a source, so
+notes, drafts and scratch belong there. Moving one into a root creates it at
+the source.
 
 **Do not run `docsync push` or `git push` unless the person asked for it in
 this conversation.** A push writes to real documents other people own; being

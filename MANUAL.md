@@ -209,6 +209,12 @@ so.
 - Paths are relative to the repo root. No leading `/`, no `.` or `..` segment,
   no empty segment, no segment starting with a dot, no `\`. Unicode is
   normalised to NFC.
+- A root path names something **inside** the repository, never the
+  repository itself. `.`, `./`, the empty string, an absolute path, a path
+  with a `..` segment or a leading `./`, and anything under `.docsync/` are
+  refused: `"path" must be a relative path inside the repository, not the
+  repository itself`. That is what makes "outside every root" a place no
+  fetch ever writes, and so a place a file of your own can live (§7).
 - Paths must not overlap. Two roots cannot claim the same file, and one root's
   path cannot be inside another's. A file root owns the sibling directory with
   the same stem as well, since that is where its children would land, so no
@@ -283,6 +289,16 @@ The `=<path>` alias is optional. A trailing slash means "under this
 directory, named by the source title". No trailing slash means "exactly this
 name".
 
+A root is added over an empty path. If anything is already in the checkout
+where it would land, a file or a directory, and for a Notion page the
+sibling directory of its children too, the command refuses: "`<path>` exists
+in the checkout; a root is added over an empty path. Commit it on a branch
+or move it aside, then add". A root writes its whole territory from the
+source on every fetch, so adding one over files of your own would replace
+them with the source text in a commit git applies without a word. Re-adding
+a root you removed is therefore: `remove`, edit on a branch, `add`, rebase,
+resolve, push.
+
 | Alias | Document (a Notion page, with or without children, or a Drive file) | Drive folder |
 |---|---|---|
 | none | `<title>.md` | `<title>/` |
@@ -298,10 +314,12 @@ later title change at the source does not move the root either.
 ### `docsync remove <path>...`
 
 Removes the roots whose `path` matches, deletes the local files, commits the
-deletion locally. The source is not touched, now or later: the helper reads a
-root that is gone from the manifest as an unsubscribe. Run `docsync pull`
-before the next push. The pull's pre-flight fetch (§7) records the unsubscribe
-as a commit at the remote, which merges cleanly with your local deletion; a
+deletion locally. The source is not touched, now or later: once the root is
+out of the manifest those files are under no root, so they are local files
+(§7) and the deletion is a plain deletion. Keeping them instead of deleting
+them is fine; they simply stay, local. Run `docsync pull` before the next
+push. The pull's pre-flight fetch (§7) drops the documents from the index
+and records that as a commit at the remote, which merges cleanly with your local deletion; a
 push without that pull is refused as "the source changed".
 
 ### `docsync status`
@@ -315,8 +333,9 @@ Then, when the current branch is ahead of `origin/main`, `To push:` lists
 what `docsync push` would do, one line per file in the push report's own
 words: `create`, `update` (`suggest` under a root with `suggest: true`),
 `rename <old> -> <new>` (followed by `update` when the renamed file was also
-edited), `trash`, `ignored <path>` for a deletion
-under no root, and `refused <path>: <reason>` for everything a push would
+edited), `trash`, `local <path>` for any change to a file under no root,
+which the push lands on `main` and sends to no source, and `refused <path>:
+<reason>` for everything a push would
 refuse (§7 steps 3 and 4). A closing `(<n> uncommitted changes are not
 pushed)` appears when the working tree is dirty: only commits are pushed. The
 preview is computed by the code the push uses and costs no network. Nothing
@@ -693,6 +712,12 @@ it is listing, one line per document it downloads, numbered against the
 total on Google Drive, where the walk has already counted them, and numbered
 alone on Notion, whose tree is discovered as it is walked, and one per
 document whose comments are read. `git fetch --quiet` silences it.
+The commit a fetch writes starts as every file the last one holds **under no
+root**, the local files (§4), and each root then writes its own territory
+over that. So a local file survives every fetch, the one after a push
+included, and a file whose root has left the manifest stays where it is,
+local from then on.
+
 If anything changed, it writes one commit to `origin/main`:
 
 - author: the source's last editor, with their source email if available
@@ -746,9 +771,13 @@ Git sends the commits between `origin/main` and your branch. The helper:
    git remote before you. Pull, merge, push again.
 2. Rejects the push if `origin/main` is not an ancestor of what you push. This
    is git's normal non-fast-forward rule. Fetch, merge or rebase, push again.
-3. Reads the manifest. Added or modified files under no root are refused.
-   Deleted files under no root are ignored: that is what `docsync remove`
-   produces, and it means unsubscribe, not trash. Changes to
+3. Reads the manifest. A file under no root is **local**: committed and
+   pushed like any other file of the branch, with no request at any source,
+   and deleting it deletes it from `main` and nowhere else. A file moved or
+   copied from outside into a root is a **creation** at the source, with no
+   memory of where it came from; a file moved out of a root is a **trash** at
+   the source, printed prominently as trashes are, and a local file from
+   then on. Changes to
    `.docsync/index.yaml` are refused, and so is any change to a comment
    sidecar under a root: "`<path>` is read-only; comments are only pulled in
    this version. Restore it with `git checkout -- <path>`". Any added,
@@ -900,7 +929,10 @@ edits to different paragraphs merge cleanly. Binary files conflict as a whole.
 
 | What you did                      | What happens at the source                                                        |
 | --------------------------------- | --------------------------------------------------------------------------------- |
-| Removed a root from the manifest  | Nothing.                                                                          |
+| Removed a root from the manifest  | Nothing. The files stay in the checkout and are local from then on.               |
+| Moved a file into a root          | It is created at the source, as a new document.                                   |
+| Moved a file out of a root        | The document is moved to trash; the file stays, local.                            |
+| Deleted a local file (under no root) | Nothing. The deletion lands on `main` alone.                                   |
 | Added an ignore pattern           | Nothing.                                                                          |
 | Deleted a tracked file and pushed | The document is moved to trash. Recoverable from the source UI for about 30 days. |
 | Deleted a file with no id         | Nothing. It was never at the source.                                              |

@@ -72,6 +72,8 @@ export function isInsideRepository(path: string): boolean {
   const normalized = path.normalize('NFC');
   if (normalized === '' || normalized === '.' || normalized === './') return false;
   if (normalized.startsWith('/') || normalized.startsWith('./')) return false;
+  // A Windows drive: `C:/docs` is not in the checkout either (MANUAL §11).
+  if (/^[A-Za-z]:/.test(normalized)) return false;
   const segments = normalized.split('/');
   if (segments.includes('..')) return false;
   return segments[0] !== '.docsync';
