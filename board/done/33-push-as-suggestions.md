@@ -71,7 +71,14 @@ stalled with the work uncommitted; a second one finished it from the tree.
 - Fake Docs model records a `SUGGEST` batch as suggestions the inline view
   returns, so the full loop is tested on the fake: body reverts, one sidecar
   thread per suggestion, second push sends nothing.
-- `scripts/smoke-gdrive-patch.ts --suggest` written, **not run**: waits on
-  the Developer Preview enrolment. A suggestion resolved at the source is not
-  tested on the fake (no accept/reject there); it takes the same read path.
+- `scripts/smoke-gdrive-patch.ts --suggest` run 2026-09-08 against the real
+  API after the project's enrolment: the batch goes out in suggesting mode,
+  the body moves 0 lines, and with every suggestion accepted the Doc says
+  what the rewrite says. Two findings: the API returns no suggestion ids in
+  the replies (13 ids show up on the next read), so the report no longer
+  counts suggestions and the fake stopped inventing ids; and a suggestion
+  spanning many paragraphs is one sidecar thread per paragraph (106 threads
+  for 13 ids), a pre-existing rendering of multi-paragraph suggestions worth
+  its own ticket. A suggestion resolved at the source is not tested on the
+  fake (no accept/reject there); it takes the same read path.
 - Manual §4, §5, §7, §12, §13 and the skill file updated.

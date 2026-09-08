@@ -173,10 +173,10 @@ export interface PushedDocument {
    */
   suggestions?: string[];
   /**
-   * How many suggestions the push made on this document (MANUAL §7). Only on a
-   * `suggested` action: under a root with `suggest: true` a Google Doc is
+   * How many suggestions the API reported for this document (MANUAL §7). Only
+   * on a `suggested` action: under a root with `suggest: true` a Google Doc is
    * patched in suggesting mode, so the body is untouched until the client
-   * accepts.
+   * accepts. The real API reports none, so this is usually `0`.
    */
   suggested?: number;
   /** Files this push uploaded to the source (MANUAL §12 phase 2). */

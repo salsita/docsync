@@ -876,9 +876,10 @@ What is lost, per source:
 The push report says how much was touched: `updated  Specs/Auth.md  (3
 blocks changed, 41 kept)`, where changed counts updated, inserted and
 deleted blocks. A document pushed as suggestions reads `suggested
-Client/Brief.md  (2 suggestions, 1 block changed, 5 kept)`, counting the
-suggestions the API reported, and the report closes with a note that your
-files are back to the source text until the client accepts them. A document
+Client/Brief.md  (1 block changed, 5 kept)`; the API does not say how many
+suggestions it made, they show up on the next pull. The report closes with a
+note that your files are back to the source text until the client accepts
+them. A document
 whose live version does not match the base is refused with "the source
 changed": fetch, merge, push again.
 

@@ -879,7 +879,9 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
           }
           // Everything else is a style or a bullet: a suggestion that changes no
           // text, which the sidecar prints as `formatting only` (MANUAL §6).
-          replies.push({ suggestionId: id });
+          // The real API answers a suggesting batch with empty replies, no
+          // suggestion ids (checked 2026-09-08), and so does the fake.
+          replies.push({});
           continue;
         }
         switch (name) {

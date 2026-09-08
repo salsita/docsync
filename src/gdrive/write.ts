@@ -35,9 +35,9 @@ export interface BodyResult {
   /** How many batches it took: one, or two when there are footnotes. */
   batches: number;
   /**
-   * How many suggestions the write made, when it was sent in suggesting mode
-   * (MANUAL §7). The response reports one per request; a response that reports
-   * none is read as one suggestion per request sent.
+   * How many suggestions the response reported, when the write was sent in
+   * suggesting mode (MANUAL §7). The real API reports none: the count is
+   * `0`, and the report leaves it out.
    */
   suggested?: number;
   /** What the API said about the comments the suggestions are (MANUAL §7). */
@@ -134,10 +134,9 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
 
     async patchBody(documentId, plan, options = {}) {
       const suggest = options.suggest === true;
-      // In suggesting mode the count is what the response reports, and a
-      // response that reports no ids is read as one suggestion per request.
-      const made = (result: { suggestionIds: string[] }, requests: number): number =>
-        result.suggestionIds.length === 0 ? requests : result.suggestionIds.length;
+      // In suggesting mode the count is what the response reports, which on
+      // the real API is nothing: the ids only show up on the next read.
+      const made = (result: { suggestionIds: string[] }): number => result.suggestionIds.length;
       const suggested = (count: number): Pick<BodyResult, 'suggested'> =>
         suggest ? { suggested: count } : {};
       const state = (result: {
@@ -149,7 +148,7 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
 
       if (plan.requests.length === 0) return { dropped: plan.dropped, batches: 0, ...suggested(0) };
       const first = await api.batchUpdate(documentId, plan.requests, { suggest });
-      const count = made(first, plan.requests.length);
+      const count = made(first);
       if (plan.footnotes.length === 0) {
         return { dropped: plan.dropped, batches: 1, ...suggested(count), ...state(first) };
       }
@@ -169,7 +168,7 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
       return {
         dropped: plan.dropped,
         batches: 2,
-        ...suggested(count + made(last, second.length)),
+        ...suggested(count + made(last)),
         ...state(first.commentUpdateState === undefined ? last : first),
       };
     },

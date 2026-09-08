@@ -167,9 +167,11 @@ function actionRow(document: PushedDocument): string[] {
   const changed = blocks.updated + blocks.inserted + blocks.deleted;
   const counts = `${plural(changed, 'block')} changed, ${blocks.kept} kept`;
   // A suggesting push wrote nothing to the body, so what it did is counted in
-  // suggestions first and blocks after (MANUAL §7).
+  // suggestions first, when the API said how many, and blocks after (MANUAL §7).
   const made =
-    document.action === 'suggested' ? `${plural(document.suggested ?? 0, 'suggestion')}, ` : '';
+    document.action === 'suggested' && (document.suggested ?? 0) > 0
+      ? `${plural(document.suggested ?? 0, 'suggestion')}, `
+      : '';
   return [document.action, document.path, `(${made}${counts}${files === '' ? '' : `, ${files}`})`];
 }
 

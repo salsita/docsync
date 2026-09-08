@@ -77,6 +77,31 @@ function diff(expected: string, actual: string): string[] {
   return out;
 }
 
+/**
+ * The document's text with every pending suggestion accepted: suggested
+ * insertions kept, suggested deletions dropped, one line per paragraph.
+ */
+function acceptedText(doc: {
+  body?: {
+    content?: {
+      paragraph?: {
+        elements?: { textRun?: { content?: string; suggestedDeletionIds?: string[] } }[];
+      };
+    }[];
+  };
+}): string {
+  const lines: string[] = [];
+  for (const element of doc.body?.content ?? []) {
+    const runs = element.paragraph?.elements ?? [];
+    const text = runs
+      .filter((one) => (one.textRun?.suggestedDeletionIds ?? []).length === 0)
+      .map((one) => one.textRun?.content ?? '')
+      .join('');
+    for (const line of text.split(/[\n\v]/)) lines.push(line.trim());
+  }
+  return lines.join('\n');
+}
+
 const provider = createCredentialProvider();
 const api = createGDriveApi(await provider.accessToken('gdocs'));
 const writer = createGDriveWriter(api);
@@ -123,7 +148,7 @@ try {
   say(
     'push',
     `${report[0]?.action ?? 'nothing'} ${JSON.stringify(report[0]?.blocks ?? 'no counts reported')}` +
-      (SUGGEST ? `, ${report[0]?.suggested ?? 0} suggestion(s) reported` : ''),
+      (SUGGEST ? ', sent in suggesting mode' : ''),
   );
 
   if (SUGGEST) {
@@ -150,20 +175,27 @@ try {
       }),
     );
 
-    // 6. And they say what the rewrite says: every line the diff adds is in
-    //    one of them.
+    // 6. And they say what the rewrite says: with every suggestion accepted,
+    //    the Doc's paragraphs carry every line the diff adds. A thread shows
+    //    one suggestion at a time, so a paragraph two of them edit reads right
+    //    only with both, and the marks of the dialect are not in a paragraph.
+    const plain = (line: string): string =>
+      line
+        .replaceAll(/\*\*|`|\\$/g, '')
+        .replace(/^[\s>]*(?:[-*]|\d+\.|#+)?\s*/, '')
+        .trim();
     const wanted = diff(seeded, next)
       .filter((one) => one.startsWith('+'))
-      .map((one) => one.slice(one.indexOf(': ') + 2).trim())
-      .filter((one) => one !== '');
-    const said = suggestions.map((one) => one.after ?? one.quote ?? '').join('\n');
-    const missing = wanted.filter((line) => !said.includes(line));
+      .map((one) => plain(one.slice(one.indexOf(': ') + 2)))
+      .filter((one) => one !== '' && !one.startsWith('<!--'));
+    const accepted = acceptedText(inline);
+    const missing = wanted.filter((line) => !accepted.includes(line));
     ok = moved.length === 0 && suggestions.length > 0 && missing.length === 0;
     say(
       ok ? 'ok' : 'FAILED',
       missing.length === 0
-        ? 'every line the rewrite adds is in a suggestion'
-        : `${missing.length} added line(s) are in no suggestion`,
+        ? 'with every suggestion accepted, the Doc says what the rewrite says'
+        : `${missing.length} added line(s) are missing with every suggestion accepted`,
     );
     for (const line of missing) console.log(`  ${line}`);
   } else {

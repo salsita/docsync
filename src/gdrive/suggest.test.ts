@@ -86,10 +86,10 @@ describe('a push under a suggest root', () => {
     );
 
     // The batch went out in suggesting mode, and the report says `suggested`
-    // rather than `updated`, with what the response counted.
+    // rather than `updated`. The API reports no count, and neither does the fake.
     expect(api.calls).toContain(`batchUpdate ${BRIEF_ID} suggest`);
     expect(report[0]?.action).toBe('suggested');
-    expect(report[0]?.suggested ?? 0).toBeGreaterThan(0);
+    expect(report[0]?.suggested ?? 0).toBe(0);
     // Nothing was written to the document itself (MANUAL §7).
     expect(api.markdown(BRIEF_ID)).toBe(BASE);
 
@@ -101,7 +101,7 @@ describe('a push under a suggest root', () => {
     const sidecar = textOf(second.files, 'client/Brief.comments.md') ?? '';
     expect(sidecar).toContain('— suggestion');
     expect(sidecar).toContain('One, edited.');
-    expect(sidecar.match(/^## /gm)?.length).toBe(report[0]?.suggested);
+    expect(sidecar.match(/^## /gm)?.length ?? 0).toBeGreaterThan(0);
 
     // And there is nothing left to push: the branch says what the source says.
     api.calls.length = 0;
