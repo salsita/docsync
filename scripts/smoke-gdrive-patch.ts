@@ -16,21 +16,35 @@
  *   corepack pnpm build
  *   node --experimental-strip-types scripts/smoke-gdrive-patch.ts
  *
+ * With `--suggest` (ticket 33) the same rewrite is pushed under a root with
+ * `suggest: true`: the batch goes out in suggesting mode, and the script then
+ * checks that the body did not move and that what is waiting in the Doc says
+ * what the diff says. That needs the Google Workspace Developer Preview
+ * Program on the Cloud project that owns the OAuth client; without it the API
+ * refuses the batch and the push says so.
+ *
+ *   node --experimental-strip-types scripts/smoke-gdrive-patch.ts --suggest
+ *
  * Sign in first with `docsync auth google`.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCredentialProvider } from '../dist/auth/index.js';
+import { formatSidecar } from '../dist/comments/format.js';
 import { createGDriveApi } from '../dist/gdrive/api.js';
+import { threadsOf } from '../dist/gdrive/comments.js';
 import { pushRoot } from '../dist/gdrive/push.js';
 import { documentToMarkdown } from '../dist/gdrive/to-markdown.js';
 import { createGDriveWriter } from '../dist/gdrive/write.js';
 import { parseMarkdown } from '../dist/markdown.js';
 
+/** `--suggest`: push in suggesting mode and read the suggestions back. */
+const SUGGEST = process.argv.includes('--suggest');
+
 /** The fixture folder. Read only except for the one Doc this script creates. */
 const FOLDER = '13bDdq9dYrAR1E23oS2cLV__S71xIagPt';
-const TITLE = `Patch smoke 32 ${new Date().toISOString().replaceAll(/[:.]/g, '-')}`;
+const TITLE = `Patch smoke ${SUGGEST ? 33 : 32} ${new Date().toISOString().replaceAll(/[:.]/g, '-')}`;
 const PATH = `drive/${TITLE}.md`;
 
 const FIXTURES = join(
@@ -88,7 +102,14 @@ try {
   const file = (body: string): string =>
     `---\nid: gdocs:${made.id}\ntitle: ${TITLE}\n---\n\n${body}`;
   const report = await pushRoot(
-    { path: 'drive/', src: { source: 'gdocs', id: FOLDER }, ignore: [] },
+    {
+      path: 'drive/',
+      src: { source: 'gdocs', id: FOLDER },
+      ignore: [],
+      // A suggesting root pulls the sidecars: that is where a suggestion is
+      // read (MANUAL §4).
+      ...(SUGGEST ? { comments: true, suggest: true } : {}),
+    },
     [{ kind: 'modified', path: PATH, text: file(next), previousText: file(seeded) }],
     provider,
     new Map([
@@ -99,39 +120,85 @@ try {
     ]),
     { api },
   );
-  say('push', JSON.stringify(report[0]?.blocks ?? 'no counts reported'));
-
-  // 4. The fetch after the push, against what was pushed.
-  const after = documentToMarkdown(await api.getDocument(made.id));
-  const found = diff(next, after);
-  ok = found.length === 0;
-  say(ok ? 'ok' : 'FAILED', `${found.length} line(s) differ from what was pushed`);
-  for (const line of found) console.log(`  ${line}`);
-
-  // The three defects of the ticket, named, so the output says which is which.
-  const breaks = (text: string) => (text.match(/<!-- docsync:pagebreak -->/g) ?? []).length;
-  say('breaks', `pushed ${breaks(next)}, fetched ${breaks(after)}`);
   say(
-    'escape',
-    after.includes('ALUMINUM_FENCE-25-26-WEB-150dpi.pdf')
-      ? 'ALUMINUM_FENCE… came back unescaped'
-      : `ALUMINUM_FENCE… came back as ${JSON.stringify(
-          after.match(/ALUMINUM.{0,3}FENCE/)?.[0] ?? 'not found',
-        )}`,
+    'push',
+    `${report[0]?.action ?? 'nothing'} ${JSON.stringify(report[0]?.blocks ?? 'no counts reported')}` +
+      (SUGGEST ? `, ${report[0]?.suggested ?? 0} suggestion(s) reported` : ''),
   );
-  // The nested items of the three deleted list items, worded so that no line
-  // of `next` contains them: what survived a deletion of its parent.
-  const orphans = [
-    'Real photographs when possible',
-    'A source from which we can infer the branding',
-    'Very project-dependant',
-  ].filter((one) => after.includes(one));
-  say(
-    'orphans',
-    orphans.length === 0
-      ? 'no deleted nested item survived'
-      : `deleted nested items still there: ${orphans.join(', ')}`,
-  );
+
+  if (SUGGEST) {
+    // 4. The body did not move: a suggesting batch writes nothing (MANUAL §7).
+    const body = documentToMarkdown(await api.getDocument(made.id));
+    const moved = diff(seeded, body);
+    say(
+      moved.length === 0 ? 'body' : 'FAILED',
+      `${moved.length} line(s) of the body moved; a suggesting push moves none`,
+    );
+    for (const line of moved) console.log(`  ${line}`);
+
+    // 5. What the client will see, read the way the fetch after the push reads
+    //    it: inline, one sidecar thread per pending suggestion (MANUAL §6).
+    const inline = await api.getDocument(made.id, 'inline');
+    const threads = threadsOf(inline, [], body);
+    const suggestions = threads.filter((one) => one.kind === 'suggestion');
+    say('suggested', `${suggestions.length} pending suggestion(s) in the Doc`);
+    console.log(
+      formatSidecar({
+        document: { source: 'gdocs', id: made.id },
+        fetched: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
+        threads,
+      }),
+    );
+
+    // 6. And they say what the rewrite says: every line the diff adds is in
+    //    one of them.
+    const wanted = diff(seeded, next)
+      .filter((one) => one.startsWith('+'))
+      .map((one) => one.slice(one.indexOf(': ') + 2).trim())
+      .filter((one) => one !== '');
+    const said = suggestions.map((one) => one.after ?? one.quote ?? '').join('\n');
+    const missing = wanted.filter((line) => !said.includes(line));
+    ok = moved.length === 0 && suggestions.length > 0 && missing.length === 0;
+    say(
+      ok ? 'ok' : 'FAILED',
+      missing.length === 0
+        ? 'every line the rewrite adds is in a suggestion'
+        : `${missing.length} added line(s) are in no suggestion`,
+    );
+    for (const line of missing) console.log(`  ${line}`);
+  } else {
+    // 4. The fetch after the push, against what was pushed.
+    const after = documentToMarkdown(await api.getDocument(made.id));
+    const found = diff(next, after);
+    ok = found.length === 0;
+    say(ok ? 'ok' : 'FAILED', `${found.length} line(s) differ from what was pushed`);
+    for (const line of found) console.log(`  ${line}`);
+
+    // The three defects of the ticket, named, so the output says which is which.
+    const breaks = (text: string) => (text.match(/<!-- docsync:pagebreak -->/g) ?? []).length;
+    say('breaks', `pushed ${breaks(next)}, fetched ${breaks(after)}`);
+    say(
+      'escape',
+      after.includes('ALUMINUM_FENCE-25-26-WEB-150dpi.pdf')
+        ? 'ALUMINUM_FENCE… came back unescaped'
+        : `ALUMINUM_FENCE… came back as ${JSON.stringify(
+            after.match(/ALUMINUM.{0,3}FENCE/)?.[0] ?? 'not found',
+          )}`,
+    );
+    // The nested items of the three deleted list items, worded so that no line
+    // of `next` contains them: what survived a deletion of its parent.
+    const orphans = [
+      'Real photographs when possible',
+      'A source from which we can infer the branding',
+      'Very project-dependant',
+    ].filter((one) => after.includes(one));
+    say(
+      'orphans',
+      orphans.length === 0
+        ? 'no deleted nested item survived'
+        : `deleted nested items still there: ${orphans.join(', ')}`,
+    );
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
 } finally {
@@ -139,8 +206,16 @@ try {
   say('trash', `${made.id} trashed`);
 }
 
+const verdict = SUGGEST
+  ? ok
+    ? 'The body is untouched and the suggestions say what the rewrite says.'
+    : 'THE SUGGESTING PUSH DID NOT DO WHAT IT SAYS.'
+  : ok
+    ? 'The fetch after the push equals what was pushed.'
+    : 'THE FETCH DIFFERS FROM WHAT WAS PUSHED.';
+
 console.log(
-  `\n${ok ? 'The fetch after the push equals what was pushed.' : 'THE FETCH DIFFERS FROM WHAT WAS PUSHED.'}\n` +
+  `\n${verdict}\n` +
     `Left behind: the trashed Doc "${TITLE}" (${made.id}), recoverable from the Drive trash. ` +
     'Nothing else in the "Docsync test" folder was read or written.',
 );

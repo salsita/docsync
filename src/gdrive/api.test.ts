@@ -107,6 +107,62 @@ describe('getDocument', () => {
   });
 });
 
+describe('batchUpdate', () => {
+  /** The API, with the request bodies it was given, parsed (MANUAL §7). */
+  function sending(responses: Canned[]) {
+    const sent: Record<string, unknown>[] = [];
+    const { impl, calls } = fakeFetch(responses);
+    const api = createGDriveApi('token-123', {
+      fetch: (async (input: string, init?: RequestInit) => {
+        sent.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+        return (impl as (i: string, n?: RequestInit) => Promise<Response>)(input, init);
+      }) as unknown as typeof fetch,
+    });
+    return { api, calls, sent };
+  }
+
+  const requests = [{ insertText: { location: { index: 1 }, text: 'Hi' } }];
+
+  it('writes over the body when nothing asks for suggestions', async () => {
+    const { api, calls, sent } = sending([{ body: { replies: [{}] } }]);
+
+    const result = await api.batchUpdate('d', requests);
+
+    expect(calls[0]).toBe(`${DOCS_ENDPOINT}/documents/d:batchUpdate`);
+    expect(sent[0]).toEqual({ requests });
+    expect(sent[0]?.writeControl).toBeUndefined();
+    expect(result.suggestionIds).toEqual([]);
+  });
+
+  it('carries `writeControl.writeMode: SUGGEST` for a suggest root (MANUAL §7)', async () => {
+    const { api, sent } = sending([
+      {
+        body: {
+          replies: [{ suggestionId: 'suggest.a' }, { suggestionId: 'suggest.a' }],
+          commentUpdateState: { state: 'SUCCESS' },
+        },
+      },
+    ]);
+
+    const result = await api.batchUpdate('d', requests, { suggest: true });
+
+    expect(sent[0]).toEqual({ requests, writeControl: { writeMode: 'SUGGEST' } });
+    // One id per suggestion, however many replies name it.
+    expect(result.suggestionIds).toEqual(['suggest.a']);
+    expect(result.commentUpdateState).toEqual({ state: 'SUCCESS' });
+  });
+
+  it('leaves `writeControl` off again when the option is false', async () => {
+    const { api, sent } = sending([{ body: {} }]);
+
+    const result = await api.batchUpdate('d', requests, { suggest: false });
+
+    expect(sent[0]?.writeControl).toBeUndefined();
+    expect(result.replies).toEqual([]);
+    expect(result.commentUpdateState).toBeUndefined();
+  });
+});
+
 describe('comments', () => {
   it('asks for every field, leaves the deleted out, and pages', async () => {
     const { api, calls } = apiWith([

@@ -170,6 +170,30 @@ describe('formatPushReport', () => {
     );
   });
 
+  it('counts the suggestions a push under a suggest root made, and says the body is back', () => {
+    const out = formatPushReport(
+      pushed({
+        documents: [
+          {
+            path: 'Client/Brief.md',
+            title: 'Brief',
+            action: 'suggested',
+            suggested: 2,
+            blocks: { kept: 5, updated: 1, inserted: 0, deleted: 0 },
+          },
+        ],
+      }),
+    );
+
+    expect(out).toBe(
+      [
+        'suggested  Client/Brief.md  (2 suggestions, 1 block changed, 5 kept)',
+        '  Suggestions are waiting for review in Docs; your files are back to the source text',
+        '  until they are accepted.',
+      ].join('\n'),
+    );
+  });
+
   it('puts the trashed documents last, under a heading of their own', () => {
     const out = formatPushReport(
       pushed({
@@ -261,6 +285,19 @@ describe('formatStatusLine', () => {
     );
   });
 
+  it('says `suggest` for a root whose pushes land as suggestions (MANUAL §4)', () => {
+    const drive: Root = { ...root, src: { source: 'gdocs', id: '1AbC' }, path: 'Client/' };
+    expect(
+      formatStatusLine({ ...drive, comments: true, suggest: true }, '2026-09-03T10:12:00Z', 0),
+    ).toBe('gdocs:1AbC…  Client/  fetched 2026-09-03 10:12  up to date  comments on  suggest');
+  });
+
+  it('says nothing about suggesting on a root that is written over', () => {
+    expect(
+      formatStatusLine({ ...root, comments: true, suggest: false }, '2026-09-03T10:12:00Z', 0),
+    ).not.toContain('suggest');
+  });
+
   it('says nothing about read-only on a root that is pushed to', () => {
     expect(formatStatusLine({ ...root, readOnly: false }, '2026-09-03T10:12:00Z', 0)).not.toContain(
       'read-only',
@@ -313,6 +350,29 @@ describe('formatPushPreview', () => {
         '  update  Specs/Two.md',
         '  trash   Specs/Gone.md',
       ].join('\n'),
+    );
+  });
+
+  it('says `suggest` under a suggest root and `update` under its sibling (MANUAL §4)', () => {
+    const client: Root = {
+      src: { source: 'gdocs', id: '1AbCdEfGhIjKlMnOpQrStUvWxYz-_012' },
+      path: 'Client/',
+      ignore: [],
+      comments: true,
+      suggest: true,
+    };
+    const plan = preview({
+      roots: [
+        {
+          root: client,
+          // An edit is the only change a suggest root lets through (§7 step 3).
+          changes: [{ kind: 'modified', path: 'Client/Brief.md', text: 'edited\n' }],
+        },
+        { root, changes: [{ kind: 'modified', path: 'Specs/Auth.md', text: 'edited\n' }] },
+      ],
+    });
+    expect(formatPushPreview(plan, 0)).toBe(
+      ['To push:', '  suggest  Client/Brief.md', '  update   Specs/Auth.md'].join('\n'),
     );
   });
 

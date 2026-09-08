@@ -109,6 +109,28 @@ describe('a push under a suggest root', () => {
     expect(api.calls).toEqual([]);
   });
 
+  it('shows a suggestion somebody made in Docs on the next fetch', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+    expect(first.files.map((file) => file.path)).not.toContain('client/Brief.comments.md');
+
+    // The client suggests a word in Docs. Drive moves no `modifiedTime` for it,
+    // which is exactly why a suggest root re-reads every Doc (MANUAL §4).
+    await api.batchUpdate(
+      BRIEF_ID,
+      [{ insertText: { location: { index: 12 }, text: ' Really.' } }],
+      { suggest: true },
+    );
+
+    const second = await fetched(api, first.index);
+
+    // The body is what it always was; the suggestion is in the sidecar.
+    expect(textOf(second.files, PATH)).toBe(textOf(first.files, PATH));
+    const sidecar = textOf(second.files, 'client/Brief.comments.md') ?? '';
+    expect(sidecar).toContain('— suggestion');
+    expect(sidecar).toContain('Really.');
+  });
+
   it('reads a Doc whose modified time did not move, and writes no other request', async () => {
     const api = await drive();
     const first = await fetched(api);
@@ -168,5 +190,66 @@ describe('a push under a suggest root', () => {
     expect(api.calls).toContain(`batchUpdate ${BRIEF_ID}`);
     expect(report[0]?.action).toBe('updated');
     expect(api.markdown(BRIEF_ID)).toBe(NEXT);
+  });
+});
+
+describe('a suggesting push that the API will not take', () => {
+  /** One edit under the suggest root, pushed against `api`. */
+  async function push(api: FakeDrive, index: DocumentIndex, before: string): Promise<void> {
+    await pushRoot(
+      root,
+      [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: before.replace('One.', 'One, edited.'),
+          previousText: before,
+        },
+      ],
+      provider,
+      index,
+      { api },
+    );
+  }
+
+  it('adds the enrolment hint to what the API said (MANUAL §7)', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+    api.batchUpdate = async () => {
+      throw new Error(
+        'Google API 403 on https://docs.googleapis.com/v1/documents/doc-brief:batchUpdate: ' +
+          'the caller does not have access to the developer preview',
+      );
+    };
+
+    await expect(push(api, first.index, textOf(first.files, PATH) ?? '')).rejects.toThrow(
+      /the caller does not have access to the developer preview\. suggesting needs the Google Workspace Developer Preview Program on the project that owns the OAuth client \(client\/Brief\.md\)/,
+    );
+  });
+
+  it('leaves an ordinary failure exactly as it came', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+    api.batchUpdate = async () => {
+      throw new Error('Google API 503 on …: backend error');
+    };
+
+    await expect(push(api, first.index, textOf(first.files, PATH) ?? '')).rejects.toThrow(
+      /^Google API 503 on …: backend error$/,
+    );
+  });
+
+  it('fails the push when `commentUpdateState` is not a success (MANUAL §7)', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+    const { batchUpdate } = api;
+    api.batchUpdate = async (id, requests, options) => ({
+      ...(await batchUpdate(id, requests, options)),
+      commentUpdateState: { state: 'FAILED', message: 'the comments could not be written' },
+    });
+
+    await expect(push(api, first.index, textOf(first.files, PATH) ?? '')).rejects.toThrow(
+      'the suggestions were not written: the comments could not be written (client/Brief.md)',
+    );
   });
 });

@@ -321,6 +321,33 @@ describe.skipIf(process.platform === 'win32')(
       expect(shown.out.split('\n').filter((one) => one.includes('read-only'))).toHaveLength(1);
     });
 
+    it('add --suggest marks the root and turns its sidecars on (MANUAL §4, §5)', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      const added = await w.run(co, 'add', '--suggest', `gdocs:${CONTRACTS}`);
+
+      expect(added.code).toBe(0);
+      // A suggestion is read in the sidecar, so the flag sets both fields.
+      expect(w.read(co, '.docsync.yaml')).toContain('    comments: true\n    suggest: true\n');
+
+      const shown = await w.run(co, 'status');
+      const line = shown.out.split('\n').find((one) => one.includes('Contracts/')) ?? '';
+      expect(line.endsWith('comments on  suggest')).toBe(true);
+      expect(shown.out.split('\n').filter((one) => one.includes('suggest'))).toHaveLength(1);
+    });
+
+    it('refuses --suggest on a Notion root, which has no suggestions', async () => {
+      const w = world();
+      const co = await checkout(w, `gdocs:${CONTRACTS}`);
+
+      const run = await w.run(co, 'add', '--suggest', `notion:${SPECS}`);
+
+      expect(run.code).not.toBe(0);
+      expect(run.all).toContain('--suggest is only for Google Drive roots');
+      expect(w.read(co, '.docsync.yaml')).not.toContain(SPECS);
+    });
+
     it('push refuses a change under a read-only root and pushes the sibling root', async () => {
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`);

@@ -514,6 +514,26 @@ describe('fetchCommit', () => {
       );
     });
 
+    it('names the commit after the documents a suggesting push made (MANUAL §7)', async () => {
+      reset(withComments(sidecar('2026-04-01T00:00:00Z')));
+      const first = await fetchCommit(deps, commented, undefined);
+
+      const state = store.load();
+      const auth = state.objects[fakeId('notion', 2)];
+      if (auth !== undefined) auth.comments = sidecar('2026-04-02T10:11:12Z', 'Answered.');
+      store.save(state);
+
+      // The post-push fetch after a push that suggested: nothing was written to
+      // the documents, and the commit says so rather than `Update comments on`.
+      const second = await fetchCommit(deps, commented, first.commit, {
+        suggested: ['Auth', 'Brief'],
+      });
+
+      expect(await repo.git.text(['log', '-1', '--format=%B', second.commit])).toBe(
+        'Suggested: Auth, Brief\n\nSpecs/Auth.comments.md\n',
+      );
+    });
+
     it('removes the file when the root turns the option off', async () => {
       reset(withComments(sidecar('2026-04-01T00:00:00Z')));
       const first = await fetchCommit(deps, commented, undefined);
