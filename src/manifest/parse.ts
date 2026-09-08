@@ -1,6 +1,7 @@
 import { isMap, isScalar, isSeq, LineCounter, type Node, parseDocument } from 'yaml';
 import { parseSourceRef, type SourceRef } from '../source-ref.js';
 import type { Manifest, ManifestError, ParseResult, Root } from './types.js';
+import { isInsideRepository } from './validate.js';
 
 const TOP_LEVEL_KEYS = new Set(['version', 'roots']);
 const ROOT_KEYS = new Set(['src', 'path', 'ignore', 'comments', 'readonly', 'suggest']);
@@ -107,6 +108,15 @@ function parseRoot(node: Node, report: Report): Root | undefined {
     const raw = isScalar(pathNode) ? pathNode.value : undefined;
     if (typeof raw !== 'string') {
       report(pathNode as Node, '"path" must be a string');
+      failed = true;
+    } else if (!isInsideRepository(raw)) {
+      // A root can never be the checkout itself, or reach outside it, or sit in
+      // docsync's own directory: that is what makes "under no root" — a local
+      // file — a place a fetch will never write over (MANUAL §4).
+      report(
+        pathNode as Node,
+        '"path" must be a relative path inside the repository, not the repository itself',
+      );
       failed = true;
     } else {
       path = raw.normalize('NFC');

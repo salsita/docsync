@@ -45,6 +45,39 @@ export function isUnderRoot(rootPath: string, path: string): boolean {
 }
 
 /**
+ * The root a checked-out path belongs to, or `undefined` when no root claims it
+ * (MANUAL §4). Roots are asked in manifest order, and they cannot overlap, so
+ * the first answer is the only one.
+ *
+ * The push planner sorts a diff with it and the fetch decides with it which
+ * paths of the parent commit are local and survive (MANUAL §7): both questions
+ * are "whose territory is this", asked once.
+ */
+export function rootOf<T extends { path: string }>(
+  roots: readonly T[],
+  path: string,
+): T | undefined {
+  return roots.find((root) => isUnderRoot(root.path, path));
+}
+
+/**
+ * Whether a root's path names something *inside* the repository (MANUAL §4).
+ *
+ * The repository itself is never a root: a path under no root means "this file
+ * is ours", so "outside every root" has to be a place a root can never reach.
+ * `.docsync/` is docsync's own, and neither an absolute path nor one that
+ * climbs out with `..` is in the checkout at all.
+ */
+export function isInsideRepository(path: string): boolean {
+  const normalized = path.normalize('NFC');
+  if (normalized === '' || normalized === '.' || normalized === './') return false;
+  if (normalized.startsWith('/') || normalized.startsWith('./')) return false;
+  const segments = normalized.split('/');
+  if (segments.includes('..')) return false;
+  return segments[0] !== '.docsync';
+}
+
+/**
  * Checks one path's syntax (MANUAL §4). Returns a message, or undefined if it is fine.
  */
 export function validatePath(path: string): string | undefined {

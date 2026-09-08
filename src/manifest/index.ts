@@ -11,7 +11,9 @@ export { serializeManifest } from './serialize.js';
 export type { Kind, Manifest, ManifestError, ParseResult, Root } from './types.js';
 export {
   isDirectoryPath,
+  isInsideRepository,
   isUnderRoot,
+  rootOf,
   territoryOf,
   type ValidationError,
   validatePath,

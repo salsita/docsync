@@ -5,18 +5,18 @@
  * `git diff-tree` says which paths changed and how; this module says which
  * root each one belongs to, whether the change is text or bytes, and when a
  * file that looks modified is really one object trashed and another made —
- * frontmatter added to a plain file or removed from a document. It refuses,
- * by path, what the manual refuses: a file outside every root, anything under
- * a read-only root, a touch of the index, an edit to a read-only export, a
- * copy of a document, a plain file under Notion. Pure over an injected blob
- * reader.
+ * frontmatter added to a plain file or removed from a document. A path under
+ * no root is nobody's document: it is local, listed as such and sent nowhere
+ * (ticket 35). It refuses, by path, what the manual refuses: anything under a
+ * read-only root, a touch of the index, an edit to a read-only export, a copy
+ * of a document, a plain file under Notion. Pure over an injected blob reader.
  */
-import { assetsDirOf, documentOfAssetsDir, isAssetPath } from '../assets.js';
+import { assetsDirOf, isAssetPath } from '../assets.js';
 import { isSidecarPath } from '../comments/format.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
-import { territoryOf } from '../manifest/validate.js';
+import { rootOf as rootIn } from '../manifest/validate.js';
 import type { FileChange } from '../source.js';
 import { formatSourceRef } from '../source-ref.js';
 import type { DiffEntry } from './git.js';
@@ -54,8 +54,13 @@ export interface PushPlan {
   roots: PlannedPush[];
   /** Every refused path, in the order the diff holds them. */
   refusals: Refusal[];
-  /** Deleted under no root: `docsync remove`, not a trash (MANUAL §8). */
-  ignored: string[];
+  /**
+   * Changed under no root: a local file (MANUAL §7 step 3, ticket 35). It is
+   * committed and pushed like any file of the branch, and no request is made
+   * for it — the pushed commit is the parent of the post-push fetch, which
+   * carries it over untouched.
+   */
+  local: string[];
 }
 
 /** Records one refusal. The default message is the usual `<path>: <reason>`. */
@@ -128,7 +133,7 @@ export async function planChanges(
     return assets.size === 0 ? {} : { assets };
   };
   const refusals: Refusal[] = [];
-  const ignored: string[] = [];
+  const local: string[] = [];
   const refuse: Refuse = (path, reason, message = `${path}: ${reason}`) => {
     refusals.push({ path, reason, message });
     return undefined;
@@ -139,8 +144,7 @@ export async function planChanges(
     list.push(...changes);
     planned.set(root, list);
   };
-  const rootOf = (path: string): Root | undefined =>
-    roots.find((root) => path === root.path || path.startsWith(`${territoryOf(root.path)}/`));
+  const rootOf = (path: string): Root | undefined => rootIn(roots, path);
 
   for (const entry of diff) {
     // Anything recorded while this entry is sorted means it is refused, and
@@ -205,13 +209,22 @@ export async function planChanges(
     if (stopped()) continue;
 
     if (kind === 'D') {
-      // Deleted under no root is `docsync remove`: unsubscribe, not trash (MANUAL §8).
-      if (root === undefined) ignored.push(entry.path);
+      // A local file is deleted from the branch and nowhere else: nothing was
+      // ever at a source to trash (MANUAL §8, ticket 35).
+      if (root === undefined) local.push(entry.path);
       else add(root, { kind: 'deleted', path: entry.path });
       continue;
     }
     if (root === undefined) {
-      refuse(entry.path, 'not under any root in the manifest');
+      // Out of a root: the document is trashed where it was, and the file it
+      // left behind is local from then on (MANUAL §7 step 3, §8).
+      const from =
+        kind === 'R' && entry.previousPath !== undefined ? rootOf(entry.previousPath) : undefined;
+      if (from !== undefined && entry.previousPath !== undefined) {
+        add(from, { kind: 'deleted', path: entry.previousPath });
+      }
+      // Under no root, whatever it is: ours, committed, pushed, never sent.
+      local.push(entry.path);
       continue;
     }
 
@@ -300,7 +313,7 @@ export async function planChanges(
       return changes === undefined ? [] : [{ root, changes }];
     }),
     refusals,
-    ignored,
+    local,
   };
 }
 

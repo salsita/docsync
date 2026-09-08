@@ -181,19 +181,53 @@ describe('planChanges', () => {
     ]);
   });
 
-  it('passes a deletion to its root and ignores one outside every root', async () => {
+  it('passes a deletion to its root and keeps one outside every root local', async () => {
     expect(await plan(D('Specs/Auth.md'), D('README.md'))).toEqual([
       { root: NOTION, changes: [{ kind: 'deleted', path: 'Specs/Auth.md' }] },
     ]);
   });
 
-  it('refuses an addition or a modification outside every root, by path', async () => {
-    expect(await refusals(A('README.md'))).toEqual([
-      'README.md: not under any root in the manifest',
-    ]);
-    expect(await refusals(M('README.md'))).toEqual([
-      'README.md: not under any root in the manifest',
-    ]);
+  describe('everything outside a root is local (MANUAL §7 step 3, ticket 35)', () => {
+    it('plans an addition, an edit and a deletion under no root as local, refusing none', async () => {
+      const {
+        roots,
+        refusals: found,
+        local,
+      } = await planned(A('notes/a.md'), M('README.md'), D('scratch/old.txt'));
+      expect(roots).toEqual([]);
+      expect(found).toEqual([]);
+      expect(local).toEqual(['notes/a.md', 'README.md', 'scratch/old.txt']);
+    });
+
+    it('creates a file renamed into a root, with no memory of where it came from', async () => {
+      const { roots, local } = await planned(R('README.md', 'Specs/New.md', 'R100'));
+      expect(roots).toEqual([
+        { root: NOTION, changes: [{ kind: 'added', path: 'Specs/New.md', text: FRONT }] },
+      ]);
+      expect(local).toEqual([]);
+    });
+
+    it('trashes a document renamed out of a root and keeps the file local (MANUAL §8)', async () => {
+      const { roots, refusals: found, local } = await planned(R('Specs/Auth.md', 'notes/auth.md'));
+      expect(found).toEqual([]);
+      expect(roots).toEqual([
+        { root: NOTION, changes: [{ kind: 'deleted', path: 'Specs/Auth.md' }] },
+      ]);
+      expect(local).toEqual(['notes/auth.md']);
+    });
+
+    it('touches no root when a local file is renamed to another local path', async () => {
+      const { roots, local } = await planned(R('README.md', 'docs/README.md'));
+      expect(roots).toEqual([]);
+      expect(local).toEqual(['docs/README.md']);
+    });
+
+    it('still refuses the index, which is the one path under no root that is not local', async () => {
+      expect(await refusals(M('.docsync/index.yaml'))).toEqual([
+        '.docsync/index.yaml: the index is written by fetch; do not edit it',
+      ]);
+      expect((await planned(M('.docsync/index.yaml'))).local).toEqual([]);
+    });
   });
 
   it('refuses any touch of the index', async () => {
@@ -556,15 +590,20 @@ describe('planChanges', () => {
 
   describe('every refusal is collected, so status can list them (ticket 31)', () => {
     it('answers all of them in diff order, and push fails on the first', async () => {
-      const { roots, refusals: found } = await planned(
+      const {
+        roots,
+        refusals: found,
+        local,
+      } = await planned(
         M('Specs/Auth.md'),
         A('README.md'),
         M('Specs/Auth.comments.md'),
         M('Inputs/Brief.md'),
         M('.docsync/index.yaml'),
       );
+      // The file under no root is not a refusal any more; it is local.
+      expect(local).toEqual(['README.md']);
       expect(found.map((one) => one.path)).toEqual([
-        'README.md',
         'Specs/Auth.comments.md',
         'Inputs/Brief.md',
         '.docsync/index.yaml',
@@ -574,18 +613,18 @@ describe('planChanges', () => {
       expect(roots[0]?.changes[0]?.path).toBe('Specs/Auth.md');
     });
 
-    it('says a deletion outside every root is ignored, not refused (MANUAL §8)', async () => {
-      const { roots, refusals: found, ignored } = await planned(D('README.md'));
+    it('says a deletion outside every root is local, not refused (ticket 35)', async () => {
+      const { roots, refusals: found, local } = await planned(D('README.md'));
       expect(roots).toEqual([]);
       expect(found).toEqual([]);
-      expect(ignored).toEqual(['README.md']);
+      expect(local).toEqual(['README.md']);
     });
 
     it('carries the reason `docsync status` prints after the path', async () => {
-      const { refusals: found } = await planned(A('README.md'), M('Files/Rates.xlsx'));
+      const { refusals: found } = await planned(M('Files/Rates.xlsx'), M('Inputs/Brief.md'));
       expect(found.map((one) => `${one.path}: ${one.reason}`)).toEqual([
-        'README.md: not under any root in the manifest',
         'Files/Rates.xlsx: a read-only export; edit it at the source',
+        'Inputs/Brief.md: under read-only root Inputs/',
       ]);
     });
   });

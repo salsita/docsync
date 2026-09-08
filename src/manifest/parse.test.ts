@@ -115,6 +115,23 @@ roots:
     expect(manifest.roots[0]?.suggest).toBeUndefined();
   });
 
+  describe('a root path is inside the repository (MANUAL §4, ticket 35)', () => {
+    const REFUSED =
+      '"path" must be a relative path inside the repository, not the repository itself';
+    const withPath = (path: string): string =>
+      `version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: ${path}\n`;
+
+    it('refuses the repository itself, a path outside it and docsync’s own directory', () => {
+      for (const path of ["'.'", "'./'", "''", '/Specs/', '../Specs/', './Specs/', '.docsync/']) {
+        expect(errorsOf(withPath(path)), path).toEqual([{ line: 4, message: REFUSED }]);
+      }
+    });
+
+    it('says nothing about a path that is inside it', () => {
+      expect(manifestOf(withPath('Specs/')).roots[0]?.path).toBe('Specs/');
+    });
+  });
+
   it('normalises paths to NFC', () => {
     // "Cafe" + combining acute (NFD) comes back precomposed.
     const manifest = manifestOf(

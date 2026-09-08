@@ -208,8 +208,9 @@ export function formatPushPreview(plan: PushPlan, uncommitted: number): string {
       }
     }
   }
-  // Deleted under no root: `docsync remove`, which the push passes over (§8).
-  for (const path of plan.ignored) rows.push(['ignored', path]);
+  // Under no root: a local file. The push lands it on `main` and sends nothing
+  // to any source (§7 step 3, ticket 35).
+  for (const path of plan.local) rows.push(['local', path]);
   for (const one of plan.refusals) rows.push(['refused', `${one.path}: ${one.reason}`]);
 
   if (rows.length === 0 && uncommitted === 0) return '';

@@ -320,7 +320,7 @@ describe('formatPushPreview', () => {
   const preview = (over: Partial<PushPlan> = {}): PushPlan => ({
     roots: [],
     refusals: [],
-    ignored: [],
+    local: [],
     ...over,
   });
 
@@ -376,9 +376,9 @@ describe('formatPushPreview', () => {
     );
   });
 
-  it('lists what the push would ignore and every path it would refuse', () => {
+  it('lists every local file and every path the push would refuse', () => {
     const plan = preview({
-      ignored: ['README.md'],
+      local: ['notes/a.md'],
       refusals: [
         {
           path: 'Inputs/Brief.md',
@@ -395,7 +395,7 @@ describe('formatPushPreview', () => {
     expect(formatPushPreview(plan, 0)).toBe(
       [
         'To push:',
-        '  ignored  README.md',
+        '  local    notes/a.md',
         '  refused  Inputs/Brief.md: under read-only root Inputs/',
         '  refused  Specs/Auth.comments.md: read-only; comments are only pulled in this version',
       ].join('\n'),
@@ -403,7 +403,7 @@ describe('formatPushPreview', () => {
   });
 
   it('closes with the uncommitted changes it did not list (the owner’s question)', () => {
-    const plan = preview({ ignored: ['README.md'] });
+    const plan = preview({ local: ['README.md'] });
     expect(formatPushPreview(plan, 2)).toContain('(2 uncommitted changes are not pushed)');
     expect(formatPushPreview(plan, 1)).toContain('(1 uncommitted change is not pushed)');
   });
