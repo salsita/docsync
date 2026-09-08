@@ -22,7 +22,15 @@ const INPUTS: Root = {
   ignore: [],
   readOnly: true,
 };
-const ROOTS = [NOTION, DRIVE, LEAF, INPUTS];
+/** A client's folder: every edit under it is pushed as a suggestion (ticket 33). */
+const CLIENT: Root = {
+  src: { source: 'gdocs', id: '1ClientFolderIdXXXXXXXXX' },
+  path: 'Client/',
+  ignore: [],
+  comments: true,
+  suggest: true,
+};
+const ROOTS = [NOTION, DRIVE, LEAF, INPUTS, CLIENT];
 
 const entry = (
   path: string,
@@ -49,6 +57,13 @@ const index = new Map(
     entry('notes/roadmap.md', 'gdoc'),
     entry('Inputs/Brief.md', 'gdoc'),
     entry('Inputs/contract.pdf', 'drive-file'),
+    entry('Client/Brief.md', 'gdoc'),
+    entry('Client/logo.png', 'drive-file'),
+    entry('Client/Plain.md', 'gdoc'),
+    entry('Client/Brief.assets/shot.png', 'asset', {
+      document: 'Client/Brief.md',
+      checksum: 'c'.repeat(64),
+    }),
     entry('Specs/Auth.assets/photo.png', 'asset', {
       document: 'Specs/Auth.md',
       checksum: 'a'.repeat(64),
@@ -81,6 +96,11 @@ const blobs: Record<string, string> = {
   'Inputs/Notes.md': FRONT,
   'Inputs/contract.pdf': 'PDF',
   'Inputs/Brief.assets/scan.png': 'SCAN',
+  'Client/Brief.md': `---\nid: gdocs:1IdClientBrief\n---\n\nEdited brief.\n`,
+  'Client/Notes.md': FRONT,
+  'Client/Plain.md': 'frontmatter gone\n',
+  'Client/logo.png': 'PNG2',
+  'Client/Brief.assets/shot.png': 'SHOT2',
 };
 const read = async (path: string): Promise<Uint8Array> => {
   const text = blobs[path];
@@ -97,6 +117,7 @@ const baseBlobs: Record<string, string> = {
   'Files/logo.png': 'PNG',
   'Files/notes.md': 'plain notes\n',
   'notes/roadmap.md': BASE_ROAD,
+  'Client/Brief.md': '---\nid: gdocs:1IdClientBrief\n---\n\nBase brief.\n',
 };
 const readBase = async (path: string): Promise<Uint8Array | undefined> => {
   const text = baseBlobs[path];
@@ -404,6 +425,69 @@ describe('planChanges', () => {
           changes: [{ kind: 'modified', path: 'Files/logo.png', bytes: Buffer.from('PNG2') }],
         },
       ]);
+    });
+  });
+
+  describe('only an edit is pushed under a suggest root (MANUAL §4, §7 step 3)', () => {
+    const message = (path: string): string =>
+      `${path} is under a suggest root (Client/); only edits to existing documents ` +
+      `can be suggested. Restore it with git checkout -- ${path}`;
+
+    it('lets an edit to a document through, which is what becomes a suggestion', async () => {
+      expect(await plan(M('Client/Brief.md'))).toEqual([
+        {
+          root: CLIENT,
+          changes: [
+            {
+              kind: 'modified',
+              path: 'Client/Brief.md',
+              text: blobs['Client/Brief.md'],
+              previousText: baseBlobs['Client/Brief.md'],
+              assets: new Map([['Client/Brief.assets/shot.png', Buffer.from('SHOT2')]]),
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('refuses an added file', async () => {
+      expect(await refusal(A('Client/Notes.md'))).toBe(message('Client/Notes.md'));
+    });
+
+    it('refuses a deletion, which would trash the client\u2019s document', async () => {
+      expect(await refusal(D('Client/Brief.md'))).toBe(message('Client/Brief.md'));
+    });
+
+    it('refuses a rename, naming the path it came from', async () => {
+      expect(await refusal(R('Client/Brief.md', 'Client/Summary.md'))).toBe(
+        message('Client/Brief.md'),
+      );
+    });
+
+    it('refuses a new revision of a binary and a changed asset', async () => {
+      expect(await refusal(M('Client/logo.png'))).toBe(message('Client/logo.png'));
+      expect(await refusal(M('Client/Brief.assets/shot.png'))).toBe(
+        message('Client/Brief.assets/shot.png'),
+      );
+    });
+
+    it('refuses a document whose frontmatter was removed, which is a trash and a create', async () => {
+      expect(await refusal(M('Client/Plain.md'))).toBe(message('Client/Plain.md'));
+    });
+
+    it('says why in the short form `docsync status` prints', async () => {
+      const { refusals: found } = await planned(A('Client/Notes.md'));
+      expect(found).toEqual([
+        {
+          path: 'Client/Notes.md',
+          reason: 'under a suggest root Client/',
+          message: message('Client/Notes.md'),
+        },
+      ]);
+    });
+
+    it('leaves a sibling root that does not suggest alone', async () => {
+      expect((await plan(M('Files/logo.png')))[0]?.root).toBe(DRIVE);
     });
   });
 

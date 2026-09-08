@@ -32,6 +32,13 @@ export interface Root {
    * Fetch is unchanged: read-only is about push.
    */
   readOnly?: boolean;
+  /**
+   * Whether a push under this root lands as suggestions the client reviews in
+   * Docs rather than as edits to the body (MANUAL §4, §7). Absent means off.
+   * Google Drive only, and only with `comments: true`: what a suggesting push
+   * makes comes back in the comment sidecar, which is where it is read.
+   */
+  suggest?: boolean;
 }
 
 /** A parsed manifest. */

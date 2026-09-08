@@ -1,0 +1,172 @@
+/**
+ * A push under a root with `suggest: true`, end to end on the fake Drive
+ * (ticket 33, MANUAL §4, §7).
+ *
+ * The three halves of the feature meet here and nowhere else: the batch goes
+ * out in suggesting mode, the body at the source is not written, and the fetch
+ * that follows reads the Doc whatever its `modifiedTime` says — which is what
+ * takes the checkout back to the source text and puts one thread per suggestion
+ * in the sidecar.
+ */
+import { describe, expect, it } from 'vitest';
+import { createFakeCredentialProvider } from '../auth/index.js';
+import type { DocumentIndex, IndexEntry } from '../index-file.js';
+import type { Root } from '../manifest/types.js';
+import type { FetchedFile } from '../source.js';
+import { createFakeDrive, type FakeDrive } from './fake-api.mock.js';
+import { markdownToRequests } from './from-markdown.js';
+import { fetchRoot } from './index.js';
+import { pushRoot } from './push.js';
+
+const FOLDER_ID = 'folder-client';
+const BRIEF_ID = 'doc-brief';
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const PATH = 'client/Brief.md';
+
+const provider = createFakeCredentialProvider();
+
+const root: Root = {
+  path: 'client/',
+  src: { source: 'gdocs', id: FOLDER_ID },
+  ignore: [],
+  comments: true,
+  suggest: true,
+};
+
+const BASE = '# Brief\n\nOne.\n\nTwo.\n';
+const NEXT = '# Brief\n\nOne, edited.\n\nTwo.\n';
+
+async function drive(): Promise<FakeDrive> {
+  const api = createFakeDrive([
+    { id: FOLDER_ID, name: 'Client', mimeType: FOLDER_MIME },
+    { id: BRIEF_ID, name: 'Brief', parents: [FOLDER_ID] },
+  ]);
+  const { replies, ...rest } = await api.batchUpdate(BRIEF_ID, markdownToRequests(BASE).requests);
+  void replies;
+  void rest;
+  api.calls.length = 0;
+  return api;
+}
+
+/** One fetch of the root, with the index the last one left. */
+async function fetched(
+  api: FakeDrive,
+  previous: DocumentIndex = new Map(),
+): Promise<{ files: FetchedFile[]; index: DocumentIndex }> {
+  const result = await fetchRoot(root, provider, previous, { api });
+  return {
+    files: result.files,
+    index: new Map(result.entries.map((one): [string, IndexEntry] => [one.path, one])),
+  };
+}
+
+const textOf = (files: readonly FetchedFile[], path: string): string | undefined =>
+  files.find((file) => file.path === path)?.text;
+
+describe('a push under a suggest root', () => {
+  it('suggests the edit, leaves the body, and comes back to the source text', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+    const before = textOf(first.files, PATH);
+    expect(before).toContain('One.');
+
+    const report = await pushRoot(
+      root,
+      [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: (before ?? '').replace('One.', 'One, edited.'),
+          previousText: before ?? '',
+        },
+      ],
+      provider,
+      first.index,
+      { api },
+    );
+
+    // The batch went out in suggesting mode, and the report says `suggested`
+    // rather than `updated`, with what the response counted.
+    expect(api.calls).toContain(`batchUpdate ${BRIEF_ID} suggest`);
+    expect(report[0]?.action).toBe('suggested');
+    expect(report[0]?.suggested ?? 0).toBeGreaterThan(0);
+    // Nothing was written to the document itself (MANUAL §7).
+    expect(api.markdown(BRIEF_ID)).toBe(BASE);
+
+    // The fetch after the push reads the Doc whatever Drive's metadata says,
+    // so the file goes back to the source text and the sidecar gains a thread
+    // per suggestion.
+    const second = await fetched(api, first.index);
+    expect(textOf(second.files, PATH)).toBe(before);
+    const sidecar = textOf(second.files, 'client/Brief.comments.md') ?? '';
+    expect(sidecar).toContain('— suggestion');
+    expect(sidecar).toContain('One, edited.');
+    expect(sidecar.match(/^## /gm)?.length).toBe(report[0]?.suggested);
+
+    // And there is nothing left to push: the branch says what the source says.
+    api.calls.length = 0;
+    expect(await pushRoot(root, [], provider, second.index, { api })).toEqual([]);
+    expect(api.calls).toEqual([]);
+  });
+
+  it('reads a Doc whose modified time did not move, and writes no other request', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+    api.calls.length = 0;
+
+    // What a fetch of a suggest root costs, counted: the fake records the
+    // requests it is given, and the reads are wrapped here (MANUAL §7).
+    const counts = { getDocument: 0, comments: 0, listFolder: 0 };
+    const { getDocument, comments, listFolder } = api;
+    api.getDocument = (id, mode) => {
+      counts.getDocument += 1;
+      return getDocument(id, mode);
+    };
+    api.comments = (id) => {
+      counts.comments += 1;
+      return comments(id);
+    };
+    api.listFolder = (id) => {
+      counts.listFolder += 1;
+      return listFolder(id);
+    };
+
+    const again = await fetched(api, first.index);
+
+    // Nothing moved at the source, and the Doc is still read once, with its
+    // comments, and written back for git to compare.
+    expect(counts).toEqual({ getDocument: 1, comments: 1, listFolder: 1 });
+    // And nothing was written: the root's own metadata read is the whole of it.
+    expect(api.calls).toEqual([`getFile ${FOLDER_ID}`]);
+    expect(textOf(again.files, PATH)).toBe(textOf(first.files, PATH));
+    // The body is offered on every fetch; git decides it is not a change.
+    expect(again.files.find((file) => file.path === PATH)?.changed).toBe(true);
+    expect(again.files.find((file) => file.path === PATH)?.sourceChanged).toBe(false);
+  });
+
+  it('does not suggest under a root that does not ask for it', async () => {
+    const api = await drive();
+    const plain: Root = { ...root, suggest: false };
+    const first = await fetchRoot(plain, provider, new Map(), { api });
+    const index = new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+    const before = textOf(first.files, PATH) ?? '';
+
+    const report = await pushRoot(
+      plain,
+      [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: before.replace('One.', 'One, edited.'),
+          previousText: before,
+        },
+      ],
+      provider,
+      index,
+      { api },
+    );
+    expect(api.calls).toContain(`batchUpdate ${BRIEF_ID}`);
+    expect(report[0]?.action).toBe('updated');
+    expect(api.markdown(BRIEF_ID)).toBe(NEXT);
+  });
+});

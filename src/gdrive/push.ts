@@ -22,12 +22,18 @@ import type { Root } from '../manifest/types.js';
 import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import { type FileChange, PushError, type PushReport } from '../push-types.js';
 import type { Progress, ProgressOptions } from '../source.js';
-import { DEFAULT_UPLOAD_MIME, FOLDER_MIME, type GDriveApi } from './api.js';
+import {
+  commentUpdateFailed,
+  DEFAULT_UPLOAD_MIME,
+  FOLDER_MIME,
+  type GDriveApi,
+  PREVIEW_HINT,
+} from './api.js';
 import { objectRangeOf, type StagedImage, stageImages, withSharedImages } from './assets.js';
 import { gdriveApi } from './index.js';
 import { type PatchPlan, planPatch } from './patch.js';
 import { readLive } from './ranges.js';
-import { createGDriveWriter, type GDriveWriter } from './write.js';
+import { type BodyResult, createGDriveWriter, type GDriveWriter } from './write.js';
 
 export interface PushOptions extends ProgressOptions {
   /** The API to use. Tests pass a fake one; a real push passes nothing. */
@@ -215,6 +221,9 @@ async function pushWith(
     }
 
     if (isDoc && change.text !== undefined) {
+      // Under a suggest root the same requests go out in suggesting mode: the
+      // body is left as it is and the client reviews each one (MANUAL §7).
+      const suggest = root.suggest === true;
       const patched = await patchDocument(
         api,
         writer,
@@ -224,6 +233,7 @@ async function pushWith(
         known,
         await folderFor(change.path),
         progress,
+        suggest,
       );
       const plan = patched.plan;
       if (patched.uploaded > 0) uploaded.set(change.path, patched.uploaded);
@@ -231,7 +241,8 @@ async function pushWith(
       report.push({
         path: change.path,
         title: wanted,
-        action: 'updated',
+        action: suggest ? 'suggested' : 'updated',
+        ...(suggest ? { suggested: patched.suggested } : {}),
         blocks: plan.counts,
         ...(plan.suggestions.length === 0 ? {} : { suggestions: plan.suggestions }),
         ...(patched.uploaded === 0 ? {} : { uploaded: patched.uploaded }),
@@ -339,7 +350,13 @@ async function patchDocument(
   known: ReadonlyMap<string, IndexEntry>,
   parentId: string,
   progress: Progress,
-): Promise<{ plan: PatchPlan; uploaded: number; skipped: { path: string; reason: string }[] }> {
+  suggest = false,
+): Promise<{
+  plan: PatchPlan;
+  uploaded: number;
+  suggested: number;
+  skipped: { path: string; reason: string }[];
+}> {
   if (change.previousText === undefined) {
     throw new PushError(
       'there is no base version of this file to patch the document from; fetch, merge and push again',
@@ -387,14 +404,57 @@ async function patchDocument(
 
   const plan = planPatch(live, ops, { path: change.path, images });
   if (staged.images.length === 0) {
-    await writer.patchBody(id, plan);
-    return { plan, uploaded: 0, skipped: staged.skipped };
+    const written = await write(
+      () => writer.patchBody(id, plan, { suggest }),
+      change.path,
+      suggest,
+    );
+    return { plan, uploaded: 0, suggested: written.suggested ?? 0, skipped: staged.skipped };
   }
 
   // The share exists for exactly one batch, and the copies go with it.
-  const outcome = await withSharedImages(api, staged.images, () => writer.patchBody(id, plan));
+  const outcome = await withSharedImages(api, staged.images, () =>
+    write(() => writer.patchBody(id, plan, { suggest }), change.path, suggest),
+  );
   refuseIfLeftBehind(outcome, change.path);
-  return { plan, uploaded: staged.images.length, skipped: staged.skipped };
+  return {
+    plan,
+    uploaded: staged.images.length,
+    suggested: outcome.result?.suggested ?? 0,
+    skipped: staged.skipped,
+  };
+}
+
+/**
+ * One body write, with what suggesting mode adds to a failure (MANUAL §7).
+ *
+ * The preview feature is not on until the Cloud project is enrolled, and what
+ * the API answers then is a refusal like any other, so the hint is appended to
+ * it rather than replacing it. `commentUpdateState` is the other half: a
+ * suggestion is a comment, and the API reports its own failure in the response
+ * of an otherwise successful batch.
+ */
+async function write(
+  send: () => Promise<BodyResult>,
+  path: string,
+  suggest: boolean,
+): Promise<BodyResult> {
+  let result: BodyResult;
+  try {
+    result = await send();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!suggest || !/Google API 4\d\d/.test(message)) throw error;
+    throw new PushError(`${message}. ${PREVIEW_HINT}`, path);
+  }
+  if (commentUpdateFailed(result.commentUpdateState)) {
+    const state = result.commentUpdateState;
+    throw new PushError(
+      `the suggestions were not written: ${state?.message ?? state?.state ?? 'unknown state'}`,
+      path,
+    );
+  }
+  return result;
 }
 
 /** The assets linked by the blocks a set of ops creates or rewrites. */

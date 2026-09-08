@@ -120,6 +120,40 @@ roots:
     expect(serializeManifest(parsed(text))).toBe(text);
   });
 
+  it('writes `suggest` after `readonly` (MANUAL §4)', () => {
+    const manifest: Manifest = {
+      version: 1,
+      roots: [
+        {
+          src: { source: 'gdocs', id: '1AbCdEfGhIjKlMnOpQrStUvWxYz-_012' },
+          path: 'Client/',
+          ignore: [],
+          comments: true,
+          suggest: true,
+        },
+      ],
+    };
+    expect(serializeManifest(manifest)).toBe(`version: 1
+roots:
+  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012
+    path: Client/
+    comments: true
+    suggest: true
+`);
+  });
+
+  it('round-trips a root with `suggest: true` unchanged', () => {
+    const text = `version: 1
+roots:
+  # The client reviews every edit as a suggestion in Docs.
+  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012
+    path: Client/
+    comments: true
+    suggest: true
+`;
+    expect(serializeManifest(parsed(text))).toBe(text);
+  });
+
   it('writes an empty checkout', () => {
     expect(serializeManifest({ version: 1, roots: [] })).toBe('version: 1\nroots: []\n');
   });

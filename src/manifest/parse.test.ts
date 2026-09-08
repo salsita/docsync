@@ -101,6 +101,20 @@ roots:
     expect(manifest.roots[0]?.readOnly).toBeUndefined();
   });
 
+  it('reads `suggest: true` on a Drive root that pulls comments (MANUAL §4)', () => {
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012\n    path: Client/\n    comments: true\n    suggest: true\n',
+    );
+    expect(manifest.roots[0]?.suggest).toBe(true);
+  });
+
+  it('leaves `suggest` absent on a root that does not mention it, which is off', () => {
+    const manifest = manifestOf(
+      'version: 1\nroots:\n  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012\n    path: Client/\n',
+    );
+    expect(manifest.roots[0]?.suggest).toBeUndefined();
+  });
+
   it('normalises paths to NFC', () => {
     // "Cafe" + combining acute (NFD) comes back precomposed.
     const manifest = manifestOf(
@@ -163,6 +177,24 @@ roots:
       'a readonly value that is not a boolean',
       'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    readonly: sometimes\n',
       '"readonly" must be true or false',
+      5,
+    ],
+    [
+      'a suggest value that is not a boolean',
+      'version: 1\nroots:\n  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012\n    path: Client/\n    comments: true\n    suggest: maybe\n',
+      '"suggest" must be true or false',
+      6,
+    ],
+    [
+      'suggest on a Notion root, which has no suggestions',
+      'version: 1\nroots:\n  - src: notion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    path: Specs/\n    comments: true\n    suggest: true\n',
+      '"suggest" is only for Google Drive roots',
+      6,
+    ],
+    [
+      'suggest without the sidecars a suggestion is read in',
+      'version: 1\nroots:\n  - src: gdocs:1AbCdEfGhIjKlMnOpQrStUvWxYz-_012\n    path: Client/\n    suggest: true\n',
+      '"suggest" needs "comments: true"',
       5,
     ],
     [

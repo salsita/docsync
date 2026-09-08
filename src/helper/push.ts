@@ -96,8 +96,11 @@ export async function pushRef(deps: FetchDeps, request: PushRequest): Promise<Pu
     documents.push(...report);
   }
 
-  // 6. The post-push fetch, on top of what was pushed.
-  const after = await fetchCommit(deps, request.manifest, pushed);
+  // 6. The post-push fetch, on top of what was pushed. Under a suggest root it
+  // is what takes the body back to the source text: the push wrote suggestions,
+  // and the documents themselves did not change (MANUAL §7).
+  const suggested = documents.filter((one) => one.action === 'suggested').map((one) => one.title);
+  const after = await fetchCommit(deps, request.manifest, pushed, { suggested });
   await git.updateRef(request.ref, after.commit);
   // The report file is the CLI's only channel: by the time `docsync push`
   // prints, git has interleaved the progress lines above with its own output

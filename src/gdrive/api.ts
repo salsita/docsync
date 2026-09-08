@@ -196,6 +196,47 @@ export type DocsWriteRequest = Record<string, unknown>;
  */
 export interface DocsWriteReply {
   createFootnote?: { footnoteId?: string };
+  /**
+   * The suggestion this request became, in suggesting mode (MANUAL §7). A
+   * Developer Preview field: a batch sent with `writeMode: SUGGEST` writes
+   * nothing to the body and answers what the client will see instead.
+   */
+  suggestionId?: string;
+}
+
+/** How a batch is written: over the body, or as suggestions (MANUAL §7). */
+export interface BatchUpdateOptions {
+  /** `writeControl.writeMode: SUGGEST`. Needs the Developer Preview Program. */
+  suggest?: boolean;
+}
+
+/**
+ * What the preview API reports about the comments a suggesting batch had to
+ * make: a suggestion is a comment on the document, and it can fail on its own.
+ * Anything but a successful state fails the push (MANUAL §7).
+ */
+export interface CommentUpdateState {
+  state?: string;
+  message?: string;
+}
+
+/** One `documents.batchUpdate` response, as this adapter reads it. */
+export interface BatchUpdateResult {
+  /** One reply per request, in the same order. */
+  replies: DocsWriteReply[];
+  /** The suggestions the batch made, deduplicated, in reply order. */
+  suggestionIds: string[];
+  commentUpdateState?: CommentUpdateState;
+}
+
+/** The hint a push adds when the API refuses a suggesting batch (MANUAL §7). */
+export const PREVIEW_HINT =
+  'suggesting needs the Google Workspace Developer Preview Program on the project that owns the OAuth client';
+
+/** Whether a `commentUpdateState` is one a push may carry on from. */
+export function commentUpdateFailed(state: CommentUpdateState | undefined): boolean {
+  if (state?.state === undefined) return false;
+  return !/SUCCESS/i.test(state.state);
 }
 
 /** Whoever wrote a comment, as Drive reports them. */
@@ -276,8 +317,17 @@ export interface GDriveApi {
   downloadUri(uri: string): Promise<{ bytes: Uint8Array; contentType: string }>;
   /** A Google-native file converted to `mimeType` (Sheets, Slides, Drawings). */
   export(id: string, mimeType: string): Promise<Uint8Array>;
-  /** One document, one batch, one reply per request (MANUAL §7). */
-  batchUpdate(documentId: string, requests: readonly DocsWriteRequest[]): Promise<DocsWriteReply[]>;
+  /**
+   * One document, one batch, one reply per request (MANUAL §7).
+   *
+   * With `suggest`, the batch is sent in suggesting mode: the body is left as
+   * it is and every request becomes a suggestion the client reviews in Docs.
+   */
+  batchUpdate(
+    documentId: string,
+    requests: readonly DocsWriteRequest[],
+    options?: BatchUpdateOptions,
+  ): Promise<BatchUpdateResult>;
   /** A file with metadata and no content: a Doc, a folder. */
   createFile(metadata: FileMetadata): Promise<DriveFile>;
   /** A file's metadata, including a move (`addParents`) and the trash flag. */
@@ -432,12 +482,28 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
       return bytes(`${DRIVE_ENDPOINT}/files/${id}/export?mimeType=${encodeURIComponent(mimeType)}`);
     },
 
-    async batchUpdate(documentId, requests) {
-      const answer = await json<{ replies?: DocsWriteReply[] }>(
+    async batchUpdate(documentId, requests, options = {}) {
+      // Suggesting mode is one switch on the request body; every request in the
+      // batch becomes a suggestion instead of an edit (MANUAL §7).
+      const answer = await json<{
+        replies?: DocsWriteReply[];
+        commentUpdateState?: CommentUpdateState;
+      }>(
         `${DOCS_ENDPOINT}/documents/${documentId}:batchUpdate`,
-        withJson('POST', { requests }),
+        withJson('POST', {
+          requests,
+          ...(options.suggest === true ? { writeControl: { writeMode: 'SUGGEST' } } : {}),
+        }),
       );
-      return answer.replies ?? [];
+      const replies = answer.replies ?? [];
+      const ids = replies.map((reply) => reply.suggestionId ?? '').filter((id) => id !== '');
+      return {
+        replies,
+        suggestionIds: [...new Set(ids)],
+        ...(answer.commentUpdateState === undefined
+          ? {}
+          : { commentUpdateState: answer.commentUpdateState }),
+      };
     },
 
     async createFile(metadata) {

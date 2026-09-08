@@ -1,5 +1,5 @@
 /**
- * `docsync add <src>[=<path>]... [--no-fetch] [--readonly]` (MANUAL §5).
+ * `docsync add <src>[=<path>]... [--no-fetch] [--readonly] [--suggest]` (MANUAL §5).
  *
  * Resolves each ref at its source, turns the optional `=<path>` alias into the
  * path the manifest stores, rewrites the manifest with the user's comments
@@ -72,12 +72,17 @@ export async function appendRoots(
   manifest: Manifest,
   manifestPath: string,
   specs: readonly RootSpec[],
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; suggest?: boolean } = {},
 ): Promise<AddedRoot[]> {
   const resolved: AddedRoot[] = [];
   const added: Root[] = [];
 
   for (const spec of specs) {
+    // Notion has no suggestions, and the manifest refuses the field there
+    // (MANUAL §4); saying so here beats writing a manifest that will not parse.
+    if (options.suggest === true && spec.ref.source !== 'gdocs') {
+      throw new CliError(`${spec.input}: --suggest is only for Google Drive roots`);
+    }
     const description = await context.sources[spec.ref.source].describe(spec.ref, context.provider);
     const path = resolveAlias(spec.alias, {
       title: description.title,
@@ -92,6 +97,8 @@ export async function appendRoots(
       // `--readonly` marks every root the one command adds: add is where the
       // intent is known (MANUAL §4, §5).
       ...(options.readOnly === true ? { readOnly: true } : {}),
+      // `--suggest` needs the sidecars: a suggestion is read there (MANUAL §4).
+      ...(options.suggest === true ? { comments: true, suggest: true } : {}),
     };
     resolved.push({ description, root });
     added.push(root);
@@ -154,6 +161,12 @@ export interface AddOptions {
   fetch: boolean;
   /** `--readonly`: the roots are pulled for context and never pushed to (MANUAL §4). */
   readOnly?: boolean;
+  /**
+   * `--suggest`: a push under these roots lands as suggestions the client
+   * reviews in Docs, and the roots pull comment sidecars, which is where a
+   * suggestion is read (MANUAL §4).
+   */
+  suggest?: boolean;
 }
 
 export async function add(
@@ -165,6 +178,7 @@ export async function add(
   const repo = await openRepo(context);
   const resolved = await appendRoots(context, repo.manifest, repo.manifestPath, specs, {
     readOnly: options.readOnly === true,
+    suggest: options.suggest === true,
   });
 
   for (const one of resolved) say(context, `Added ${one.root.path}`);

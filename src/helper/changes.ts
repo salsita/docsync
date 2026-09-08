@@ -191,6 +191,19 @@ export async function planChanges(
     }
     if (stopped()) continue;
 
+    // Under a suggest root only an edit to a document can go: a creation, a
+    // trashing, a rename and a new revision of a binary are not suggestions
+    // (MANUAL §4, §7 step 3). After the read-only and sidecar checks, so that a
+    // file those two own is named as what it is.
+    for (const path of [entry.previousPath, entry.path]) {
+      if (path === undefined || stopped()) continue;
+      const under = rootOf(path);
+      if (under?.suggest !== true) continue;
+      const edit = (kind === 'M' || kind === 'T') && index.get(path)?.type === 'gdoc';
+      if (!edit) refuseSuggest(under, path, refuse);
+    }
+    if (stopped()) continue;
+
     if (kind === 'D') {
       // Deleted under no root is `docsync remove`: unsubscribe, not trash (MANUAL §8).
       if (root === undefined) ignored.push(entry.path);
@@ -251,6 +264,11 @@ export async function planChanges(
       isMarkdown && parseDocument(Buffer.from(bytes).toString('utf8')).frontmatter !== undefined;
     if (isMarkdown && wasDocument !== hasFrontmatter) {
       // The path changed what it is (MANUAL §6): one object goes, another comes.
+      // Under a suggest root neither half is something a suggestion can say.
+      if (root.suggest === true) {
+        refuseSuggest(root, entry.path, refuse);
+        continue;
+      }
       const made = await added(root, entry.path, index, read, refuse, bytes);
       if (made === undefined) continue;
       add(root, { kind: 'deleted', path: entry.path }, made);
@@ -284,6 +302,19 @@ export async function planChanges(
     refusals,
     ignored,
   };
+}
+
+/**
+ * What a push will not send under a root with `suggest: true` (MANUAL §7 step
+ * 3): everything but an edit to a document that is already there.
+ */
+function refuseSuggest(root: Root, path: string, refuse: Refuse): void {
+  refuse(
+    path,
+    `under a suggest root ${root.path}`,
+    `${path} is under a suggest root (${root.path}); only edits to existing documents ` +
+      `can be suggested. Restore it with git checkout -- ${path}`,
+  );
 }
 
 function isDocument(entry: IndexEntry): boolean {

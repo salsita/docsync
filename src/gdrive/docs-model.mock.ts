@@ -37,7 +37,15 @@ import type { DocsRequest } from './from-markdown.js';
 
 /** One piece of a paragraph. Exactly the three the generator can create. */
 type Item =
-  | { kind: 'text'; text: string; style: TextStyle }
+  | {
+      kind: 'text';
+      text: string;
+      style: TextStyle;
+      /** The suggestion that inserted this text, in suggesting mode (MANUAL §7). */
+      insertion?: string;
+      /** The suggestions that propose deleting it. The text is still there. */
+      deletions?: string[];
+    }
   | { kind: 'pageBreak' }
   | { kind: 'footnote'; id: string }
   | { kind: 'image'; id: string; uri: string };
@@ -46,6 +54,11 @@ interface Para {
   items: Item[];
   named: string;
   bullet?: { listId: string; nestingLevel: number };
+  /**
+   * The suggestion whose inserted newline made this paragraph. The body without
+   * the suggestions does not have it: `document('preview')` merges it back.
+   */
+  insertion?: string;
 }
 
 /** A cell holds paragraphs, like every other container. */
@@ -56,13 +69,30 @@ type Node = { kind: 'para'; para: Para } | { kind: 'table'; rows: Cell[][] };
 /** One reply, in the shape `batchUpdate` answers with. */
 export interface BatchReply {
   createFootnote?: { footnoteId?: string };
+  /** The suggestion the request became, in suggesting mode (MANUAL §7). */
+  suggestionId?: string;
 }
 
+/** How a batch is written: over the body, or as suggestions (MANUAL §7). */
+export interface ApplyOptions {
+  suggest?: boolean;
+}
+
+/** What `documents.get` does with pending suggestions (MANUAL §6). */
+export type ViewMode = 'preview' | 'inline';
+
 export interface DocsModel {
-  /** Applies one batch, in order, and answers one reply per request. */
-  apply(requests: readonly DocsRequest[]): BatchReply[];
+  /**
+   * Applies one batch, in order, and answers one reply per request.
+   *
+   * With `suggest`, nothing is written to the body: each request becomes one
+   * suggestion, which `document('inline')` answers as suggested insertions and
+   * deletions and `document('preview')` leaves out entirely — which is what the
+   * real API does with `writeControl.writeMode: SUGGEST` (MANUAL §7).
+   */
+  apply(requests: readonly DocsRequest[], options?: ApplyOptions): BatchReply[];
   /** The document as `documents.get` would answer it. */
-  document(): DocsDocument;
+  document(mode?: ViewMode): DocsDocument;
   /** The index one past the last character of the body. */
   endIndex(): number;
 }
@@ -86,6 +116,8 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
   let listCount = 0;
   let footnoteCount = 0;
   let imageCount = 0;
+  /** How many suggestions this document has been given, for their ids. */
+  let suggestionCount = 0;
   /** The URI every inserted image was read from, by object id. */
   const images = new Map<string, string>();
 
@@ -225,23 +257,27 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
 
   /* ----------------------------------------------------------- operations */
 
-  function insertText(index: number, text: string, segmentId?: string): void {
+  function insertText(index: number, text: string, segmentId?: string, insertion?: string): void {
     const { slot, offset } = locate(index, segmentId);
     const [head, tail] = split(slot.para, offset);
     const style = styleAt(slot.para, offset);
     const lines = text.split('\n');
     const first = lines[0] ?? '';
+    // In suggesting mode the text is inserted and tagged: it is in the document
+    // and not in the version the suggestion was made against (MANUAL §7).
+    const tag = insertion === undefined ? {} : { insertion };
 
     slot.para.items = [
       ...head,
-      ...(first === '' ? [] : [{ kind: 'text' as const, text: first, style }]),
+      ...(first === '' ? [] : [{ kind: 'text' as const, text: first, style, ...tag }]),
     ];
     const made: Para[] = [];
     for (const line of lines.slice(1)) {
       made.push({
-        items: line === '' ? [] : [{ kind: 'text', text: line, style }],
+        items: line === '' ? [] : [{ kind: 'text', text: line, style, ...tag }],
         named: slot.para.named,
         ...(slot.para.bullet === undefined ? {} : { bullet: { ...slot.para.bullet } }),
+        ...tag,
       });
     }
     const last = made.at(-1);
@@ -331,6 +367,95 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
     for (const para of inRange(range.startIndex, range.endIndex, range.segmentId)) {
       para.bullet = undefined;
     }
+  }
+
+  /**
+   * A suggested deletion (MANUAL §7): the text stays exactly where it is and
+   * carries the suggestion's id, which is how `documents.get` reports one
+   * inline and why a suggested deletion is still part of the base a push diffs
+   * from.
+   */
+  function markDeleted(request: Record<string, unknown>, id: string): void {
+    const range = request.range as { startIndex: number; endIndex: number; segmentId?: string };
+    for (const slot of slots(range.segmentId)) {
+      let index = slot.start;
+      const out: Item[] = [];
+      for (const item of slot.para.items) {
+        const length = itemLength(item);
+        const from = Math.max(range.startIndex - index, 0);
+        const to = Math.min(range.endIndex - index, length);
+        index += length;
+        if (item.kind !== 'text' || from >= to) {
+          out.push(item);
+          continue;
+        }
+        if (from > 0) out.push({ ...item, text: item.text.slice(0, from) });
+        out.push({
+          ...item,
+          text: item.text.slice(from, to),
+          deletions: [...(item.deletions ?? []), id],
+        });
+        if (to < length) out.push({ ...item, text: item.text.slice(to) });
+      }
+      slot.para.items = out;
+    }
+  }
+
+  /** One paragraph without what the pending suggestions did to it. */
+  function plainPara(para: Para): Para {
+    return {
+      items: para.items
+        .filter((item) => item.kind !== 'text' || item.insertion === undefined)
+        .map((item) =>
+          item.kind === 'text'
+            ? { kind: 'text' as const, text: item.text, style: item.style }
+            : item,
+        ),
+      named: para.named,
+      ...(para.bullet === undefined ? {} : { bullet: { ...para.bullet } }),
+    };
+  }
+
+  /**
+   * A run of paragraphs as the document reads without its suggestions: the
+   * inserted text is gone, the text a suggestion would delete is still there,
+   * and a paragraph a suggested newline made is merged back into the one before
+   * it. This is what `PREVIEW_WITHOUT_SUGGESTIONS` answers (MANUAL §6).
+   */
+  function plainParas(list: readonly Para[]): Para[] {
+    const out: Para[] = [];
+    for (const para of list) {
+      const plain = plainPara(para);
+      const previous = out.at(-1);
+      if (para.insertion !== undefined && previous !== undefined) {
+        previous.items.push(...plain.items);
+        continue;
+      }
+      out.push(plain);
+    }
+    return out;
+  }
+
+  /** The whole body without its suggestions, tables and all. */
+  function plainBody(nodes: readonly Node[]): Node[] {
+    const out: Node[] = [];
+    for (const node of nodes) {
+      if (node.kind === 'table') {
+        out.push({
+          kind: 'table',
+          rows: node.rows.map((row) => row.map((cell) => plainParas(cell))),
+        });
+        continue;
+      }
+      const plain = plainPara(node.para);
+      const previous = out.at(-1);
+      if (node.para.insertion !== undefined && previous?.kind === 'para') {
+        previous.para.items.push(...plain.items);
+        continue;
+      }
+      out.push({ kind: 'para', para: plain });
+    }
+    return out;
   }
 
   function insertPageBreak(index: number): void {
@@ -610,7 +735,17 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       const length = itemLength(item);
       const bounds = { startIndex: index, endIndex: index + length };
       if (item.kind === 'text')
-        out.push({ ...bounds, textRun: { content: item.text, textStyle: item.style } });
+        out.push({
+          ...bounds,
+          textRun: {
+            content: item.text,
+            textStyle: item.style,
+            // Inline, a pending suggestion is reported on the runs it touches
+            // (MANUAL §6); `plainPara` is what takes them off again.
+            ...(item.insertion === undefined ? {} : { suggestedInsertionIds: [item.insertion] }),
+            ...(item.deletions === undefined ? {} : { suggestedDeletionIds: [...item.deletions] }),
+          },
+        });
       else if (item.kind === 'pageBreak') out.push({ ...bounds, pageBreak: {} });
       else if (item.kind === 'image') {
         out.push({ ...bounds, inlineObjectElement: { inlineObjectId: item.id } });
@@ -724,11 +859,29 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
   }
 
   return {
-    apply(requests) {
+    apply(requests, options = {}) {
       const replies: BatchReply[] = [];
       for (const request of requests) {
         const [name, value] = Object.entries(request)[0] ?? [];
         const payload = (value ?? {}) as Record<string, unknown>;
+        // One suggestion per request, which is what the preview API answers and
+        // what the sidecar then shows as one thread each (MANUAL §6, §7).
+        if (options.suggest === true) {
+          suggestionCount += 1;
+          const id = `suggest.s${suggestionCount}`;
+          if (name === 'insertText') {
+            const location = payload.location as { index: number; segmentId?: string };
+            insertText(location.index, String(payload.text ?? ''), location.segmentId, id);
+          } else if (name === 'deleteContentRange') {
+            markDeleted(payload, id);
+          } else if (name === undefined) {
+            throw new Error('an empty request');
+          }
+          // Everything else is a style or a bullet: a suggestion that changes no
+          // text, which the sidecar prints as `formatting only` (MANUAL §6).
+          replies.push({ suggestionId: id });
+          continue;
+        }
         switch (name) {
           case 'insertText': {
             const location = payload.location as { index: number; segmentId?: string };
@@ -787,7 +940,10 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
 
     endIndex: bodyEnd,
 
-    document() {
+    document(mode = 'inline') {
+      // `preview` is the document without its pending suggestions, which is
+      // what a fetch reads and what the body on disk is made of (MANUAL §6).
+      const nodes = mode === 'preview' ? plainBody(body) : body;
       const listed: Record<string, DocsList> = {};
       for (const [listId, preset] of lists) {
         listed[listId] = { listProperties: { nestingLevels: nestingLevels(preset) } };
@@ -797,7 +953,10 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
         notes[id] = {
           footnoteId: id,
           content: structure(
-            content.map((para) => ({ kind: 'para' as const, para })),
+            (mode === 'preview' ? plainParas(content) : content).map((para) => ({
+              kind: 'para' as const,
+              para,
+            })),
             0,
           ),
         };
@@ -805,7 +964,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       return {
         documentId,
         title,
-        body: { content: [{ endIndex: 1, sectionBreak: {} }, ...structure(body, 1)] },
+        body: { content: [{ endIndex: 1, sectionBreak: {} }, ...structure(nodes, 1)] },
         lists: listed,
         footnotes: notes,
         ...(images.size === 0

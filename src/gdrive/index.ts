@@ -95,26 +95,31 @@ export async function fetchRoot(
   const files: FetchedFile[] = [];
   const fetched = stamp(options.now?.() ?? new Date());
   const comments = root.comments === true;
+  // Under a suggest root every Doc is read on every fetch (MANUAL §4, §7):
+  // Drive moves no `modifiedTime` for a suggestion made, accepted or rejected
+  // in Docs, and a suggesting push leaves the body behind for the fetch to put
+  // back.
+  const suggest = root.suggest === true;
   // A re-fetch downloads every document again, whatever Drive's metadata says
   // (MANUAL §7), so every one of them is counted.
   const all = options.all === true;
-  // Only changed documents are downloaded, so only they are counted; the walk
-  // is over, so the total is known before the first one is named.
-  const total = all
-    ? walked.files.length
-    : walked.files.filter((file) => hasChanged(file, before.get(file.id))).length;
+  const read = (file: WalkedFile): boolean =>
+    all || hasChanged(file, before.get(file.id)) || (suggest && file.kind === 'doc');
+  // Only the documents that are downloaded are counted; the walk is over, so
+  // the total is known before the first one is named.
+  const total = all ? walked.files.length : walked.files.filter((file) => read(file)).length;
   let done = 0;
 
   for (const file of walked.files) {
     refuseSidecar(file.path);
-    if (all || hasChanged(file, before.get(file.id))) progress(`${++done}/${total} ${file.path}`);
+    if (read(file)) progress(`${++done}/${total} ${file.path}`);
     // On a root with comments a Doc's threads are read whether it moved or
     // not, and that is the slow half of such a fetch (MANUAL §6, §7).
     if (comments && file.kind === 'doc') progress(`comments ${file.path}`);
     // Comments are opt-in per root, because reading them costs a request per
     // document on every fetch (MANUAL §4, §7).
     files.push(
-      ...(await toFiles(file, api, before.get(file.id), fetched, comments, previous, all)),
+      ...(await toFiles(file, api, before.get(file.id), fetched, comments, previous, all, suggest)),
     );
   }
 
@@ -257,6 +262,7 @@ async function toFiles(
   comments: boolean,
   index: ReadonlyMap<string, IndexEntry>,
   all: boolean,
+  suggest = false,
 ): Promise<FetchedFile[]> {
   const entry: IndexEntry = {
     path: file.path,
@@ -268,14 +274,20 @@ async function toFiles(
     ...(file.md5Checksum === undefined ? {} : { md5: file.md5Checksum }),
   };
   const moved = hasChanged(file, previous);
+  // A Doc under a suggest root is read and written on every fetch, whatever
+  // Drive's metadata says (MANUAL §7): that is how a suggestion shows up and
+  // how the body comes back to the source text after a suggesting push.
+  const always = suggest && file.kind === 'doc';
   // Under `--all` everything is downloaded and converted again; what came out
   // differently is for the caller's blob comparison to say (MANUAL §7).
-  const changed = all || moved;
+  const changed = all || moved || always;
 
   const common = {
     path: file.path,
     changed,
-    ...(all ? { sourceChanged: moved } : {}),
+    // Nobody edited it: what the bytes say decides whether this is a change at
+    // all, and the report does not blame the last editor for it (MANUAL §7).
+    ...(all || always ? { sourceChanged: moved } : {}),
     ...(editorOf(file.lastModifyingUser) === undefined
       ? {}
       : { editor: editorOf(file.lastModifyingUser) }),
@@ -324,11 +336,12 @@ async function toFiles(
   }
 
   const document = await api.getDocument(file.id, 'inline');
-  // An unchanged document that owes a sidecar keeps the files it has: it is
-  // read for the anchors, not for its images (MANUAL §12 phase 2).
-  const assets = changed
-    ? await fetchDocumentAssets(api, document, file.path, index)
-    : { files: keptAssets(index, file.path), links: linksOf(index, file.path) };
+  // A document nobody edited keeps the files it has: it is read for its
+  // anchors and its suggestions, not for its images (MANUAL §12 phase 2).
+  const assets =
+    all || moved
+      ? await fetchDocumentAssets(api, document, file.path, index)
+      : { files: keptAssets(index, file.path), links: linksOf(index, file.path) };
   const body = documentToMarkdown(document, { assets: assets.links, from: file.path });
   const threads = threadsOf(document, threadList, body);
   const suggested = threads.some((thread) => thread.kind === 'suggestion');

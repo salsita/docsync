@@ -48,6 +48,17 @@ export interface FetchDeps {
   all?: boolean;
 }
 
+/** What a fetch needs to know beyond the manifest and its parent commit. */
+export interface FetchCommitOptions {
+  /**
+   * The titles of the documents a suggesting push just made suggestions on
+   * (MANUAL §7). The post-push fetch that follows such a push writes the body
+   * back to the source text, and its commit is named after them, because that
+   * is what happened: nothing was written to the documents.
+   */
+  suggested?: string[];
+}
+
 export interface FetchOutcome {
   /** The commit that now holds the source state: a new one, or `parent`. */
   commit: string;
@@ -73,6 +84,7 @@ export async function fetchCommit(
   deps: FetchDeps,
   manifest: Manifest,
   parent: string | undefined,
+  options: FetchCommitOptions = {},
 ): Promise<FetchOutcome> {
   const { git } = deps;
   const previousTree: FileTree = parent === undefined ? new Map() : await readTree(git, parent);
@@ -145,7 +157,7 @@ export async function fetchCommit(
   const commit = await git.commitTree({
     tree: await buildTree(git, files),
     parents: parent === undefined ? [] : [parent],
-    message: message(parent === undefined, documents),
+    message: message(parent === undefined, documents, options.suggested ?? []),
     author: authorOf(latest, now),
     committer: { ...COMMITTER, date: now },
   });
@@ -198,11 +210,16 @@ function diff(before: FileTree, after: FileTree): string[] {
 }
 
 /** `Add 3 documents` on the first commit, `Update …` after, one path per line. */
-function message(first: boolean, paths: string[]): string {
+function message(first: boolean, paths: string[], suggested: readonly string[]): string {
   // A source can move a last-edit time without moving the content, which
   // changes the index and nothing else.
   if (paths.length === 0) return 'Update the index\n';
   const noun = paths.length === 1 ? 'document' : 'documents';
+  // The push before this fetch wrote suggestions and left the bodies alone, so
+  // this commit is the checkout coming back to the source text (MANUAL §7).
+  if (suggested.length > 0) {
+    return `Suggested: ${suggested.join(', ')}\n\n${paths.join('\n')}\n`;
+  }
   // Nothing was edited: someone commented, or answered a comment (MANUAL §6).
   if (!first && paths.every((path) => isSidecarPath(path))) {
     return `Update comments on ${paths.length} ${noun}\n\n${paths.join('\n')}\n`;

@@ -95,7 +95,7 @@ function file(id: string | undefined, title: string, body: string): string {
 /** A document holding exactly what the Markdown says, as a fetch would find. */
 async function seed(api: FakeDrive, id: string, markdown: string): Promise<void> {
   const plan = markdownToRequests(markdown);
-  const replies = await api.batchUpdate(id, plan.requests);
+  const { replies } = await api.batchUpdate(id, plan.requests);
   await api.batchUpdate(
     id,
     footnoteRequests(plan.footnotes, replies, 0, await api.getDocument(id)),

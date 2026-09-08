@@ -7,8 +7,8 @@
  * Markdown, and every write is recorded in `calls`.
  */
 import type {
+  BatchUpdateResult,
   DocsDocument,
-  DocsWriteReply,
   DocsWriteRequest,
   DriveFile,
   FileMetadata,
@@ -119,7 +119,9 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
     markdown(id) {
       const model = documents.get(id);
       if (model === undefined) throw new Error(`no document ${id}`);
-      return documentToMarkdown(model.document());
+      // The body as everyone but a reviewer sees it: what a suggestion proposes
+      // is not in it (MANUAL §6).
+      return documentToMarkdown(model.document('preview'));
     },
 
     async listFolder(id) {
@@ -133,10 +135,12 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       return metadata(get(id));
     },
 
-    async getDocument(id): Promise<DocsDocument> {
+    async getDocument(id, mode = 'preview'): Promise<DocsDocument> {
       const model = documents.get(id);
       if (model === undefined) throw new Error(`no document ${id}`);
-      return model.document();
+      // Inline is the view a push and a comment sidecar read: the pending
+      // suggestions are on the runs they touch (MANUAL §6, §7).
+      return model.document(mode);
     },
 
     async comments() {
@@ -152,11 +156,14 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       throw new Error('the fake Drive does not export');
     },
 
-    async batchUpdate(documentId, requests): Promise<DocsWriteReply[]> {
+    async batchUpdate(documentId, requests, options = {}): Promise<BatchUpdateResult> {
       const model = documents.get(documentId);
       if (model === undefined) throw new Error(`no document ${documentId}`);
-      calls.push(`batchUpdate ${documentId}`);
-      return model.apply(requests as DocsWriteRequest[]);
+      const suggesting = options.suggest === true;
+      calls.push(`batchUpdate ${documentId}${suggesting ? ' suggest' : ''}`);
+      const replies = model.apply(requests as DocsWriteRequest[], { suggest: suggesting });
+      const ids = replies.map((reply) => reply.suggestionId ?? '').filter((id) => id !== '');
+      return { replies, suggestionIds: [...new Set(ids)] };
     },
 
     async createFile(data) {

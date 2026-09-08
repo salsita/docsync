@@ -15,7 +15,7 @@ import { formatSourceRef } from '../source-ref.js';
 /** MANUAL §13, verbatim: the usage block `docsync --help` prints. */
 export const COMMAND_REFERENCE = [
   'docsync init    [<dir>] [<src>[=<path>]...]',
-  'docsync add     <src>[=<path>]... [--no-fetch] [--readonly]',
+  'docsync add     <src>[=<path>]... [--no-fetch] [--readonly] [--suggest]',
   'docsync remove  <path>...',
   'docsync status',
   'docsync fetch   [--all]',
@@ -131,6 +131,15 @@ export function formatPushReport(report: PushReportFile | undefined): string {
     }
   }
 
+  // Nothing was written to a suggested document, so the file is the source's
+  // text again as soon as the post-push fetch lands (MANUAL §7).
+  if (rest.some((one) => one.action === 'suggested')) {
+    lines.push(
+      '  Suggestions are waiting for review in Docs; your files are back to the source text',
+      '  until they are accepted.',
+    );
+  }
+
   if (trashed.length > 0) {
     if (lines.length > 0) lines.push('');
     lines.push('Trashed:', ...trashed.map((one) => `  ${one.path}`));
@@ -157,7 +166,11 @@ function actionRow(document: PushedDocument): string[] {
   }
   const changed = blocks.updated + blocks.inserted + blocks.deleted;
   const counts = `${plural(changed, 'block')} changed, ${blocks.kept} kept`;
-  return [document.action, document.path, `(${counts}${files === '' ? '' : `, ${files}`})`];
+  // A suggesting push wrote nothing to the body, so what it did is counted in
+  // suggestions first and blocks after (MANUAL §7).
+  const made =
+    document.action === 'suggested' ? `${plural(document.suggested ?? 0, 'suggestion')}, ` : '';
+  return [document.action, document.path, `(${made}${counts}${files === '' ? '' : `, ${files}`})`];
 }
 
 function plural(count: number, noun: string): string {
@@ -176,16 +189,19 @@ function plural(count: number, noun: string): string {
  */
 export function formatPushPreview(plan: PushPlan, uncommitted: number): string {
   const rows: string[][] = [];
-  for (const { changes } of plan.roots) {
+  for (const { root, changes } of plan.roots) {
+    // Under a suggest root an edit is sent as suggestions, never written over
+    // the document, and the preview says which of the two it is (MANUAL §4).
+    const edit = root.suggest === true ? 'suggest' : 'update';
     for (const change of changes) {
       if (change.kind === 'added') rows.push(['create', change.path]);
-      else if (change.kind === 'modified') rows.push(['update', change.path]);
+      else if (change.kind === 'modified') rows.push([edit, change.path]);
       else if (change.kind === 'deleted') rows.push(['trash', change.path]);
       else {
         rows.push(['rename', `${change.previousPath} -> ${change.path}`]);
         // A rename that carried an edit updates the document too (§7 step 5).
         if (change.text !== undefined || change.bytes !== undefined) {
-          rows.push(['update', change.path]);
+          rows.push([edit, change.path]);
         }
       }
     }
@@ -229,6 +245,7 @@ export function formatStatusLine(
     moved,
     ...(root.comments === true ? ['comments on'] : []),
     ...(root.readOnly === true ? ['read-only'] : []),
+    ...(root.suggest === true ? ['suggest'] : []),
   ].join('  ');
 }
 

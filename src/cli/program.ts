@@ -75,8 +75,19 @@ export function buildProgram(context: Context, exit: (code: number) => void): Co
       '--readonly',
       'Mark the roots read-only: a push that changes a file under one is refused.',
     )
-    .action((specs: string[], options: { fetch: boolean; readonly?: boolean }) =>
-      run(() => add(context, specs, { fetch: options.fetch, readOnly: options.readonly === true })),
+    .option(
+      '--suggest',
+      'Mark the roots suggesting: a push lands as suggestions the client reviews in ' +
+        'Docs, and comment sidecars are pulled. Google Drive only.',
+    )
+    .action((specs: string[], options: { fetch: boolean; readonly?: boolean; suggest?: boolean }) =>
+      run(() =>
+        add(context, specs, {
+          fetch: options.fetch,
+          readOnly: options.readonly === true,
+          suggest: options.suggest === true,
+        }),
+      ),
     );
 
   program

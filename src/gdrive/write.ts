@@ -15,6 +15,7 @@
  */
 import type { Root } from 'mdast';
 import {
+  type CommentUpdateState,
   DEFAULT_UPLOAD_MIME,
   DOCUMENT_MIME,
   type DocsDocument,
@@ -33,6 +34,14 @@ export interface BodyResult {
   dropped: string[];
   /** How many batches it took: one, or two when there are footnotes. */
   batches: number;
+  /**
+   * How many suggestions the write made, when it was sent in suggesting mode
+   * (MANUAL §7). The response reports one per request; a response that reports
+   * none is read as one suggestion per request sent.
+   */
+  suggested?: number;
+  /** What the API said about the comments the suggestions are (MANUAL §7). */
+  commentUpdateState?: CommentUpdateState;
 }
 
 export interface CreatedDoc extends BodyResult {
@@ -47,8 +56,12 @@ export interface GDriveWriter {
    * fresh document has nothing to diff against.
    */
   replaceBody(documentId: string, tree: Root): Promise<BodyResult>;
-  /** Sends a plan from `patch.ts`: one batch, and one more for its footnotes. */
-  patchBody(documentId: string, plan: PatchPlan): Promise<BodyResult>;
+  /**
+   * Sends a plan from `patch.ts`: one batch, and one more for its footnotes.
+   * With `suggest`, both go in suggesting mode: the body is left as it is and
+   * every request becomes a suggestion the client reviews (MANUAL §7).
+   */
+  patchBody(documentId: string, plan: PatchPlan, options?: PatchOptions): Promise<BodyResult>;
   /** A new Doc under a folder, with its body. Answers the new file's id. */
   createDoc(parentId: string, name: string, tree: Root): Promise<CreatedDoc>;
   /** A new folder under a folder, for a path whose directory does not exist. */
@@ -63,6 +76,11 @@ export interface GDriveWriter {
   move(fileId: string, toParent: string, fromParent: string): Promise<DriveFile>;
   /** To the trash, never permanently. Recoverable for about 30 days (MANUAL §8). */
   trash(fileId: string): Promise<DriveFile>;
+}
+
+/** How a patch is written (MANUAL §7). */
+export interface PatchOptions {
+  suggest?: boolean;
 }
 
 export function createGDriveWriter(api: GDriveApi): GDriveWriter {
@@ -92,7 +110,7 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
       return { dropped: plan.dropped, batches: 0 };
     }
 
-    const replies = await api.batchUpdate(documentId, [...head, ...plan.requests]);
+    const { replies } = await api.batchUpdate(documentId, [...head, ...plan.requests]);
     if (plan.footnotes.length === 0) return { dropped: plan.dropped, batches: 1 };
 
     // The segments exist now, and only the document can say how long each one
@@ -114,22 +132,46 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
       return writeBody(documentId, tree, await api.getDocument(documentId));
     },
 
-    async patchBody(documentId, plan) {
-      if (plan.requests.length === 0) return { dropped: plan.dropped, batches: 0 };
-      const replies = await api.batchUpdate(documentId, plan.requests);
-      if (plan.footnotes.length === 0) return { dropped: plan.dropped, batches: 1 };
+    async patchBody(documentId, plan, options = {}) {
+      const suggest = options.suggest === true;
+      // In suggesting mode the count is what the response reports, and a
+      // response that reports no ids is read as one suggestion per request.
+      const made = (result: { suggestionIds: string[] }, requests: number): number =>
+        result.suggestionIds.length === 0 ? requests : result.suggestionIds.length;
+      const suggested = (count: number): Pick<BodyResult, 'suggested'> =>
+        suggest ? { suggested: count } : {};
+      const state = (result: {
+        commentUpdateState?: CommentUpdateState;
+      }): Pick<BodyResult, 'commentUpdateState'> =>
+        result.commentUpdateState === undefined
+          ? {}
+          : { commentUpdateState: result.commentUpdateState };
+
+      if (plan.requests.length === 0) return { dropped: plan.dropped, batches: 0, ...suggested(0) };
+      const first = await api.batchUpdate(documentId, plan.requests, { suggest });
+      const count = made(first, plan.requests.length);
+      if (plan.footnotes.length === 0) {
+        return { dropped: plan.dropped, batches: 1, ...suggested(count), ...state(first) };
+      }
 
       // A footnote an inserted block made exists now, and only the document
       // can say how long its segment is (see `footnoteRequests`).
       const second = footnoteRequests(
         plan.footnotes,
-        replies,
+        first.replies,
         0,
         await api.getDocument(documentId),
       );
-      if (second.length === 0) return { dropped: plan.dropped, batches: 1 };
-      await api.batchUpdate(documentId, second);
-      return { dropped: plan.dropped, batches: 2 };
+      if (second.length === 0) {
+        return { dropped: plan.dropped, batches: 1, ...suggested(count), ...state(first) };
+      }
+      const last = await api.batchUpdate(documentId, second, { suggest });
+      return {
+        dropped: plan.dropped,
+        batches: 2,
+        ...suggested(count + made(last, second.length)),
+        ...state(first.commentUpdateState === undefined ? last : first),
+      };
     },
 
     async createDoc(parentId, name, tree) {

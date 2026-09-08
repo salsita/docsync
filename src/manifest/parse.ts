@@ -3,7 +3,7 @@ import { parseSourceRef, type SourceRef } from '../source-ref.js';
 import type { Manifest, ManifestError, ParseResult, Root } from './types.js';
 
 const TOP_LEVEL_KEYS = new Set(['version', 'roots']);
-const ROOT_KEYS = new Set(['src', 'path', 'ignore', 'comments', 'readonly']);
+const ROOT_KEYS = new Set(['src', 'path', 'ignore', 'comments', 'readonly', 'suggest']);
 
 /**
  * Parses a manifest file (MANUAL §4).
@@ -160,6 +160,29 @@ function parseRoot(node: Node, report: Report): Root | undefined {
     }
   }
 
+  // A push under this root lands as suggestions (MANUAL §4, §7). Only Google
+  // Drive has them, and they are read in the comment sidecar, so the root has
+  // to pull one; absent is off, and an explicit `false` is kept.
+  let suggest: boolean | undefined;
+  const suggestNode = node.get('suggest', true);
+  if (suggestNode !== undefined) {
+    const raw = isScalar(suggestNode) ? suggestNode.value : undefined;
+    if (typeof raw !== 'boolean') {
+      report(suggestNode as Node, '"suggest" must be true or false');
+      failed = true;
+    } else {
+      suggest = raw;
+      if (raw && src !== undefined && src.source !== 'gdocs') {
+        report(suggestNode as Node, '"suggest" is only for Google Drive roots');
+        failed = true;
+      }
+      if (raw && comments !== true) {
+        report(suggestNode as Node, '"suggest" needs "comments: true"');
+        failed = true;
+      }
+    }
+  }
+
   if (failed || !src || path === undefined) return undefined;
   return {
     src,
@@ -167,5 +190,6 @@ function parseRoot(node: Node, report: Report): Root | undefined {
     ignore,
     ...(comments === undefined ? {} : { comments }),
     ...(readOnly === undefined ? {} : { readOnly }),
+    ...(suggest === undefined ? {} : { suggest }),
   };
 }

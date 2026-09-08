@@ -159,7 +159,7 @@ export interface FetchOptions extends ProgressOptions {
 export interface PushedDocument {
   path: string;
   title: string;
-  action: 'created' | 'updated' | 'renamed' | 'trashed';
+  action: 'created' | 'updated' | 'renamed' | 'trashed' | 'suggested';
   /**
    * How much of the document the push touched, for an update that was applied
    * as a patch (MANUAL §7). Absent for a creation, a rename and a deletion, and
@@ -172,6 +172,13 @@ export interface PushedDocument {
    * suggested range resolves it by overwriting it.
    */
   suggestions?: string[];
+  /**
+   * How many suggestions the push made on this document (MANUAL §7). Only on a
+   * `suggested` action: under a root with `suggest: true` a Google Doc is
+   * patched in suggesting mode, so the body is untouched until the client
+   * accepts.
+   */
+  suggested?: number;
   /** Files this push uploaded to the source (MANUAL §12 phase 2). */
   uploaded?: number;
   /**
