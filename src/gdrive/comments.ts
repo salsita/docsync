@@ -12,7 +12,7 @@
  * Pure: recorded JSON and a body in, threads out. No requests, no clock.
  */
 import type { Entry, Thread } from '../comments/format.js';
-import { locate } from '../comments/locate.js';
+import { type Anchor, locate, placeOf } from '../comments/locate.js';
 import type {
   DocsDocument,
   DriveComment,
@@ -88,7 +88,7 @@ export function commentThreads(comments: readonly DriveComment[], body: string):
       created: comment.createdTime ?? '',
       // A comment whose text is nowhere in the body quotes the bare text and
       // sorts to the end (MANUAL §6).
-      ...(anchor ?? (quoted === '' ? {} : { quote: quoted })),
+      ...(anchor === undefined ? (quoted === '' ? {} : { quote: quoted }) : placeOf(anchor)),
       entries,
     });
   }
@@ -127,55 +127,144 @@ function textOf(runs: readonly TextRun[]): string {
     .replace(/\n$/, '');
 }
 
-/**
- * The pending suggestions of a document, one thread each (MANUAL §6): two
- * suggestions in one paragraph are two threads, and each is rendered against
- * the paragraph as it stands — every suggested insertion dropped, every
- * suggested deletion kept — which is the same version the body is derived from.
- */
-export function suggestionThreads(doc: DocsDocument, body: string): Thread[] {
-  const threads: Thread[] = [];
+/** One paragraph of the document, as the suggestions view answers it. */
+interface Block {
+  runs: TextRun[];
+  /** The suggestion ids this paragraph carries, and where each first appears. */
+  ids: Map<string, number>;
+  /** The paragraph as it stands: every suggested insertion dropped. */
+  before: string;
+}
+
+/** The paragraphs of a document, with the suggestions each one carries. */
+function blocksOf(doc: DocsDocument): Block[] {
+  const out: Block[] = [];
+  // A position that only grows, so that ids order by where they first appear in
+  // the document rather than inside one paragraph (MANUAL §6).
+  let seen = 0;
 
   for (const paragraph of paragraphsOf(doc.body?.content)) {
     const runs = (paragraph.elements ?? [])
       .map((element) => element.textRun)
       .filter((run): run is TextRun => run !== undefined);
 
-    // First appearance decides the order of two suggestions on one paragraph.
-    const order = new Map<string, number>();
+    const ids = new Map<string, number>();
     const note = (id: string, at: number): void => {
-      if (!order.has(id)) order.set(id, at);
+      if (!ids.has(id)) ids.set(id, at);
     };
-    for (const id of changeIds(paragraph)) note(id, -1);
-    for (const [at, run] of runs.entries()) {
-      for (const id of run.suggestedInsertionIds ?? []) note(id, at);
-      for (const id of run.suggestedDeletionIds ?? []) note(id, at);
-      for (const id of changeIds(run)) note(id, at);
+    for (const id of changeIds(paragraph)) note(id, seen);
+    for (const run of runs) {
+      seen += 1;
+      for (const id of run.suggestedInsertionIds ?? []) note(id, seen);
+      for (const id of run.suggestedDeletionIds ?? []) note(id, seen);
+      for (const id of changeIds(run)) note(id, seen);
     }
-    if (order.size === 0) continue;
+    out.push({
+      runs,
+      ids,
+      before: textOf(runs.filter((run) => (run.suggestedInsertionIds ?? []).length === 0)),
+    });
+  }
+  return out;
+}
 
-    const before = textOf(runs.filter((run) => (run.suggestedInsertionIds ?? []).length === 0));
-    // A diff carries its own text, so only a formatting suggestion quotes the
-    // anchor; the rest of what `locate` found places the thread either way.
-    const { quote, ...place } = before === '' ? {} : (locate(body, before) ?? {});
+/** A block as it would read with exactly one suggestion accepted. */
+function acceptedIn(block: Block, id: string): string {
+  return textOf(
+    block.runs.filter((run) => {
+      const inserted = run.suggestedInsertionIds ?? [];
+      if (inserted.length > 0 && !inserted.includes(id)) return false;
+      return !(run.suggestedDeletionIds ?? []).includes(id);
+    }),
+  );
+}
 
-    for (const [id, within] of [...order].sort((a, b) => a[1] - b[1])) {
-      const after = textOf(
-        runs.filter((run) => {
-          const inserted = run.suggestedInsertionIds ?? [];
-          if (inserted.length > 0 && !inserted.includes(id)) return false;
-          return !(run.suggestedDeletionIds ?? []).includes(id);
-        }),
-      );
-      const common: Thread = { id, kind: 'suggestion', created: '', within, ...place, entries: [] };
-      // A suggestion that changes no text only restyles what is there, and a
-      // diff of one line against itself says nothing (MANUAL §6).
-      threads.push(
-        before === after ? { ...common, quote: quote ?? before } : { ...common, before, after },
-      );
+/**
+ * The pending suggestions of a document, one thread per suggestion id
+ * (MANUAL §6, ticket 34).
+ *
+ * A suggestion is one id in the Docs API and one card in Docs, tagged on every
+ * run it inserted or deleted — and those runs can sit in several paragraphs.
+ * So the thread is the id, and its diff is the span of blocks the id touches,
+ * first to last: each of them as it stands and as it would read with this one
+ * suggestion accepted, and any block in between that the id does not touch
+ * printed unchanged. Two ids in one paragraph are still two threads, each
+ * rendered with only its own changes applied.
+ *
+ * The thread is anchored on the first block it touches: that is what `in:`
+ * names and what the sidecar orders by.
+ */
+export function suggestionThreads(doc: DocsDocument, body: string): Thread[] {
+  const blocks = blocksOf(doc);
+
+  // Every id, with the blocks it touches and where it first appears.
+  const spans = new Map<string, { first: number; last: number; within: number }>();
+  for (const [at, block] of blocks.entries()) {
+    for (const [id, within] of block.ids) {
+      const span = spans.get(id);
+      if (span === undefined) spans.set(id, { first: at, last: at, within });
+      else span.last = at;
     }
   }
+
+  const threads: Thread[] = [];
+  for (const [id, { first, last, within }] of [...spans].sort(
+    (a, b) => a[1].within - b[1].within,
+  )) {
+    const span = blocks.slice(first, last + 1);
+    const before = span.map((block) => block.before);
+    const after = span.map((block) => (block.ids.has(id) ? acceptedIn(block, id) : block.before));
+
+    // A diff carries its own text, so only a formatting suggestion quotes the
+    // blocks; where the first of them sits is what places the thread either way.
+    const anchor = anchorOf(body, before);
+    const place =
+      anchor === undefined
+        ? {}
+        : {
+            offset: anchor.offset,
+            ...(anchor.heading === undefined ? {} : { heading: anchor.heading }),
+          };
+    const common: Thread = { id, kind: 'suggestion', created: '', within, ...place, entries: [] };
+
+    // A suggestion that changes no text only restyles what is there, and a diff
+    // of a block against itself says nothing (MANUAL §6): it is quoted instead,
+    // every block it touches, joined by a blank line.
+    threads.push(
+      before.every((text, at) => text === after[at])
+        ? { ...common, quote: quoteOf(body, span, id, anchor) }
+        : { ...common, before, after },
+    );
+  }
   return threads;
+}
+
+/**
+ * Where a suggestion's span sits in the body: the first block of it that has
+ * text to search for. A block a suggestion invented whole is not in the body at
+ * all, so it cannot be the one that is looked up.
+ */
+function anchorOf(body: string, before: readonly string[]): Anchor | undefined {
+  for (const text of before) {
+    if (text === '') continue;
+    return locate(body, text);
+  }
+  return undefined;
+}
+
+/**
+ * A formatting-only suggestion's quote: every block it touches, as the body
+ * writes it, joined by a blank line (MANUAL §6).
+ */
+function quoteOf(
+  body: string,
+  span: readonly Block[],
+  id: string,
+  anchor: Anchor | undefined,
+): string {
+  const touched = span.filter((block) => block.ids.has(id));
+  if (touched.length === 1) return anchor?.quote ?? touched[0]?.before ?? '';
+  return touched.map((block) => locate(body, block.before)?.quote ?? block.before).join('\n\n');
 }
 
 /** Everything one Doc puts in its sidecar: the threads and the suggestions. */

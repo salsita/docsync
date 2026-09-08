@@ -125,7 +125,9 @@ export async function pageThreads(
       const quoted = text.get(bareId(ids[order] ?? '')) ?? '';
       // The anchor is the whole block, so there is nothing to mark inside it;
       // where the block is in the body is what says which heading it is under.
-      const anchor = quoted === '' ? undefined : locate(body, quoted);
+      // A Notion comment belongs to one block, so it never spans a run of them
+      // (MANUAL §6).
+      const anchor = quoted === '' ? undefined : locate(body, quoted, { spans: false });
       threads.set(id, {
         id,
         kind: 'comment',

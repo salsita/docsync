@@ -16,20 +16,59 @@
  * both sides, so a selection that ran over a line break still matches. The
  * offsets answered are into the Markdown, mapped back through the nodes the
  * plain text came from.
+ *
+ * A selection can also run **over a block boundary** — the end of one paragraph
+ * and the start of the next — and then no single block holds the quote. So a
+ * second pass matches a run of consecutive blocks, their plain text joined by a
+ * space, and answers those blocks joined by a blank line as the quote, with the
+ * mark running from inside the first block to inside the last (ticket 34).
+ * Single blocks are tried first, so a quote that fits in one is anchored to it,
+ * and the pass is off for Notion, whose comments belong to one block by
+ * construction.
  */
 import type { Heading, Node, Nodes, Parent } from 'mdast';
 import { parseMarkdown } from '../markdown.js';
 
 /** Where a quoted piece of text was found. */
 export interface Anchor {
-  /** The block that holds it — paragraph, heading, list item or table cell — as written. */
+  /**
+   * The block that holds it — paragraph, heading, list item or table cell — as
+   * written. A quote that ran over a block boundary is every block it touched,
+   * joined by a blank line.
+   */
   quote: string;
-  /** Where the block starts in the body, which is what threads are sorted by. */
+  /** Where the first block starts in the body, which is what threads are sorted by. */
   offset: number;
-  /** The nearest heading above the block. Absent when there is none. */
+  /** The nearest heading above the first block. Absent when there is none. */
   heading?: string;
   /** The quoted text's range inside `quote`, when it could be placed exactly. */
   mark?: [number, number];
+  /** How many consecutive blocks the quote spans. One for all but a run. */
+  blocks: number;
+}
+
+/** How `locate` may match: over one block, or over a run of them. */
+export interface LocateOptions {
+  /**
+   * Whether a quote may span consecutive blocks. On by default; Notion turns it
+   * off, since a Notion comment belongs to exactly one block (MANUAL §6).
+   */
+  spans?: boolean;
+}
+
+/** The part of an anchor a sidecar thread carries. `blocks` is not one. */
+export function placeOf(anchor: Anchor): {
+  quote: string;
+  offset: number;
+  heading?: string;
+  mark?: [number, number];
+} {
+  return {
+    quote: anchor.quote,
+    offset: anchor.offset,
+    ...(anchor.heading === undefined ? {} : { heading: anchor.heading }),
+    ...(anchor.mark === undefined ? {} : { mark: anchor.mark }),
+  };
 }
 
 /** The block types a comment can be anchored to (MANUAL §6). */
@@ -139,31 +178,137 @@ function anchors(body: string): Nodes[] {
   return found;
 }
 
-/**
- * The first block of `body` whose text holds `quoted`, or `undefined` when no
- * block does. "First" is document order, which is what makes the sidecar's
- * order stable across fetches (MANUAL §6).
- */
-export function locate(body: string, quoted: string): Anchor | undefined {
-  const needle = collapse(quoted).text.trim();
-  if (needle === '') return undefined;
-  const heading = headingsOf(body);
+/** One anchor block: where it is in the body, and the text leaves under it. */
+interface Block {
+  start: number;
+  end: number;
+  pieces: Piece[];
+}
 
+/** The anchor blocks of a body that have a span, in document order. */
+function blocksOf(body: string): Block[] {
+  const out: Block[] = [];
   for (const node of anchors(body)) {
     const [start, end] = spanOf(node);
     if (start === undefined || end === undefined) continue;
+    out.push({ start, end, pieces: piecesOf(node) });
+  }
+  return out;
+}
 
-    const pieces = piecesOf(node);
-    const plain = collapse(pieces.map((piece) => piece.text).join(''));
-    const found = plain.text.indexOf(needle);
-    if (found < 0) continue;
+/**
+ * A run of consecutive blocks as one quote: the Markdown of each, joined by a
+ * blank line, with every text leaf moved into that string's coordinates and a
+ * one-space separator standing between two blocks. Matching then works on a run
+ * exactly as it works on a single block, and the offsets it answers are already
+ * relative to the quote.
+ */
+function runOf(
+  body: string,
+  blocks: readonly Block[],
+): { quote: string; pieces: Piece[]; firstLength: number } {
+  const parts: string[] = [];
+  const pieces: Piece[] = [];
+  let base = 0;
+  let firstLength = 0;
+  for (const block of blocks) {
+    // A separator is two characters of Markdown and one of text, so `rangeOf`
+    // takes it whole rather than cutting a blank line in half.
+    if (base > 0) pieces.push({ text: ' ', start: base - 2, end: base });
+    for (const piece of block.pieces) {
+      pieces.push({
+        text: piece.text,
+        start: piece.start - block.start + base,
+        end: piece.end - block.start + base,
+      });
+    }
+    const quote = body.slice(block.start, block.end);
+    parts.push(quote);
+    base += quote.length + 2;
+    if (parts.length === 1) {
+      // The first block's own text, plus the separator's one space: everything
+      // before this is text a match has to reach into for the run to be minimal.
+      firstLength = pieces.reduce((total, piece) => total + piece.text.length, 0) + 1;
+    }
+  }
+  return { quote: parts.join('\n\n'), pieces, firstLength };
+}
 
-    const quote = body.slice(start, end);
-    const anchor: Anchor = { quote, offset: start, ...headingOf(heading(start)) };
-    const mark = rangeOf(pieces, plain.at[found], plain.at[found + needle.length - 1]);
-    return mark === undefined
-      ? anchor
-      : { ...anchor, mark: [mark[0] - start, mark[1] - start] as [number, number] };
+/** What one run of blocks says about a needle. */
+interface Match {
+  /** The anchor, when the run holds the needle and needs its first block for it. */
+  anchor?: Anchor;
+  /** The run's collapsed text length, which is what bounds how far a run grows. */
+  length: number;
+  /** The collapsed index at which the second block's text starts. */
+  boundary: number;
+}
+
+/** The anchor a run of blocks makes for `needle`, and what growing it further costs. */
+function match(
+  body: string,
+  blocks: readonly Block[],
+  needle: string,
+  heading: (offset: number) => string | undefined,
+): Match {
+  const first = blocks[0];
+  const { quote, pieces, firstLength } = runOf(body, blocks);
+  const plain = collapse(pieces.map((piece) => piece.text).join(''));
+  const boundary = blocks.length === 1 ? plain.text.length : collapsedIndex(plain.at, firstLength);
+  const bounds = { length: plain.text.length, boundary };
+
+  const found = plain.text.indexOf(needle);
+  // A match that does not reach into the first block belongs to a shorter run
+  // starting later, which document order reaches on its own.
+  if (first === undefined || found < 0 || found >= boundary) return bounds;
+
+  const anchor: Anchor = {
+    quote,
+    offset: first.start,
+    blocks: blocks.length,
+    ...headingOf(heading(first.start)),
+  };
+  const mark = rangeOf(pieces, plain.at[found], plain.at[found + needle.length - 1]);
+  return { ...bounds, anchor: mark === undefined ? anchor : { ...anchor, mark } };
+}
+
+/** Where an index into the uncollapsed text falls in the collapsed one. */
+function collapsedIndex(map: readonly number[], at: number): number {
+  const found = map.findIndex((index) => index >= at);
+  return found < 0 ? map.length : found;
+}
+
+/**
+ * The first block of `body` whose text holds `quoted`, or the first run of
+ * consecutive blocks that does, or `undefined` when nothing does. "First" is
+ * document order, which is what makes the sidecar's order stable across
+ * fetches (MANUAL §6).
+ */
+export function locate(
+  body: string,
+  quoted: string,
+  options: LocateOptions = {},
+): Anchor | undefined {
+  const needle = collapse(quoted).text.trim();
+  if (needle === '') return undefined;
+  const heading = headingsOf(body);
+  const blocks = blocksOf(body);
+
+  for (const block of blocks) {
+    const { anchor } = match(body, [block], needle, heading);
+    if (anchor !== undefined) return anchor;
+  }
+  if (options.spans === false) return undefined;
+
+  // Nothing holds the whole quote, so the selection ran over a block boundary:
+  // grow a run from every block until it holds the quote, or until it is longer
+  // than the longest match that could still need its first block (ticket 34).
+  for (let from = 0; from < blocks.length; from += 1) {
+    for (let to = from + 1; to < blocks.length; to += 1) {
+      const { anchor, length, boundary } = match(body, blocks.slice(from, to + 1), needle, heading);
+      if (anchor !== undefined) return anchor;
+      if (length >= boundary + needle.length) break;
+    }
   }
   return undefined;
 }

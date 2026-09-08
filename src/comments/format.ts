@@ -46,10 +46,17 @@ export interface Thread {
   mark?: [number, number];
   /** The nearest heading above the anchor. Absent when there is none. */
   heading?: string;
-  /** A suggestion's paragraph as it stands. */
-  before?: string;
-  /** The same paragraph with the suggestion accepted. */
-  after?: string;
+  /**
+   * A suggestion's blocks as they stand, one entry per block: the first and the
+   * last block it touches and everything between them (ticket 34).
+   */
+  before?: readonly string[];
+  /**
+   * The same blocks with this one suggestion accepted. As long as `before`, and
+   * equal to it at every block the suggestion does not change, which is what
+   * makes those blocks print as context.
+   */
+  after?: readonly string[];
   /** The comments of the thread, in creation order. A suggestion has none. */
   entries: Entry[];
 }
@@ -115,8 +122,33 @@ function marked(thread: Thread): string {
  * Every line of a diff side, prefixed. A paragraph can hold a line break, and a
  * whole paragraph suggested or struck out has nothing on the other side.
  */
-function sided(sign: '-' | '+', text: string): string[] {
+function sided(sign: '-' | '+' | ' ', text: string): string[] {
   return text === '' ? [] : text.split('\n').map((line) => `${sign} ${line}`);
+}
+
+/**
+ * A suggestion's diff, block by block (MANUAL §6). A block the suggestion
+ * changes is a `-` line and a `+` line — a run of them is one hunk, the whole
+ * `-` side then the whole `+` side. A block it only spans is printed once,
+ * unchanged and without a sign, so the reader sees the text between the two
+ * ends of the suggestion without being told it changed.
+ */
+function diff(before: readonly string[], after: readonly string[]): string[] {
+  const lines: string[] = ['```diff'];
+  let at = 0;
+  while (at < before.length) {
+    if (before[at] === after[at]) {
+      lines.push(...sided(' ', before[at] ?? ''));
+      at += 1;
+      continue;
+    }
+    let to = at;
+    while (to < before.length && before[to] !== after[to]) to += 1;
+    for (const text of before.slice(at, to)) lines.push(...sided('-', text));
+    for (const text of after.slice(at, to)) lines.push(...sided('+', text));
+    at = to;
+  }
+  return [...lines, '```'];
 }
 
 /** `in:` — the heading, or why there is none (MANUAL §6). */
@@ -150,7 +182,7 @@ function section(thread: Thread): string[] {
   lines.push(whereIn(thread), '');
 
   if (thread.before !== undefined && thread.after !== undefined) {
-    lines.push('```diff', ...sided('-', thread.before), ...sided('+', thread.after), '```', '');
+    lines.push(...diff(thread.before, thread.after), '');
   } else if (thread.kind === 'suggestion') {
     // Nothing the dialect can show as a diff: the suggestion only restyles the
     // paragraph it is on (MANUAL §6).

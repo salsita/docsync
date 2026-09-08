@@ -42,8 +42,8 @@ const suggestion: Thread = {
   offset: 400,
   created: '',
   heading: 'Heading six',
-  before: "Let's us collaborate on this text.",
-  after: "Let's us collaborate on the paragraph.",
+  before: ["Let's us collaborate on this text."],
+  after: ["Let's us collaborate on the paragraph."],
   entries: [],
 };
 
@@ -54,8 +54,8 @@ const alsoAt400: Thread = {
   offset: 400,
   created: '',
   heading: 'Heading six',
-  before: "Let's us collaborate on this text.",
-  after: "Let's collaborate on this text.",
+  before: ["Let's us collaborate on this text."],
+  after: ["Let's collaborate on this text."],
   entries: [],
 };
 

@@ -121,12 +121,12 @@ describe('suggestionThreads', () => {
       'suggest.r73ve12ed25a',
     ]);
     expect(threads.map((thread) => thread.before)).toEqual([
-      "Let's us collaborate on this text.",
-      "Let's us collaborate on this text.",
+      ["Let's us collaborate on this text."],
+      ["Let's us collaborate on this text."],
     ]);
     expect(threads.map((thread) => thread.after)).toEqual([
-      "Let's collaborate on this text.",
-      "Let's us collaborate on the paragraph.",
+      ["Let's collaborate on this text."],
+      ["Let's us collaborate on the paragraph."],
     ]);
     expect(threads.map((thread) => thread.heading)).toEqual(['Heading six', 'Heading six']);
   });
@@ -143,8 +143,8 @@ describe('suggestionThreads', () => {
     );
 
     expect(threads).toHaveLength(1);
-    expect(threads[0]?.before).toBe('A old word.');
-    expect(threads[0]?.after).toBe('A new word.');
+    expect(threads[0]?.before).toEqual(['A old word.']);
+    expect(threads[0]?.after).toEqual(['A new word.']);
   });
 
   it('reads a run that two suggestions touch as two threads', () => {
@@ -158,7 +158,7 @@ describe('suggestionThreads', () => {
       'One two three.\n',
     );
 
-    expect(threads.map((thread) => thread.after)).toEqual(['One three.', 'One two .']);
+    expect(threads.map((thread) => thread.after)).toEqual([['One three.'], ['One two .']]);
   });
 
   it('calls a suggestion that changes no text formatting only', () => {
