@@ -8,15 +8,20 @@
  * takes the checkout back to the source text and puts one thread per suggestion
  * in the sidecar.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/index.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import type { FetchedFile } from '../source.js';
+import { suggestionThreads } from './comments.js';
 import { createFakeDrive, type FakeDrive } from './fake-api.mock.js';
 import { markdownToRequests } from './from-markdown.js';
 import { fetchRoot } from './index.js';
 import { pushRoot } from './push.js';
+import { footnoteRequests } from './write.js';
 
 const FOLDER_ID = 'folder-client';
 const BRIEF_ID = 'doc-brief';
@@ -251,5 +256,62 @@ describe('a suggesting push that the API will not take', () => {
     await expect(push(api, first.index, textOf(first.files, PATH) ?? '')).rejects.toThrow(
       'the suggestions were not written: the comments could not be written (client/Brief.md)',
     );
+  });
+});
+
+/**
+ * The rewrite the ticket 33 smoke pushed, on the fake: one thread per
+ * suggestion id, whatever a suggestion spans (ticket 34).
+ *
+ * The smoke against the real API turned 13 suggestion ids into 106 sidecar
+ * threads, because the sidecar grouped by paragraph. The fake cuts the same
+ * rewrite into more suggestions than Docs does — one per request — but the
+ * claim under test is the equality, not the count.
+ */
+describe('the discovery rewrite, suggested', () => {
+  const fixture = (name: string): string =>
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), '__fixtures__', name), 'utf8');
+
+  it('makes exactly one sidecar thread per distinct suggestion id', async () => {
+    const api = createFakeDrive([
+      { id: FOLDER_ID, name: 'Client', mimeType: FOLDER_MIME },
+      { id: BRIEF_ID, name: 'Brief', parents: [FOLDER_ID] },
+    ]);
+    const plan = markdownToRequests(fixture('push-discovery-base.md'));
+    const { replies } = await api.batchUpdate(BRIEF_ID, plan.requests);
+    await api.batchUpdate(
+      BRIEF_ID,
+      footnoteRequests(plan.footnotes, replies, 0, await api.getDocument(BRIEF_ID)),
+    );
+
+    const first = await fetched(api);
+    const before = textOf(first.files, PATH) ?? '';
+    const frontmatter = before.slice(0, before.indexOf('\n---\n') + '\n---\n\n'.length);
+
+    await pushRoot(
+      root,
+      [
+        {
+          kind: 'modified',
+          path: PATH,
+          text: `${frontmatter}${fixture('push-discovery-next.md')}`,
+          previousText: before,
+        },
+      ],
+      provider,
+      first.index,
+      { api },
+    );
+
+    const inline = await api.getDocument(BRIEF_ID, 'inline');
+    const threads = suggestionThreads(inline, api.markdown(BRIEF_ID));
+    const ids = new Set(threads.map((thread) => thread.id));
+
+    expect(ids.size).toBeGreaterThan(10);
+    expect(threads).toHaveLength(ids.size);
+    // And every one of them is in the sidecar the fetch after the push writes.
+    const second = await fetched(api, first.index);
+    const sidecar = textOf(second.files, 'client/Brief.comments.md') ?? '';
+    expect(sidecar.match(/^## /gm) ?? []).toHaveLength(ids.size);
   });
 });

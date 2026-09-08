@@ -133,10 +133,57 @@ describe('formatSidecar', () => {
     );
   });
 
+  it('renders a suggestion over blocks as a line per block on each side', () => {
+    const across: Thread = {
+      ...suggestion,
+      before: ['The end of one.', 'The start of the next.'],
+      after: ['The end of one, edited.', 'The start of the next one.'],
+    };
+
+    expect(formatSidecar({ document, fetched, threads: [across] })).toContain(
+      [
+        '```diff',
+        '- The end of one.',
+        '- The start of the next.',
+        '+ The end of one, edited.',
+        '+ The start of the next one.',
+        '```',
+      ].join('\n'),
+    );
+  });
+
+  it('prints a block the suggestion only spans unchanged, without a sign', () => {
+    const spanning: Thread = {
+      ...suggestion,
+      before: ['First. cut', 'Untouched.', 'Last. also cut'],
+      after: ['First. ', 'Untouched.', 'Last. '],
+    };
+
+    expect(formatSidecar({ document, fetched, threads: [spanning] })).toContain(
+      [
+        '```diff',
+        '- First. cut',
+        '+ First. ',
+        '  Untouched.',
+        '- Last. also cut',
+        '+ Last. ',
+        '```',
+      ].join('\n'),
+    );
+  });
+
   it('renders a formatting-only suggestion as the quoted paragraph', () => {
     const text = formatSidecar({ document, fetched, threads: [formatting] });
 
     expect(text).toContain('> Final paragraph.\n\nin: Heading six\n\nformatting only\n');
+  });
+
+  it('quotes every block of a formatting-only suggestion that spans them', () => {
+    const wide: Thread = { ...formatting, quote: 'First.\n\nSecond.' };
+
+    expect(formatSidecar({ document, fetched, threads: [wide] })).toContain(
+      '> First.\n>\n> Second.\n\nin: Heading six\n\nformatting only\n',
+    );
   });
 
   it('prints an entry as author, minute and body', () => {

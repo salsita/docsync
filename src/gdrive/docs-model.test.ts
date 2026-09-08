@@ -347,3 +347,51 @@ describe('a request the model does not know', () => {
     );
   });
 });
+
+/**
+ * A `SUGGEST` batch gives every request one suggestion id, and the id lands on
+ * every run the request touched — which is what makes one suggestion one thread
+ * however many paragraphs it reaches into (MANUAL §6, ticket 34).
+ */
+describe('a suggesting batch across a paragraph break', () => {
+  /** Every run of the inline view, as `content` and the ids it carries. */
+  function runs(model: ReturnType<typeof createDocsModel>) {
+    return content(model).flatMap((element) =>
+      (element.paragraph?.elements ?? []).map((one) => ({
+        content: one.textRun?.content,
+        ins: one.textRun?.suggestedInsertionIds,
+        del: one.textRun?.suggestedDeletionIds,
+      })),
+    );
+  }
+
+  /** Three paragraphs, written plainly. */
+  function seeded() {
+    const model = createDocsModel();
+    model.apply([{ insertText: { location: { index: 1 }, text: 'One.\nTwo.\nThree.' } }]);
+    return model;
+  }
+
+  it('tags every run an insertion of several paragraphs made', () => {
+    const model = seeded();
+    model.apply([{ insertText: { location: { index: 3 }, text: 'A\nB\nC' } }], { suggest: true });
+
+    const inserted = runs(model).filter((run) => run.ins !== undefined);
+    expect(inserted.map((run) => run.content)).toEqual(['A\n', 'B\n', 'C']);
+    expect(inserted.every((run) => run.ins?.[0] === 'suggest.s1')).toBe(true);
+    // And the body still reads as it did: a suggestion writes nothing.
+    expect(documentToMarkdown(model.document('preview'))).toBe('One.\n\nTwo.\n\nThree.\n');
+  });
+
+  it('tags every run a deletion across a break covers', () => {
+    const model = seeded();
+    model.apply([{ deleteContentRange: { range: { startIndex: 3, endIndex: 13 } } }], {
+      suggest: true,
+    });
+
+    const deleted = runs(model).filter((run) => run.del !== undefined);
+    expect(deleted.map((run) => run.content)).toEqual(['e.\n', 'Two.\n', 'Th']);
+    expect(deleted.every((run) => run.del?.[0] === 'suggest.s1')).toBe(true);
+    expect(documentToMarkdown(model.document('preview'))).toBe('One.\n\nTwo.\n\nThree.\n');
+  });
+});
