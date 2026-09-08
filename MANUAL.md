@@ -640,7 +640,9 @@ command that restores it. Replying, resolving, accepting and rejecting stay
 in the source's own UI (§12). The body file never carries a comment.
 
 The sidecar is Markdown, one `##` heading per thread, in the order the
-anchors appear in the body:
+anchors appear in the body. A thread is what the source calls one: a Drive
+comment and its replies, a Notion discussion, or one suggestion, however
+many blocks it turns out to span:
 
 ```markdown
 ---
@@ -673,15 +675,26 @@ in: Heading six
 - **Anchor.** The paragraph, list item, heading or table cell that contains
   the commented text, quoted as it is written in the body, with the
   commented words marked `==like this==`; then `in:` and the nearest heading
-  above it, `(top)` when there is none. On Notion a comment belongs to a
-  whole block, so the block is quoted without marks; a comment on the page
-  itself has no quote and comes first. When the quoted text is found nowhere
-  in the body, the bare text is quoted and `in:` says `(not found)`. When it
-  is found in two places, the first wins.
-- **Suggestion** (Google Docs only): the paragraph as it stands and as it
-  would read with the suggestion accepted, as a diff. Two suggestions in one
-  paragraph are two threads. A pure formatting suggestion has the quote,
-  the `in:` line, then `formatting only` in place of the diff.
+  above it, `(top)` when there is none. A selection that ran over a block
+  boundary is quoted as every block it covered, joined by a blank line, with
+  the marks opening in the first and closing in the last; `in:` names the
+  heading above the first. On Notion a comment belongs to a whole block, so
+  the block is quoted without marks and a thread never spans two; a comment
+  on the page itself has no quote and comes first. When the quoted text is
+  found nowhere in the body, the bare text is quoted and `in:` says
+  `(not found)`. When it is found in two places, the first wins, and the
+  shortest run of blocks that holds it is the one quoted.
+- **Suggestion** (Google Docs only): one thread per suggestion, which is one
+  id in the Docs API and one card in Docs, and it can span blocks. The diff
+  is the blocks it touches, first to last: each as it stands on the `-` side
+  and as it would read with that one suggestion accepted on the `+` side,
+  one line per block, whole and never cut short, since you are deciding
+  whether to accept it. A block in between that the suggestion does not
+  change is printed once, unchanged and without a sign. Two suggestions in
+  one paragraph are two threads, each shown with only its own changes
+  applied. A pure formatting suggestion has the quote, every block it
+  touches joined by a blank line, then the `in:` line, then `formatting
+  only` in place of the diff.
 - **Entries** are author, time (UTC, to the minute) and text, in creation
   order. Deleted entries are omitted. The thread id is the source's: the
   Drive comment id, or the Notion discussion id in the bare form the
@@ -689,8 +702,10 @@ in: Heading six
 - **Resolved threads are not in the file.** A thread disappears from the
   sidecar when it is resolved or deleted at the source, which the next pull
   shows as a diff.
-- **Order** is the anchor's position in the body; threads whose anchor is
-  not found come last; ties by creation time.
+- **Order** is the anchor's position in the body, which for a thread that
+  spans blocks is its first block; threads whose anchor is not found come
+  last; ties by creation time, and two suggestions on one block by where
+  each one starts.
 
 Notion's API reports a comment on a text selection as a comment on the
 block, and gives no time finer than the minute. A Notion integration needs
