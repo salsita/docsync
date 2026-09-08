@@ -188,11 +188,27 @@ describe('pushRef', () => {
 
   it('lets a refusal from the diff through with its path, ref untouched', async () => {
     const served = await serve();
-    write('README.md', 'outside\n');
-    commit('outside');
-    await expect(push()).rejects.toThrow('README.md: not under any root in the manifest');
+    write('.docsync/index.yaml', '[]\n');
+    commit('edit the index');
+    await expect(push()).rejects.toThrow(
+      '.docsync/index.yaml: the index is written by fetch; do not edit it',
+    );
     expect(await repo.git.revParse(REF)).toBe(served);
     expect(store.load().pushes).toEqual([]);
+  });
+
+  it('sends no request for a file under no root, and the post-push fetch keeps it (ticket 35)', async () => {
+    await serve();
+    write('notes/a.md', 'hi\n');
+    const pushed = commit('notes');
+
+    expect(await push()).toEqual({ ok: true });
+    expect(store.load().pushes).toEqual([]);
+    // The pushed commit is the parent of the post-push fetch, so the file is
+    // in the served tree without anyone having fetched it from a source.
+    const after = (await repo.git.revParse(REF)) ?? '';
+    expect(await repo.git.isAncestor(pushed, after)).toBe(true);
+    expect([...(await readTree(repo.git, after)).keys()]).toContain('notes/a.md');
   });
 
   it('creates, trashes and renames through the adapter, and logs each', async () => {

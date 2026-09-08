@@ -172,9 +172,11 @@ describe('createCommands', () => {
   it('answers ok, a refusal and an error per refspec', async () => {
     const served = (await repo.git.revParse('refs/docsync/origin/main')) ?? '';
     repo.run('checkout', '--quiet', '-B', 'main', served);
-    writeFileSync(join(repo.root, 'README.md'), 'outside\n');
-    repo.run('add', 'README.md');
-    repo.run('commit', '--quiet', '-m', 'outside');
+    // A file under no root is local and pushes fine (ticket 35); the index is
+    // the one path the helper still refuses to take from a commit.
+    writeFileSync(join(repo.root, '.docsync', 'index.yaml'), '[]\n');
+    repo.run('add', '.docsync/index.yaml');
+    repo.run('commit', '--quiet', '-m', 'edit the index');
 
     expect(
       await commands.push([
@@ -185,7 +187,7 @@ describe('createCommands', () => {
     ).toEqual([
       'ok refs/heads/main',
       'error refs/heads/main force push is not supported; fetch, merge and push again',
-      'error refs/heads/main README.md: not under any root in the manifest',
+      'error refs/heads/main .docsync/index.yaml: the index is written by fetch; do not edit it',
     ]);
   });
 

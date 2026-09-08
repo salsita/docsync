@@ -15,7 +15,7 @@ import { COMMITTER, type FetchDeps, fetchCommit } from './fetch.js';
 import { INDEX_PATH, parseIndex } from './index-file.js';
 import type { FetchReport } from './report.js';
 import { createTempRepo, type TempRepo } from './temp-repo.mock.js';
-import { readTree } from './tree.js';
+import { buildTree, readTree } from './tree.js';
 
 const NOTION_ROOT = fakeId('notion', 1);
 const DRIVE_ROOT = fakeId('gdocs', 1);
@@ -164,20 +164,92 @@ describe('fetchCommit', () => {
     );
   });
 
-  it('drops the files of a root that left the manifest', async () => {
+  it('leaves the files of a root that left the manifest, which are local now', async () => {
     reset();
     const first = await fetchCommit(deps, manifest, undefined);
     const fewer: Manifest = { version: 1, roots: manifest.roots.slice(0, 1) };
     const second = await fetchCommit(deps, fewer, first.commit);
-    expect([...(await readTree(repo.git, second.commit)).keys()].sort()).toEqual([
+    // Nothing writes `Contracts/` any more, and a file under no root is local:
+    // a fetch never loses one (ticket 35). `docsync remove` is what deletes
+    // them, in a commit of its own (MANUAL §5).
+    const tree = await readTree(repo.git, second.commit);
+    expect([...tree.keys()].sort()).toEqual([
       '.docsync/index.yaml',
+      'Contracts/logo.png',
       'Specs.md',
       'Specs/Auth.md',
     ]);
-    // Nothing had been edited, so the fallback identity signs the commit.
+    // Only the index moved: the unsubscribed document left it.
     expect(await repo.git.text(['log', '-1', '--format=%an|%at|%B', second.commit])).toBe(
-      `docsync|${Date.parse('2026-04-01T00:00:00Z') / 1000}|Update 1 document\n\nContracts/logo.png\n`,
+      `docsync|${Date.parse('2026-04-01T00:00:00Z') / 1000}|Update the index\n`,
     );
+    const index = parseIndex((await repo.git.catBlob(tree.get(INDEX_PATH)?.sha ?? '')).toString());
+    expect(index.has('Contracts/logo.png')).toBe(false);
+  });
+
+  describe('local files (MANUAL §7, ticket 35)', () => {
+    /** A commit that adds one file on top of a fetch, as a push would. */
+    const withFile = async (parent: string, path: string, body: string): Promise<string> => {
+      const tree = await readTree(repo.git, parent);
+      tree.set(path, { sha: await repo.git.hashObject(Buffer.from(body)) });
+      const when = '2026-03-01T00:00:00Z';
+      const who = { name: 'Test', email: 'test@example.com', date: when };
+      return repo.git.commitTree({
+        tree: await buildTree(repo.git, tree),
+        parents: [parent],
+        message: 'notes\n',
+        author: who,
+        committer: who,
+      });
+    };
+
+    it('carries every file under no root over from the parent commit', async () => {
+      reset();
+      const first = await fetchCommit(deps, manifest, undefined);
+      const pushed = await withFile(first.commit, 'notes/a.md', 'hi\n');
+
+      const state = store.load();
+      editObject(state, fakeId('notion', 2), { body: 'Log in, then out.\n', editor: ADA });
+      store.save(state);
+      const second = await fetchCommit(deps, manifest, pushed);
+
+      const tree = await readTree(repo.git, second.commit);
+      expect([...tree.keys()].sort()).toEqual([
+        '.docsync/index.yaml',
+        'Contracts/logo.png',
+        'Specs.md',
+        'Specs/Auth.md',
+        'notes/a.md',
+      ]);
+      expect((await repo.git.catBlob(tree.get('notes/a.md')?.sha ?? '')).toString()).toBe('hi\n');
+      // It is not a document, so the index says nothing about it.
+      const index = parseIndex(
+        (await repo.git.catBlob(tree.get(INDEX_PATH)?.sha ?? '')).toString(),
+      );
+      expect(index.has('notes/a.md')).toBe(false);
+    });
+
+    it('makes no commit when the parent’s only news is a local file', async () => {
+      reset();
+      const first = await fetchCommit(deps, manifest, undefined);
+      const pushed = await withFile(first.commit, 'notes/a.md', 'hi\n');
+      expect(await fetchCommit(deps, manifest, pushed)).toMatchObject({
+        commit: pushed,
+        changed: false,
+      });
+    });
+
+    it('lets a root write over what the parent held inside its territory', async () => {
+      reset();
+      const first = await fetchCommit(deps, manifest, undefined);
+      // A path inside a root that the source does not have: the root's answer
+      // is the whole of its territory, so the stray file goes.
+      const pushed = await withFile(first.commit, 'Contracts/stray.txt', 'stray\n');
+      const second = await fetchCommit(deps, manifest, pushed);
+      expect([...(await readTree(repo.git, second.commit)).keys()]).not.toContain(
+        'Contracts/stray.txt',
+      );
+    });
   });
 
   it('commits an index-only change when a time moved but no content did', async () => {

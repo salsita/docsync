@@ -21,6 +21,7 @@ import type { CredentialProvider } from '../auth/index.js';
 import { isSidecarPath, sameButForFetched } from '../comments/format.js';
 import type { Editor, IndexEntry } from '../index-file.js';
 import type { Manifest } from '../manifest/types.js';
+import { rootOf } from '../manifest/validate.js';
 import type { FetchedFile, SkippedObject, SourceRegistry } from '../source.js';
 import type { Git, Identity } from './git.js';
 import { INDEX_PATH, parseIndex, serializeIndex } from './index-file.js';
@@ -90,7 +91,15 @@ export async function fetchCommit(
   const previousTree: FileTree = parent === undefined ? new Map() : await readTree(git, parent);
   const previousIndex = await readIndex(git, previousTree);
 
+  // Everything the last commit holds under no root comes along untouched: a
+  // local file is ours, and a fetch is not allowed to lose it (MANUAL §7,
+  // ticket 35). The roots write over what follows, so a path that is under one
+  // is the source's answer, not the parent's. The index is written below.
   const files = new Map<string, TreeFile>();
+  for (const [path, file] of previousTree) {
+    if (path === INDEX_PATH || rootOf(manifest.roots, path) !== undefined) continue;
+    files.set(path, file);
+  }
   const entries: IndexEntry[] = [];
   const changedDocuments: FetchReport['changed'] = [];
   const skipped: SkippedObject[] = [];

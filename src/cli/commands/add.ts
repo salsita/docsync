@@ -9,9 +9,16 @@
  * `appendRoots` is the half `docsync init` shares, which is what makes "same
  * code path as `docsync add`" in the manual true rather than aspirational.
  */
-import { writeFile } from 'node:fs/promises';
+import { stat, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { readFetchReport } from '../../helper/report.js';
-import { resolveAlias, serializeManifest, validateRoots } from '../../manifest/index.js';
+import {
+  isDirectoryPath,
+  resolveAlias,
+  serializeManifest,
+  territoryOf,
+  validateRoots,
+} from '../../manifest/index.js';
 import type { Manifest, Root } from '../../manifest/types.js';
 import type { SourceDescription } from '../../source.js';
 import { isSourceRefError, parseSourceRefOrUrl, type SourceRef } from '../../source-ref.js';
@@ -72,7 +79,7 @@ export async function appendRoots(
   manifest: Manifest,
   manifestPath: string,
   specs: readonly RootSpec[],
-  options: { readOnly?: boolean; suggest?: boolean } = {},
+  options: { readOnly?: boolean; suggest?: boolean; worktree?: string } = {},
 ): Promise<AddedRoot[]> {
   const resolved: AddedRoot[] = [];
   const added: Root[] = [];
@@ -100,6 +107,7 @@ export async function appendRoots(
       // `--suggest` needs the sidecars: a suggestion is read there (MANUAL §4).
       ...(options.suggest === true ? { comments: true, suggest: true } : {}),
     };
+    if (options.worktree !== undefined) await refuseOverExisting(options.worktree, root);
     resolved.push({ description, root });
     added.push(root);
   }
@@ -115,6 +123,32 @@ export async function appendRoots(
 
   await writeFile(manifestPath, serializeManifest({ ...manifest, roots }));
   return resolved;
+}
+
+/**
+ * A root is added over an empty path (MANUAL §5, ticket 35).
+ *
+ * Everything under no root is a local file, and every fetch writes the root's
+ * territory from the source: adding a root over files that are already there
+ * would replace them with the source text in a commit git applies without a
+ * word. A file root owns its sibling directory too when the source has
+ * children, so under Notion that directory is checked as well.
+ */
+async function refuseOverExisting(worktree: string, root: Root): Promise<void> {
+  const bare = isDirectoryPath(root.path) ? root.path.slice(0, -1) : root.path;
+  const paths = [bare];
+  if (root.src.source === 'notion' && !isDirectoryPath(root.path)) {
+    const territory = territoryOf(root.path);
+    if (territory !== bare) paths.push(territory);
+  }
+  for (const path of paths) {
+    const there = await stat(join(worktree, path)).catch(() => undefined);
+    if (there === undefined) continue;
+    throw new CliError(
+      `${path} exists in the checkout; a root is added over an empty path. ` +
+        'Commit it on a branch or move it aside, then add',
+    );
+  }
 }
 
 /**
@@ -179,6 +213,9 @@ export async function add(
   const resolved = await appendRoots(context, repo.manifest, repo.manifestPath, specs, {
     readOnly: options.readOnly === true,
     suggest: options.suggest === true,
+    // A root writes its territory on every fetch, so it goes over an empty
+    // path: whatever is there now is a local file (MANUAL §5, ticket 35).
+    worktree: repo.root,
   });
 
   for (const one of resolved) say(context, `Added ${one.root.path}`);

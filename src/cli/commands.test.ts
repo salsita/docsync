@@ -6,7 +6,7 @@
  */
 process.env.TZ = 'UTC';
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -419,6 +419,72 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.store.load().pushes).toEqual([]);
     });
 
+    it('a file outside every root is local: previewed, pushed, and kept by a pull', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      mkdirSync(join(co, 'notes'), { recursive: true });
+      w.write(co, 'notes/a.md', 'hi\n');
+      w.git(co, 'add', '--', 'notes/a.md');
+      w.git(co, 'commit', '--quiet', '-m', 'Notes');
+
+      const shown = await w.run(co, 'status');
+      expect(shown.out.split('\n').map((one) => one.trim().replace(/\s+/g, ' '))).toContain(
+        'local notes/a.md',
+      );
+
+      const pushed = await w.run(co, 'push');
+      expect(pushed.code, pushed.all).toBe(0);
+      // No request reached any source: the commit itself is the whole story.
+      expect(w.store.load().pushes).toEqual([]);
+      expect(w.git(co, 'ls-tree', '--name-only', 'origin/main', 'notes/')).toBe('notes/a.md');
+
+      // A later pull keeps it, and so does the source moving underneath it.
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in, then out.\n', editor: ADA });
+      w.store.save(state);
+      expect((await w.run(co, 'pull')).code).toBe(0);
+      expect(w.read(co, 'notes/a.md')).toBe('hi\n');
+      expect(w.files(co)).toContain('notes/a.md');
+
+      // Deleting it deletes it from `main`, and nothing is trashed anywhere.
+      w.git(co, 'rm', '--quiet', '--', 'notes/a.md');
+      w.git(co, 'commit', '--quiet', '-m', 'Drop the notes');
+      expect((await w.run(co, 'push')).code).toBe(0);
+      expect(w.store.load().pushes).toEqual([]);
+      expect(w.git(co, 'ls-tree', '--name-only', 'origin/main', 'notes/')).toBe('');
+    });
+
+    it('a file moved into a root is created at the source, and one moved out is trashed', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      mkdirSync(join(co, 'notes'), { recursive: true });
+      w.write(co, 'notes/Draft.md', '---\ntitle: Draft\n---\n\nA draft.\n');
+      w.git(co, 'add', '--', 'notes/Draft.md');
+      w.git(co, 'commit', '--quiet', '-m', 'A draft of my own');
+      expect((await w.run(co, 'push')).code).toBe(0);
+
+      // Into the root: a creation, with no memory of where it came from.
+      w.git(co, 'mv', 'notes/Draft.md', 'Product Specs/Draft.md');
+      w.git(co, 'commit', '--quiet', '-m', 'Ready to sync');
+      const created = await w.run(co, 'push');
+      expect(created.code, created.all).toBe(0);
+      expect(created.all).toContain('created');
+      const draft = Object.values(w.store.load().objects).find((one) => one.title === 'Draft');
+      expect(draft).toMatchObject({ parent: SPECS, body: 'A draft.\n' });
+
+      // Out of it: a trash at the source, and a local file from then on.
+      w.git(co, 'mv', 'Product Specs/Draft.md', 'notes/Draft.md');
+      w.git(co, 'commit', '--quiet', '-m', 'Out again');
+      const trashed = await w.run(co, 'push');
+      expect(trashed.code, trashed.all).toBe(0);
+      expect(trashed.all).toContain('Trashed:');
+      expect(w.store.load().objects[draft?.id ?? '']?.trashed).toBe(true);
+      expect((await w.run(co, 'pull')).code).toBe(0);
+      expect(w.files(co)).toContain('notes/Draft.md');
+    });
+
     it('fetch prints what changed at the source and who changed it', async () => {
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`);
@@ -649,19 +715,28 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.read(co, 'Product Specs/Auth.md')).toBe('still editing\n');
     });
 
-    it('add says why when what came in would overwrite a file of yours', async () => {
+    it('add refuses a root over files that are already in the checkout (ticket 35)', async () => {
       const w = world();
       const co = await checkout(w);
+      // The local files a person keeps where the root would land: for a Notion
+      // page that is the file itself and the sibling directory of its children.
       w.write(co, 'Product Specs/Auth.md', 'mine\n');
 
       const run = await w.run(co, 'add', `notion:${SPECS}`);
 
-      expect(run.code).toBe(0);
-      expect(run.out).toContain('Nothing was merged:');
-      expect(run.out).toContain('Product Specs/Auth.md');
-      expect(run.out).toContain('docsync pull');
+      expect(run.code).not.toBe(0);
+      expect(run.all).toContain(
+        'Product Specs exists in the checkout; a root is added over an empty path. ' +
+          'Commit it on a branch or move it aside, then add',
+      );
+      // Nothing was written: not the manifest, not the file.
       expect(w.read(co, 'Product Specs/Auth.md')).toBe('mine\n');
-      expect(w.git(co, 'rev-parse', 'HEAD')).not.toBe(w.git(co, 'rev-parse', 'origin/main'));
+      expect(w.read(co, '.docsync.yaml')).not.toContain(SPECS);
+
+      // Moved aside, the same add lands.
+      rmSync(join(co, 'Product Specs'), { recursive: true, force: true });
+      expect((await w.run(co, 'add', `notion:${SPECS}`)).code).toBe(0);
+      expect(w.files(co)).toContain('Product Specs/Auth.md');
     });
 
     it('push says so when the commits carried no document change', async () => {

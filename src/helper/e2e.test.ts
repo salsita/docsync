@@ -376,30 +376,34 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.store.load().objects[NOTION_ROOT]?.body).toBe('Root.\n');
     });
 
-    it('10. a root removed from the manifest disappears on pull and the source is untouched', () => {
+    it('10. a root removed from the manifest leaves its files behind, local, and the source is untouched', () => {
       const w = world();
       const co = w.clone();
       writeFileSync(w.manifest, MANIFEST.split('\n').slice(0, 4).join('\n').concat('\n'));
 
       w.git(co, 'fetch', '--quiet');
       w.git(co, 'pull', '--quiet');
-      expect(w.files(co)).toEqual(['.docsync/index.yaml', 'Specs.md', 'Specs/Auth.md']);
-      expect(w.git(co, 'log', '-1', '--format=%s')).toBe('Update 3 documents');
+      // Nothing claims `Files/` any more, so its files are local: they stay
+      // until someone deletes them, which is what `docsync remove` does
+      // (MANUAL §5, ticket 35). Only the index lost the three documents.
+      expect(w.files(co)).toEqual([
+        '.docsync/index.yaml',
+        'Files/Plan.md',
+        'Files/Rates.xlsx',
+        'Files/logo.png',
+        'Specs.md',
+        'Specs/Auth.md',
+      ]);
+      expect(w.git(co, 'log', '-1', '--format=%s')).toBe('Update the index');
+      expect([...w.index(co).keys()]).toEqual(['Specs.md', 'Specs/Auth.md']);
       const after = w.store.load();
       expect(after.pushes).toEqual([]);
       expect(Object.values(after.objects).some((one) => one.trashed)).toBe(false);
     });
 
-    it('11. a file outside every root, an edit to the index, an edit to a read-only export: each rejected by name', () => {
+    it('11. an edit to the index and an edit to a read-only export: each rejected by name', () => {
       const w = world();
       const co = w.clone();
-
-      w.write(co, 'README.md', 'outside\n');
-      w.commit(co, 'outside');
-      expect(w.tryGit(co, 'push').stderr).toContain(
-        '(README.md: not under any root in the manifest)',
-      );
-      w.git(co, 'reset', '--quiet', '--hard', 'origin/main');
 
       w.write(co, '.docsync/index.yaml', '[]\n');
       w.commit(co, 'index');
@@ -533,6 +537,56 @@ describe.skipIf(process.platform === 'win32')(
       expect(stderr).not.toContain('EPIPE');
       expect(stderr).not.toContain('Unhandled');
       expect(code).toBe(0);
+    });
+    it('17. a file under no root is pushed with no request, kept by every fetch, and deleted when you delete it', () => {
+      const w = world();
+      const co = w.clone();
+
+      w.write(co, 'notes/a.md', 'hi\n');
+      const pushed = w.commit(co, 'notes');
+      const push = w.tryGit(co, 'push');
+      expect(push.status, push.stderr).toBe(0);
+      // Nothing was sent anywhere: the commit is the whole of what happened.
+      expect(w.store.load().pushes).toEqual([]);
+      expect(w.git(co, 'ls-tree', '--name-only', '-r', 'origin/main')).toContain('notes/a.md');
+      expect(w.git(co, 'rev-parse', 'origin/main')).toBe(pushed);
+
+      // The source moves, and the local file is still there afterwards.
+      const state = w.store.load();
+      editObject(state, AUTH, { body: 'Log in, then out.\n' });
+      w.store.save(state);
+      w.git(co, 'pull', '--quiet');
+      expect(w.read(co, 'notes/a.md')).toBe('hi\n');
+      expect(w.index(co).has('notes/a.md')).toBe(false);
+
+      // Moving it into a root creates the page; moving it out trashes it.
+      w.write(co, 'notes/Draft.md', '---\ntitle: Draft\n---\n\nA draft.\n');
+      w.commit(co, 'draft');
+      expect(w.tryGit(co, 'push').status).toBe(0);
+      w.git(co, 'mv', 'notes/Draft.md', 'Specs/Draft.md');
+      w.commit(co, 'into the root');
+      const created = w.tryGit(co, 'push');
+      expect(created.status, created.stderr).toBe(0);
+      expect(created.stderr).toContain('notion: created Specs/Draft.md');
+      const draft = Object.values(w.store.load().objects).find((one) => one.title === 'Draft');
+      expect(draft).toMatchObject({ kind: 'page', parent: NOTION_ROOT, body: 'A draft.\n' });
+      w.git(co, 'pull', '--quiet');
+
+      w.git(co, 'mv', 'Specs/Draft.md', 'notes/Draft.md');
+      w.commit(co, 'out of the root');
+      const trashed = w.tryGit(co, 'push');
+      expect(trashed.status, trashed.stderr).toBe(0);
+      expect(trashed.stderr).toContain('notion: trashed Specs/Draft.md');
+      expect(w.store.load().objects[draft?.id ?? '']?.trashed).toBe(true);
+      w.git(co, 'pull', '--quiet');
+      expect(w.files(co)).toContain('notes/Draft.md');
+
+      // Deleting a local file deletes it from `main`, and nothing else.
+      rmSync(join(co, 'notes/a.md'));
+      w.commit(co, 'drop the notes');
+      expect(w.tryGit(co, 'push').status).toBe(0);
+      w.git(co, 'pull', '--quiet');
+      expect(w.files(co)).not.toContain('notes/a.md');
     });
   },
   60_000,
