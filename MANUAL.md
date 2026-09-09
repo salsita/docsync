@@ -144,6 +144,12 @@ The `git pull` after the push is there because a push produces one follow-up
 commit at the remote (§7). `docsync push` does the push and that pull in one
 step, and prints what happened to each document.
 
+A pull that finds your commits and the source's side by side rebases yours
+on top: every checkout carries `pull.rebase=true` in its own git config, so
+the history stays the straight line the source produces and there is no
+question to answer when git sees divergent branches. Conflicts are resolved
+as in any rebase (§7 "Conflicts").
+
 ---
 
 ## 4. The manifest
@@ -260,7 +266,8 @@ Creates a checkout.
    empty git repository).
 3. Writes an empty manifest to `.docsync.yaml`.
 4. `git init -b main`, with `core.autocrlf=false` so line endings are LF
-   everywhere.
+   everywhere, and `pull.rebase=true` so `git pull` rebases your commits
+   onto what the source produced (§3).
 5. Adds `.docsync.yaml`, the skill file paths, `.prettierrc`,
    `.editorconfig`, `.gitattributes`, `.gitignore` and the files operating
    systems drop into directories (`.DS_Store`, `Thumbs.db`, `desktop.ini`) to
@@ -647,7 +654,7 @@ anchors appear in the body. A thread is what the source calls one: a Drive
 comment and its replies, a Notion discussion, or one suggestion, however
 many blocks it turns out to span:
 
-```markdown
+````markdown
 ---
 document: gdocs:1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4
 fetched: 2026-09-03T16:31:07Z
@@ -673,7 +680,7 @@ in: Heading six
 - Let's us collaborate on this text.
 + Let's us collaborate on the paragraph.
 ```
-```
+````
 
 - **Anchor.** The paragraph, list item, heading or table cell that contains
   the commented text, quoted as it is written in the body, with the
@@ -1023,7 +1030,9 @@ your edits will be overwritten. A refresh that cannot write, on a read-only
 checkout say, says so on stderr and never fails the command that ran it. The
 same run adds the three paths, `.gitignore` and the operating-system junk
 names of §5 step 5 to `.git/info/exclude` when they are missing, so a checkout made by an
-older version gets them.
+older version gets them, and sets `pull.rebase=true` in the checkout's own
+config when the checkout has no `pull.rebase` of its own (§3). A value you
+set yourself, `false` included, is left alone.
 
 ### The loop
 
