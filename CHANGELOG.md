@@ -12,6 +12,13 @@ version, commits, tags and pushes.
 
 ## [Unreleased]
 
+### Changed
+
+- Releases go through npm trusted publishing: `scripts/release.sh` bumps the
+  version, turns this section into the release, tags and pushes, and the tag
+  run publishes with provenance and creates the GitHub release.
+- Biome's warnings cleared; no behaviour change.
+
 ## [0.1.0] — 2026-09-09
 
 Initial release. What it does is in [MANUAL.md](MANUAL.md); the tickets that
