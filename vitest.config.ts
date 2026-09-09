@@ -5,6 +5,9 @@ export default defineConfig({
     // The fake `git-remote-docsync` the two real-git test files run is built
     // once here, before any worker starts, instead of once inside each file.
     globalSetup: ['src/helper/global-setup.mock.ts'],
+    // The tests that run real git take up to eight seconds on a slow Windows
+    // runner, against five everywhere else with room to spare.
+    testTimeout: process.platform === 'win32' ? 20_000 : 5_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

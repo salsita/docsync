@@ -21,6 +21,9 @@ version, commits, tags and pushes.
   instead of asking how to reconcile divergent branches. An explicit local
   value is kept. `docsync push`'s follow-up pull passes `--no-rebase` so an
   edit in progress still only blocks it when git would overwrite it.
+- CI is green on Windows: the git runner spells the checkout's paths the
+  platform's way (long names, backslashes), and the three path tests that
+  assumed `/` pass there.
 
 ## [0.1.1] — 2026-09-09
 

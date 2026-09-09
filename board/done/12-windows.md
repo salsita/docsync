@@ -31,3 +31,27 @@ The whole loop works on Windows with Git for Windows and pnpm.
 ## Done when
 
 The quick start works on a Windows machine and CI is green there.
+
+## Outcome
+
+Closed 2026-09-09 in `28682e0` and the closing commit. CI green on all six
+jobs, Windows on Node 22 and 24 included, for the first time.
+
+- `toplevel()` and `gitDir()` canonicalise git's answer with
+  `realpathSync.native`, so on Windows a temporary directory's 8.3 short
+  name and git's `/` both become the long, backslash spelling that
+  `path` and `realpath` produce. That was the first failure.
+- The second was the test: it cut the cwd after the last `/`, which on a
+  backslash path left nothing and git ran in the workspace. `dirname` now.
+- The third was the test comparing POSIX literals with `resolve()` output;
+  both sides go through `resolve()` now.
+- The real-git helper tests took up to eight seconds on one slow Windows
+  runner; the vitest timeout is twenty seconds on Windows.
+- The shim, the `--version` smoke of both executables, LF, reserved names
+  and the editor launch were verified by earlier tickets and the CI smoke
+  step.
+
+Not verified: the quick start on a real Windows machine by a person, and
+the three suites still skipped on `win32` (`commands.test.ts` end to end,
+`e2e.test.ts`, `refreshSkillFiles`). Unskipping them is its own ticket if
+Windows users appear.
