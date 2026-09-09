@@ -7,6 +7,8 @@ the version is `0.x` a minor release may still change behaviour.
 Each release is written by hand from the finished tickets in `board/done/`.
 The release workflow takes a version's section here as the body of its GitHub
 release, so a section's heading is `## [<version>] — <date>`.
+`scripts/release.sh` turns `[Unreleased]` into that heading, bumps the
+version, commits, tags and pushes.
 
 ## [Unreleased]
 
