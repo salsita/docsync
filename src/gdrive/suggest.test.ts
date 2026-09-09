@@ -232,6 +232,20 @@ describe('a suggesting push that the API will not take', () => {
     );
   });
 
+  it('leaves a 400 about an index exactly as it came: that is the patch, not enrolment', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+    api.batchUpdate = async () => {
+      throw new Error(
+        'Google API 400 on …: Invalid requests[2].insertText: The insertion index must be inside the bounds of an existing paragraph.',
+      );
+    };
+
+    await expect(push(api, first.index, textOf(first.files, PATH) ?? '')).rejects.toThrow(
+      /existing paragraph\.$/,
+    );
+  });
+
   it('leaves an ordinary failure exactly as it came', async () => {
     const api = await drive();
     const first = await fetched(api);

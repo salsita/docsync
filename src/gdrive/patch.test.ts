@@ -79,8 +79,8 @@ function indices(requests: readonly DocsWriteRequest[]): number[] {
   });
 }
 
-/** The document the plan leaves behind, as Markdown. */
-function applied(markdown: string, next: string, media: Media = {}): string {
+/** The document the plan leaves behind. */
+function patched(markdown: string, next: string, media: Media = {}): DocsDocument {
   const model = createDocsModel('doc', 'Doc');
   const first = mdastToRequests(parseMarkdown(markdown), {
     from: PATH,
@@ -92,7 +92,20 @@ function applied(markdown: string, next: string, media: Media = {}): string {
   const patch = plan(markdown, next, model.document(), media);
   const answers = model.apply(patch.requests);
   model.apply(footnoteRequests(patch.footnotes, answers, 0, model.document()));
-  return documentToMarkdown(model.document(), convertOptions(media));
+  return model.document();
+}
+
+/** The document the plan leaves behind, as Markdown. */
+function applied(markdown: string, next: string, media: Media = {}): string {
+  return documentToMarkdown(patched(markdown, next, media), convertOptions(media));
+}
+
+/**
+ * How many paragraphs the body holds, tables' cells not counted. Markdown
+ * cannot show an empty paragraph, so a stray one is only visible here.
+ */
+function paragraphs(doc: DocsDocument): number {
+  return (doc.body?.content ?? []).filter((element) => element.paragraph !== undefined).length;
 }
 
 describe('an edited paragraph', () => {
@@ -186,6 +199,11 @@ describe('the requests of one batch', () => {
     // Nothing addresses an index inside "Two.", which is what keeps its
     // formatting, its comments and its bullet where they are.
     expect(indices(patch.requests).every((index) => index >= 9)).toBe(true);
+    // The paragraph the split leaves behind is the one the new block goes
+    // into, not one more empty paragraph at the end.
+    expect(paragraphs(patched(base, 'One.\n\nTwo.\n\nThree.\n'))).toBe(
+      paragraphs(document(base)) + 1,
+    );
   });
 
   it('inserts two new blocks in the order they were written', () => {
@@ -230,6 +248,45 @@ describe('a table', () => {
 
     expect(kinds(patch.requests)).toEqual(['insertText', 'deleteContentRange']);
     expect(applied(base, next)).toBe(next);
+  });
+
+  it('gets a new block before it by splitting the paragraph before it', () => {
+    // Docs inserts nothing at a table's own index: the paragraph before the
+    // table lends its newline, as at the end of the body (ticket 33 follow-up).
+    const before = `One.\n\n${base}`;
+    const next = `One.\n\nTwo.\n\n${base}`;
+    const patch = plan(before, next);
+
+    expect(kinds(patch.requests).slice(0, 3)).toEqual([
+      'insertText',
+      'deleteParagraphBullets',
+      'insertText',
+    ]);
+    // The newline goes in one index before the table, never at the table.
+    const split = patch.requests[0]?.insertText as { location: { index: number }; text: string };
+    const text = patch.requests[2]?.insertText as { location: { index: number } };
+    expect(split.text).toBe('\n');
+    expect(text.location.index).toBe(split.location.index + 1);
+    expect(applied(before, next)).toBe(next);
+    // One paragraph more, not two: the split's leftover holds the new block.
+    expect(paragraphs(patched(before, next))).toBe(paragraphs(document(before)) + 1);
+  });
+
+  it('gets two new blocks before it in one split', () => {
+    const before = `One.\n\n${base}`;
+    const next = `One.\n\nTwo.\n\nThree.\n\n${base}`;
+    expect(applied(before, next)).toBe(next);
+    expect(paragraphs(patched(before, next))).toBe(paragraphs(document(before)) + 2);
+  });
+
+  it('keeps a nested insertion before a new list that lands at the same index', () => {
+    // The real case: the children of a list item are replaced, and a new list
+    // is added after that item, right before a table. Both insertions land at
+    // the index where the table starts, and the later one must go in first.
+    const before = `1. **Final**\n   1. Old one.\n   2. Old two.\n   3. Old three.\n\n${base}`;
+    // Two lists in a row alternate their markers: that is a second list.
+    const next = `1. **Final**\n   1. Replacement text.\n\n1) New one.\n2) New two.\n\n${base}`;
+    expect(applied(before, next)).toBe(next);
   });
 
   it('gains a row without rewriting the rows it has', () => {

@@ -111,6 +111,8 @@ interface Level {
   depth: number;
   /** Set when the blocks of this level are the rows of a table. */
   table?: { start: number; columns: number };
+  /** How many list items this level is nested under: a new item goes in at that depth. */
+  list?: number;
 }
 
 /** What a push must send to make the live document say what the ops say. */
@@ -139,27 +141,51 @@ export function planPatch(
 
   /* ------------------------------------------------------------ insertion */
 
-  /** One run of new blocks, written at `index` as `from-markdown.ts` writes. */
-  function insert(blocks: readonly DiffBlock[], index: number, level: Level): void {
+  /**
+   * One run of new blocks, written at `index` as `from-markdown.ts` writes.
+   *
+   * `beforeTable` says `index` is where a table starts: Docs takes no text
+   * there, so the paragraph before the table is split instead (see below).
+   */
+  function insert(
+    blocks: readonly DiffBlock[],
+    index: number,
+    level: Level,
+    beforeTable = false,
+  ): void {
     const children = blocks.flatMap((block) => [...block.source]);
     const tree: Root = { type: 'root', children };
     // At the very end of the body there is no index to insert *at*: the last
     // paragraph's newline is the last thing there is. So the newline is split
     // first, and the new blocks go into the empty paragraph that leaves behind.
+    // The start of a table is the same case: the API only inserts inside a
+    // paragraph, and a table is always preceded by one, whose newline is split.
     const trailing = index >= level.end;
-    const at = trailing ? level.end - 1 : index;
-    const base = trailing ? at + 1 : at;
+    const split = trailing || beforeTable;
+    const at = trailing ? level.end - 1 : beforeTable ? index - 1 : index;
+    const base = split ? at + 1 : at;
 
     const { segments, dropped: lost } = mdastToSegments(tree, base, {
       ...(options.images === undefined ? {} : { images: options.images }),
       ...(options.path === undefined ? {} : { from: options.path }),
+      ...(level.list === undefined ? {} : { level: level.list }),
     });
     const built = segmentsToRequests(segments);
     dropped.push(...lost);
     if (built.requests.length === 0) return;
+    // The split leaves an empty paragraph behind, and the last new block goes
+    // into it: without its own newline, or the empty paragraph would stay as
+    // one more blank line in the document.
+    if (split) {
+      const last = segments.at(-1);
+      const first = built.requests[0] as { insertText?: { text?: string } } | undefined;
+      if (last !== undefined && last.text.endsWith('\n') && first?.insertText?.text === last.text) {
+        first.insertText.text = last.text.slice(0, -1);
+      }
+    }
 
     const head: DocsWriteRequest[] = [];
-    if (trailing) {
+    if (split) {
       head.push(
         { insertText: { location: location(at, level.segmentId), text: '\n' } },
         // The paragraph the split leaves behind is still the last paragraph's:
@@ -476,7 +502,12 @@ export function planPatch(
 
     const flush = (): void => {
       if (pending.length === 0) return;
-      insert(pending, anchor ?? context.end, context);
+      const at = anchor ?? context.end;
+      // New blocks anchored where a table starts cannot go in at that index.
+      const beforeTable = blocks.some(
+        (block) => block.block.type === 'table' && block.start === at,
+      );
+      insert(pending, at, context, beforeTable);
       pending = [];
       anchor = undefined;
     };
@@ -648,7 +679,12 @@ export function planPatch(
     }
     return {
       blocks: found.children,
-      level: { ...context, depth: context.depth + 1, table: undefined },
+      level: {
+        ...context,
+        depth: context.depth + 1,
+        table: undefined,
+        ...(base.type.startsWith('listItem:') ? { list: (context.list ?? 0) + 1 } : {}),
+      },
     };
   }
 
@@ -690,7 +726,15 @@ export function planPatch(
 
   level(ops, live.blocks, { depth: 0, end: live.end });
 
-  groups.sort((a, b) => b.index - a.index || a.phase - b.phase || a.order - b.order);
+  // Two insertions at one index are sent later-in-the-document first, as the
+  // blocks inside one insertion are: what goes in first ends up after what
+  // goes in next. Everything else keeps the order it was planned in.
+  groups.sort(
+    (a, b) =>
+      b.index - a.index ||
+      a.phase - b.phase ||
+      (a.phase === INSERT ? b.order - a.order : a.order - b.order),
+  );
 
   const requests: DocsWriteRequest[] = [];
   const footnotes: PlannedFootnote[] = [];

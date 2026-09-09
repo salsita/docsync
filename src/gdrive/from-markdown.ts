@@ -135,6 +135,12 @@ export interface ImageOptions {
   images?: ReadonlyMap<string, string>;
   /** Repo-relative path of the document, for resolving those links. */
   from?: string;
+  /**
+   * How many list levels the blocks already sit under. A patch inserting the
+   * children of a list item builds them as a tree of their own, and this is
+   * what puts them back at their depth: Docs nests by leading tabs.
+   */
+  level?: number;
 }
 
 /**
@@ -152,6 +158,7 @@ export function mdastToSegments(
     inFootnote: false,
     ...(options.images === undefined ? {} : { images: options.images }),
     ...(options.from === undefined ? {} : { from: options.from }),
+    ...(options.level === undefined ? {} : { level: options.level }),
   };
   return { segments: buildSegments(tree.children, context, base), dropped: context.dropped };
 }
@@ -218,6 +225,8 @@ interface Context {
   images?: ReadonlyMap<string, string>;
   /** Repo-relative path of the document, for resolving those links. */
   from?: string;
+  /** The list level the blocks sit under; see `ImageOptions.level`. */
+  level?: number;
 }
 
 /** The footnote definitions of a document, which GFM puts at the end. */
@@ -507,7 +516,7 @@ interface FlatItem {
 
 function listSegment(node: List, context: Context, base: number): Segment | undefined {
   const items: FlatItem[] = [];
-  flatten(node, 0, items, context);
+  flatten(node, context.level ?? 0, items, context);
   if (items.length === 0) return undefined;
 
   // Nesting is leading tabs in the inserted text; `createParagraphBullets`

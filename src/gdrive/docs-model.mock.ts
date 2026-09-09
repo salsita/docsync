@@ -211,8 +211,14 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
       if (slot.start <= index) found = slot;
     }
     if (found === undefined) throw new Error(`no paragraph at ${index}`);
-    const offset = Math.max(0, Math.min(index - found.start, paraLength(found.para) - 1));
-    return { slot: found, offset };
+    // A table's own indices (its start, a row's, a cell's) are inside no
+    // paragraph, and the real API refuses them with exactly this message.
+    if (index >= found.start + paraLength(found.para) || index < found.start) {
+      throw new Error(
+        `Invalid insertText: The insertion index must be inside the bounds of an existing paragraph. You can still create new paragraphs by inserting newlines. (index ${index})`,
+      );
+    }
+    return { slot: found, offset: index - found.start };
   }
 
   /** The items of a paragraph, cut at `offset`. */

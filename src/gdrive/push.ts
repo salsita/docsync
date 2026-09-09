@@ -444,7 +444,10 @@ async function write(
     result = await send();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!suggest || !/Google API 4\d\d/.test(message)) throw error;
+    // Only a refusal that is about the write mode, or a plain 403, is the
+    // enrolment: a 400 about an index is the patch's own fault.
+    const enrolment = /Google API 403|write_?[Mm]ode|write_?[Cc]ontrol|SUGGEST/.test(message);
+    if (!suggest || !enrolment) throw error;
     throw new PushError(`${message}. ${PREVIEW_HINT}`, path);
   }
   if (commentUpdateFailed(result.commentUpdateState)) {
