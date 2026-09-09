@@ -95,8 +95,20 @@ const KEYS = ['bold', 'italic', 'strikethrough', 'underline', 'code', 'color', '
  */
 const MAX_CELLS = 4_000_000;
 
+/** How the diff is coalesced; see `coalesce`. */
+export interface DiffOptions {
+  /**
+   * A kept stretch of fewer than this many words between two edits is
+   * rewritten with them, so a reworked sentence is one edit and not a chain of
+   * fragments around the words that happened to survive. Off by default: the
+   * kept words keep their formatting and their comments only when kept. A
+   * suggesting push turns it on (MANUAL §7), since there the edit is read.
+   */
+  joinKeptUnder?: number;
+}
+
 /** The character diff of two texts, on word boundaries. */
-export function diffText(base: string, next: string): Span[] {
+export function diffText(base: string, next: string, options: DiffOptions = {}): Span[] {
   const a = tokens(base);
   const b = tokens(next);
 
@@ -120,7 +132,12 @@ export function diffText(base: string, next: string): Span[] {
   for (let index = 0; index < head; index += 1) out.push('keep', a[index] ?? '');
   walkMiddle(middleA, middleB, out);
   for (let index = a.length - tail; index < a.length; index += 1) out.push('keep', a[index] ?? '');
-  return coalesce(out.done());
+  return coalesce(out.done(), options);
+}
+
+/** How many words a stretch of text holds. */
+function wordsIn(text: string): number {
+  return text.split(/\s+/).filter((word) => word !== '').length;
 }
 
 /**
@@ -132,11 +149,12 @@ export function diffText(base: string, next: string): Span[] {
  * and has an edit on both sides joins those edits, and each stretch of change
  * is then written as one deletion followed by one insertion.
  */
-function coalesce(spans: readonly Span[]): Span[] {
+function coalesce(spans: readonly Span[], options: DiffOptions = {}): Span[] {
+  const limit = options.joinKeptUnder;
   const joins = spans.map(
     (span, index) =>
       span.kind === 'keep' &&
-      span.text.trim() === '' &&
+      (span.text.trim() === '' || (limit !== undefined && wordsIn(span.text) < limit)) &&
       spans[index - 1] !== undefined &&
       spans[index - 1]?.kind !== 'keep' &&
       spans[index + 1] !== undefined &&
@@ -326,12 +344,14 @@ function styleByCharacter(runs: readonly StyledRun[]): InlineStyle[] {
 export function diffInline(
   base: readonly PhrasingContent[],
   next: readonly PhrasingContent[],
+  options: DiffOptions = {},
 ): { spans: Span[]; styles: StyleChange[] } {
   const baseRuns = inlineRuns(base);
   const nextRuns = inlineRuns(next);
   const spans = diffText(
     baseRuns.map((run) => run.text).join(''),
     nextRuns.map((run) => run.text).join(''),
+    options,
   );
 
   const baseStyles = styleByCharacter(baseRuns);

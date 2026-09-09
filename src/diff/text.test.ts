@@ -38,6 +38,36 @@ describe('diffText', () => {
     ]);
   });
 
+  it('rewrites short kept islands with the edits around them when asked', () => {
+    const base =
+      'If we suspend our Services for any reason as per the License Agreement, this is not deemed as unavailability.';
+    const next =
+      'A suspension of our Services does not count as unavailability only if it is permitted under the License Agreement.';
+    // Word by word, "our Services" and "the License Agreement" survive as
+    // islands and cut the edit into pieces.
+    expect(diffText(base, next).filter((span) => span.kind === 'keep').length).toBeGreaterThan(2);
+    // Under four words each, they are rewritten with the edit: one stretch.
+    // Only the shared final period is kept, at the end, outside the edit.
+    const joined = diffText(base, next, { joinKeptUnder: 4 });
+    expect(joined.map((span) => span.kind)).toEqual(['delete', 'insert', 'keep']);
+    expect(joined[1]?.text).toBe(next.slice(0, -1));
+    expect(joined[2]?.text).toBe('.');
+  });
+
+  it('keeps an island of four words or more between two edits', () => {
+    const base = 'One two three four five six seven eight nine ten.';
+    const next = 'Uno two three four five six seven eight nine diez.';
+    const joined = diffText(base, next, { joinKeptUnder: 4 });
+    expect(joined.map((span) => span.kind).slice(0, 5)).toEqual([
+      'delete',
+      'insert',
+      'keep',
+      'delete',
+      'insert',
+    ]);
+    expect(joined[2]?.text).toBe(' two three four five six seven eight nine ');
+  });
+
   it('answers a single kept span when nothing changed', () => {
     expect(shape(diffText('same', 'same'))).toEqual(['=same']);
   });

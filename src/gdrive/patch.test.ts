@@ -51,10 +51,19 @@ function document(markdown: string, media: Media = {}): DocsDocument {
   return model.document();
 }
 
-function plan(base: string, next: string, doc = document(base), media: Media = {}) {
+function plan(
+  base: string,
+  next: string,
+  doc = document(base),
+  media: Media = {},
+  extra: { suggest?: boolean } = {},
+) {
   const live = readLive(doc, convertOptions(media));
   expect(live.markdown).toBe(base);
-  return planPatch(live, diffBlocks(parseMarkdown(base), parseMarkdown(next)), patchOptions(media));
+  return planPatch(live, diffBlocks(parseMarkdown(base), parseMarkdown(next)), {
+    ...patchOptions(media),
+    ...extra,
+  });
 }
 
 /** The kind of each request, in the order the batch sends them. */
@@ -252,6 +261,21 @@ describe('a list item inserted beside its equals', () => {
   it('appended at the very end of the body is created afresh', () => {
     const base = '- A\n- B\n';
     const next = '- A\n- B\n- C\n';
+    expect(applied(base, next)).toBe(next);
+  });
+});
+
+describe('in suggesting mode', () => {
+  const base =
+    'If we suspend our Services for any reason as per the License Agreement, this is not deemed as unavailability.\n';
+  const next =
+    'A suspension of our Services does not count as unavailability only if it is permitted under the License Agreement.\n';
+
+  it('rewrites a reworked sentence as one suggestion, islands under four words included', () => {
+    const plain = plan(base, next);
+    const suggesting = plan(base, next, document(base), {}, { suggest: true });
+    expect(kinds(plain.requests).filter((kind) => kind === 'insertText').length).toBeGreaterThan(1);
+    expect(kinds(suggesting.requests).filter((kind) => kind === 'insertText')).toHaveLength(1);
     expect(applied(base, next)).toBe(next);
   });
 });

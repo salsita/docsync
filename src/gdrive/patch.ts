@@ -75,7 +75,17 @@ export interface PatchOptions {
    * dropped, as an image always was.
    */
   images?: ReadonlyMap<string, string>;
+  /**
+   * The plan goes out in suggesting mode, where a person reads each edit: a
+   * reworked sentence is then one suggestion, kept islands of fewer than
+   * `SUGGEST_JOIN_UNDER` words rewritten with it (MANUAL §7). A plain write
+   * keeps every kept word, since there its formatting is what matters.
+   */
+  suggest?: boolean;
 }
+
+/** Kept words fewer than this between two edits are rewritten in suggesting mode. */
+export const SUGGEST_JOIN_UNDER = 4;
 
 export interface PatchPlan {
   /** One `documents.batchUpdate`, in descending index order. */
@@ -276,7 +286,11 @@ export function planPatch(
     next: readonly PhrasingContent[],
     segmentId?: string,
   ): void {
-    const { spans: found, styles } = diffInline(base, next);
+    const { spans: found, styles } = diffInline(
+      base,
+      next,
+      options.suggest === true ? { joinKeptUnder: SUGGEST_JOIN_UNDER } : {},
+    );
     const baseRuns = inlineRuns(base);
     const nextRuns = inlineRuns(next);
 

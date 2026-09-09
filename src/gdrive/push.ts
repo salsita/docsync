@@ -402,7 +402,7 @@ async function patchDocument(
   const images = new Map(staged.images.map((one): [string, string] => [one.path, one.uri]));
   for (const one of staged.images) progress(`upload ${one.path}`);
 
-  const plan = planPatch(live, ops, { path: change.path, images });
+  const plan = planPatch(live, ops, { path: change.path, images, suggest });
   if (staged.images.length === 0) {
     const written = await write(
       () => writer.patchBody(id, plan, { suggest }),

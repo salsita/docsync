@@ -858,7 +858,12 @@ what to do with each:
   that changed are rewritten: deleted spans are cut, inserted text takes the
   formatting of the text before it, and a formatting change you made in the
   dialect (bold, italic, strikethrough, underline, code, link) touches only
-  that attribute on that span. Everything else in the block survives.
+  that attribute on that span. Everything else in the block survives. Under
+  a root with `suggest: true` the edit is something a person reads, so a
+  reworked sentence goes out as one suggestion: a stretch of fewer than four
+  kept words between two edits is rewritten with them rather than left as an
+  island that cuts the suggestion into fragments. A plain push keeps every
+  kept word, formatting and comments included.
 - An **inserted block** is created at its position; a **deleted block** is
   deleted. On Google Docs a list item inserted beside items of its kind and
   level takes the bullet of the item it lands in, before the next item or, at
