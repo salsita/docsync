@@ -40,3 +40,24 @@ bubble for nothing.
 `pnpm check` green; in a checkout with a committed edit, after the source
 changes, `git pull` without arguments rebases and `git log --oneline
 --graph` shows a straight line.
+
+## Outcome
+
+Landed 2026-09-09 in two agent commits (`8534e9b`, `29f36c9`) plus the
+landing commit. `pnpm check` green, 1551 tests (+6).
+
+- `refreshSkillFiles` now tends the repository in one place
+  (`tendRepository`): the exclude lines, then `pull.rebase=true` in the
+  local config when there is none. A failed write is one stderr line.
+- Deviation: the ticket claimed `docsync push`'s `git pull --ff-only` was
+  unaffected. It is not: with `pull.rebase=true`, git takes the rebase path
+  first and refuses any unstaged change before checking whether the pull is
+  a fast-forward. The follow-up is now `git pull --ff-only --no-rebase`,
+  which is the old behaviour. Manual §7 push step 6 says so, and warns that
+  a bare `git pull` mid-edit refuses for the same reason.
+- Both test harnesses had forced `pull.rebase=false` over every git run,
+  which is the workaround this ticket removes; dropped, so tests see what a
+  user sees.
+- e2e case 18: a plain `git clone docsync::…` carries the setting with no
+  docsync command run; a local edit commit plus a source change and a bare
+  `git pull` end one commit ahead, linear.

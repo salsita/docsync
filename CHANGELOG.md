@@ -20,6 +20,11 @@ version, commits, tags and pushes.
   version, turns this section into the release, tags and pushes, and the tag
   run publishes with provenance and creates the GitHub release.
 - Biome's warnings cleared; no behaviour change.
+- Every checkout carries `pull.rebase=true` in its own git config, set by
+  the refresh every command runs, so `git pull` over a local commit rebases
+  instead of asking how to reconcile divergent branches. An explicit local
+  value is kept. `docsync push`'s follow-up pull passes `--no-rebase` so an
+  edit in progress still only blocks it when git would overwrite it.
 
 ## [0.1.0] — 2026-09-09
 

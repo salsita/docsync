@@ -829,8 +829,12 @@ Git sends the commits between `origin/main` and your branch. The helper:
 6. **Post-push fetch.** Re-reads every document it touched. If the canonical
    form differs from what was pushed (new ids, source-side normalization), it
    writes one more commit on top of `origin/main`. Your branch is then one
-   fast-forward behind. `docsync push` fast-forwards for you unless an edit in
-   progress is in the way; after plain `git push`, run `git pull`. When the source only
+   fast-forward behind. `docsync push` fast-forwards for you with
+   `git pull --ff-only --no-rebase`, so an edit in progress is in the way
+   only when git would overwrite it; after plain `git push`, run `git pull`,
+   and note that the checkout's `pull.rebase=true` (§3) makes a bare
+   `git pull` refuse while anything is unstaged, even for a fast-forward, so
+   commit or stash first, or pass `--no-rebase`. When the source only
    re-stamped edit times, that follow-up commit is `Update the index`.
    After a push that suggested, this fetch is what takes your files back to
    the source text: the documents did not change, the suggestions are waiting
