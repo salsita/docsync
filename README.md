@@ -9,8 +9,9 @@ git's ordinary three-way merge resolves it.
 ## Requirements
 
 - Node.js 22 or newer, and `git`.
-- The team's OAuth apps, one per source. Ask the team for `oauth-apps.yaml`
-  and save it as `~/.docsync/oauth-apps.yaml`
+- The team's OAuth apps, one per source: a client id and secret each. Ask
+  the team for them; the first `docsync auth` opens a template in your
+  editor to paste them into, which becomes `~/.docsync/oauth-apps.yaml`
   (`%USERPROFILE%\.docsync\oauth-apps.yaml` on Windows). docsync ships no
   OAuth app of its own; it only reads that file. Registering the apps
   yourself is in [MANUAL.md](MANUAL.md) §2.
