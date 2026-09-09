@@ -12,6 +12,8 @@
  * had to work.
  */
 import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
+import { normalize } from 'node:path';
 
 /** What one git command did. `stdout` and `stderr` are captured either way. */
 export interface GitResult {
@@ -117,12 +119,28 @@ export function createGitRunner(options: GitRunnerOptions): GitRunner {
     return result.status === 0 ? result.stdout.trimEnd() : undefined;
   }
 
+  /**
+   * A path as git prints it, in the platform's own spelling: git answers with
+   * `/` on Windows and, under a temporary directory there, the 8.3 short name
+   * it was given, while everything else in the process compares against
+   * `path` and `realpath` spellings.
+   */
+  async function askPath(args: readonly string[]): Promise<string | undefined> {
+    const answer = await ask(args);
+    if (answer === undefined) return undefined;
+    try {
+      return realpathSync.native(answer);
+    } catch {
+      return normalize(answer);
+    }
+  }
+
   const runner: GitRunner = {
     cwd: options.cwd,
     run,
     must,
-    toplevel: () => ask(['rev-parse', '--show-toplevel']),
-    gitDir: () => ask(['rev-parse', '--absolute-git-dir']),
+    toplevel: () => askPath(['rev-parse', '--show-toplevel']),
+    gitDir: () => askPath(['rev-parse', '--absolute-git-dir']),
     async branch() {
       // `--show-current` answers nothing at all on a detached HEAD, and does
       // it with status 0, so the empty answer is the detached one.

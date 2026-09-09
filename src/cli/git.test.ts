@@ -1,5 +1,5 @@
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTempRepo, type TempRepo } from '../helper/temp-repo.mock.js';
 import { createGitRunner, type GitRunner } from './git.js';
@@ -84,12 +84,14 @@ describe('the git runner', () => {
   it('finds the checkout from any subdirectory', async () => {
     git = runner(join(repo.root, 'deep', 'deeper'));
 
-    expect(await git.toplevel()).toBe(realpathSync(repo.root));
-    expect(await git.gitDir()).toBe(realpathSync(repo.gitDir));
+    // `native` is the spelling the runner canonicalises to: on Windows a
+    // temporary directory's 8.3 short name becomes the long one.
+    expect(await git.toplevel()).toBe(realpathSync.native(repo.root));
+    expect(await git.gitDir()).toBe(realpathSync.native(repo.gitDir));
   });
 
   it('answers undefined outside a repository', async () => {
-    git = runner(repo.root.replace(/[^/]+$/, ''));
+    git = runner(dirname(repo.root));
 
     expect(await git.toplevel()).toBeUndefined();
   });

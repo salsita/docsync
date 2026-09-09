@@ -28,29 +28,31 @@ async function* lines(text: string): AsyncGenerator<string> {
 
 describe('resolveManifest', () => {
   it('resolves a relative manifest against the working tree, an absolute one as is', () => {
+    // Spelled through `resolve` on both sides: on Windows a rooted path gains
+    // the drive letter and `\\`, and the answer is compared in that spelling.
     const env = { GIT_DIR: '/repo/.git' };
     expect(resolveManifest({ argv: ['origin', 'docsync::.docsync.yaml'], env, cwd: '/x' })).toEqual(
       {
         remote: 'origin',
-        gitDir: '/repo/.git',
-        worktree: '/repo',
-        manifestPath: '/repo/.docsync.yaml',
+        gitDir: resolve('/repo/.git'),
+        worktree: resolve('/repo'),
+        manifestPath: resolve('/repo/.docsync.yaml'),
       },
     );
     expect(
       resolveManifest({
-        argv: ['origin', '/abs/m.yaml'],
+        argv: ['origin', resolve('/abs/m.yaml')],
         env: { ...env, GIT_WORK_TREE: '/wt' },
         cwd: '/x',
       }).manifestPath,
-    ).toBe('/abs/m.yaml');
+    ).toBe(resolve('/abs/m.yaml'));
     expect(
       resolveManifest({
         argv: ['origin', '../m.yaml'],
         env: { ...env, GIT_WORK_TREE: '/wt' },
         cwd: '/x',
       }).manifestPath,
-    ).toBe('/m.yaml');
+    ).toBe(resolve('/m.yaml'));
   });
 
   it('falls back to .git under the current directory and a remote called origin', () => {
