@@ -213,6 +213,49 @@ describe('the requests of one batch', () => {
   });
 });
 
+describe('a list item inserted beside its equals', () => {
+  it('inherits the bullet of the item it is inserted into: no tabs, no bullet request', () => {
+    // Beside a list with glyphs of its own, a bullet created afresh is a second
+    // list at the wrong level; the paragraph the text lands in already has the
+    // right one, and Docs hands it to inserted text.
+    const base = '1. A\n   1. B\n   2. C\n2. D\n';
+    const next = '1. A\n   1. B\n   2. New.\n   3. C\n2. D\n';
+    const patch = plan(base, next);
+    expect(kinds(patch.requests)).not.toContain('createParagraphBullets');
+    expect(kinds(patch.requests)).not.toContain('deleteParagraphBullets');
+    const text = patch.requests.find((one) => one.insertText !== undefined)?.insertText as {
+      text: string;
+    };
+    expect(text.text.startsWith('\t')).toBe(false);
+    expect(applied(base, next)).toBe(next);
+  });
+
+  it('is still created afresh when it brings children of its own', () => {
+    const base = '- A\n- C\n';
+    const next = '- A\n- B\n  - nested\n- C\n';
+    expect(kinds(plan(base, next).requests)).toContain('createParagraphBullets');
+    expect(applied(base, next)).toBe(next);
+  });
+
+  it('appended after the last item continues that list rather than starting one', () => {
+    // The text would land in the paragraph after the list and take its style;
+    // the last item lends its newline instead, and the new item takes its bullet.
+    const base = '- A\n- B\n\nPara.\n';
+    const next = '- A\n- B\n- C\n\nPara.\n';
+    const patch = plan(base, next);
+    expect(kinds(patch.requests)).not.toContain('createParagraphBullets');
+    expect(kinds(patch.requests)[0]).toBe('insertText');
+    expect(applied(base, next)).toBe(next);
+    expect(paragraphs(patched(base, next))).toBe(paragraphs(document(base)) + 1);
+  });
+
+  it('appended at the very end of the body is created afresh', () => {
+    const base = '- A\n- B\n';
+    const next = '- A\n- B\n- C\n';
+    expect(applied(base, next)).toBe(next);
+  });
+});
+
 describe('a block whose type changed', () => {
   it('is one paragraph style request, not a rewrite', () => {
     const patch = plan('A line of text.\n', '## A line of text.\n');

@@ -525,7 +525,10 @@ two-trailing-spaces line break, since that is what many editors produce.
 
 A source stores a styled span as runs and splits one wherever an edit or a
 comment began; adjacent runs that agree on every annotation and on their link
-are written as one. A run whose emphasis would open on a space sheds the
+are written as one, and on Google Docs so are neighbouring runs that agree on
+the emphasis the dialect carries and differ only in what it does not, a font
+size or a colour it cannot name: `**a****b**` is not two bold runs but four
+asterisks the parser reads as text. A run whose emphasis would open on a space sheds the
 spaces at its edges, so a bold sentence around a link reads
 `**Send the** [**info / asset request**](…) **early.**` and never
 `**Send the&#x20;**[…]**&#x20;****early****.**`: a styled space is invisible at
@@ -857,7 +860,13 @@ what to do with each:
   dialect (bold, italic, strikethrough, underline, code, link) touches only
   that attribute on that span. Everything else in the block survives.
 - An **inserted block** is created at its position; a **deleted block** is
-  deleted. Notion can only append *after* a block, so a block inserted at the
+  deleted. On Google Docs a list item inserted beside items of its kind and
+  level takes the bullet of the item it lands in, before the next item or, at
+  the end of a list, after the last one, so the list continues rather than
+  restarting under a fresh bullet; an item that brings nested items of its
+  own is created with its bullets. A block inserted where a table starts is
+  written into a split of the paragraph before the table, since Docs takes no
+  text at a table's own index. Notion can only append *after* a block, so a block inserted at the
   very start of a page or of a list is written together with a copy of the
   block that used to be first, and that original is deleted: one block loses
   its id and comments per prepend.

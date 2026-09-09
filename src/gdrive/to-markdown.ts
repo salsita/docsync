@@ -243,11 +243,23 @@ function convertContent(content: readonly StructuralElement[], context: Context)
     const element = content[index];
     if (element === undefined) break;
 
+    // A paragraph that is a suggested insertion from its first character to
+    // its newline is not in the version the body derives from (MANUAL §7); it
+    // is skipped whole, bullet and all, rather than left as an empty item.
+    if (element.paragraph !== undefined && isSuggestedParagraph(element.paragraph, context)) {
+      index += 1;
+      continue;
+    }
+
     if (element.paragraph?.bullet !== undefined) {
       const items: FlatItem[] = [];
       while (index < content.length) {
         const paragraph = content[index]?.paragraph;
         if (paragraph?.bullet === undefined) break;
+        if (isSuggestedParagraph(paragraph, context)) {
+          index += 1;
+          continue;
+        }
         const element = content[index];
         items.push({
           level: paragraph.bullet.nestingLevel ?? 0,
@@ -277,6 +289,25 @@ function convertContent(content: readonly StructuralElement[], context: Context)
   }
 
   return out;
+}
+
+/**
+ * Whether every run of a paragraph, its newline included, is a suggested
+ * insertion: then the paragraph itself is the suggestion. Its ids are still
+ * counted, so the sidecar sees the thread.
+ */
+function isSuggestedParagraph(paragraph: Paragraph, context: Context): boolean {
+  const elements = paragraph.elements ?? [];
+  const runs = elements.map((element) => element.textRun).filter((run) => run !== undefined);
+  if (runs.length === 0 || runs.length !== elements.length) return false;
+  if (!runs.every((run) => (run.suggestedInsertionIds ?? []).length > 0)) return false;
+  for (const run of runs) {
+    for (const id of run.suggestedInsertionIds ?? []) {
+      context.pending.add(id);
+      context.suggestions.add(id);
+    }
+  }
+  return true;
 }
 
 /** One structural element that is not a list item. */
@@ -493,7 +524,10 @@ function listsFrom(
       index += 1;
 
       const children: BlockContent[] = [{ type: 'paragraph', children: item.content }];
-      if ((items[index]?.level ?? -1) > level) {
+      // Everything deeper than this item is nested under it, however the
+      // levels wander: a run that goes 0, 2, 1 nests both the 2 and the 1,
+      // since neither is at this item's level.
+      while ((items[index]?.level ?? -1) > level) {
         const [nested, next] = listsFrom(items, index, context);
         children.push(...(nested as BlockContent[]));
         index = next;
@@ -521,7 +555,41 @@ function inline(elements: readonly ParagraphElement[], context: Context): Phrasi
   for (const element of elements) out.push(...inlineElement(element, context));
   // A paragraph ends in the newline Docs stores; it is not content.
   while (out.length > 0 && isEmptyText(out.at(-1))) out.pop();
-  return trimEdges(out);
+  return trimEdges(mergeAdjacent(out));
+}
+
+/** The wrappers two neighbouring runs may share, and so be one of. */
+const MERGEABLE: ReadonlySet<string> = new Set(['strong', 'emphasis', 'delete', 'link']);
+
+/**
+ * Two runs Docs splits only over an attribute the dialect does not carry —
+ * a font size, a colour it cannot name — come out as one node when they wear
+ * the same emphasis. Left apart they would print as `**a****b**`, which is not
+ * Markdown for two bold runs but four asterisks the parser turns into text,
+ * and a base text four characters longer than the live one shifts every edit
+ * a push makes to that paragraph (ticket 33 follow-up).
+ */
+function mergeAdjacent(nodes: PhrasingContent[]): PhrasingContent[] {
+  const out: PhrasingContent[] = [];
+  for (const node of nodes) {
+    const last = out.at(-1);
+    if (
+      last !== undefined &&
+      last.type === node.type &&
+      MERGEABLE.has(node.type) &&
+      'children' in last &&
+      'children' in node &&
+      (node.type !== 'link' || (last as { url: string }).url === (node as { url: string }).url)
+    ) {
+      (last as { children: PhrasingContent[] }).children = mergeAdjacent([
+        ...(last as { children: PhrasingContent[] }).children,
+        ...(node as { children: PhrasingContent[] }).children,
+      ]);
+      continue;
+    }
+    out.push(node);
+  }
+  return out;
 }
 
 /**

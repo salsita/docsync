@@ -291,8 +291,7 @@ export function locate(
 ): Anchor | undefined {
   const needle = collapse(quoted).text.trim();
   if (needle === '') return undefined;
-  const heading = headingsOf(body);
-  const blocks = blocksOf(body);
+  const { blocks, heading, joined } = parsed(body);
 
   for (const block of blocks) {
     const { anchor } = match(body, [block], needle, heading);
@@ -300,17 +299,68 @@ export function locate(
   }
   if (options.spans === false) return undefined;
 
-  // Nothing holds the whole quote, so the selection ran over a block boundary:
-  // grow a run from every block until it holds the quote, or until it is longer
-  // than the longest match that could still need its first block (ticket 34).
-  for (let from = 0; from < blocks.length; from += 1) {
-    for (let to = from + 1; to < blocks.length; to += 1) {
-      const { anchor, length, boundary } = match(body, blocks.slice(from, to + 1), needle, heading);
-      if (anchor !== undefined) return anchor;
-      if (length >= boundary + needle.length) break;
-    }
+  // Nothing holds the whole quote, so the selection ran over a block boundary.
+  // The needle is looked for once in the text of every block joined by a
+  // space, and the run is exactly the blocks the match covers (ticket 34):
+  // one pass over the body, however long it is and however many threads ask.
+  const found = joined.text.indexOf(needle);
+  if (found < 0) return undefined;
+  const first = joined.blockAt(found);
+  const last = joined.blockAt(found + needle.length - 1);
+  if (first === undefined || last === undefined) return undefined;
+  return match(body, blocks.slice(first, last + 1), needle, heading).anchor;
+}
+
+/** A body's blocks, headings and joined text, parsed once per body. */
+interface Parsed {
+  blocks: Block[];
+  heading: (offset: number) => string | undefined;
+  joined: {
+    /** The plain text of every block, joined by one space, whitespace collapsed. */
+    text: string;
+    /** The block a collapsed index falls in. */
+    blockAt: (index: number) => number | undefined;
+  };
+}
+
+/**
+ * The sidecar asks about one body once per thread, and a long document has
+ * many; parsing it once per body rather than once per thread is what keeps a
+ * fetch linear in the document.
+ */
+let lastParsed: { body: string; parsed: Parsed } | undefined;
+
+function parsed(body: string): Parsed {
+  if (lastParsed?.body === body) return lastParsed.parsed;
+  const blocks = blocksOf(body);
+  const heading = headingsOf(body);
+
+  // Every block's text, one after another with a space between, and where
+  // each one starts and ends in that string before whitespace is collapsed.
+  const parts: string[] = [];
+  const starts: number[] = [];
+  let at = 0;
+  for (const block of blocks) {
+    const text = block.pieces.map((piece) => piece.text).join('');
+    starts.push(at);
+    parts.push(text);
+    at += text.length + 1;
   }
-  return undefined;
+  const whole = collapse(parts.join(' '));
+  const blockAt = (index: number): number | undefined => {
+    const raw = whole.at[index];
+    if (raw === undefined) return undefined;
+    let found: number | undefined;
+    for (const [block, start] of starts.entries()) {
+      if (start > raw) break;
+      found = block;
+    }
+    return found;
+  };
+
+  const result: Parsed = { blocks, heading, joined: { text: whole.text, blockAt } };
+  lastParsed = { body, parsed: result };
+  return result;
 }
 
 /**

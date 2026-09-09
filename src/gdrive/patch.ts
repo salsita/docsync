@@ -144,31 +144,43 @@ export function planPatch(
   /**
    * One run of new blocks, written at `index` as `from-markdown.ts` writes.
    *
-   * `beforeTable` says `index` is where a table starts: Docs takes no text
-   * there, so the paragraph before the table is split instead (see below).
+   * `splitBefore` says the paragraph before `index` lends its newline and the
+   * new blocks go into the empty paragraph that leaves: because a table starts
+   * at `index` and Docs takes no text there, or because the blocks are list
+   * items that continue the item before rather than start beside what follows.
    */
   function insert(
     blocks: readonly DiffBlock[],
     index: number,
     level: Level,
-    beforeTable = false,
+    splitBefore = false,
+    neighbour?: Ranged,
   ): void {
     const children = blocks.flatMap((block) => [...block.source]);
     const tree: Root = { type: 'root', children };
+    // List items going in beside a list item of their own kind take its bullet
+    // from the paragraph they are inserted into, which is what Docs does with
+    // inserted text; a bullet created afresh beside a list with its own glyphs
+    // would be a second list, at the wrong level (MANUAL §7).
+    const inherit =
+      neighbour !== undefined &&
+      neighbour.block.type.startsWith('listItem:') &&
+      blocks.every((block) => block.type === neighbour.block.type && block.children.length === 0);
     // At the very end of the body there is no index to insert *at*: the last
     // paragraph's newline is the last thing there is. So the newline is split
     // first, and the new blocks go into the empty paragraph that leaves behind.
     // The start of a table is the same case: the API only inserts inside a
     // paragraph, and a table is always preceded by one, whose newline is split.
     const trailing = index >= level.end;
-    const split = trailing || beforeTable;
-    const at = trailing ? level.end - 1 : beforeTable ? index - 1 : index;
+    const split = trailing || splitBefore;
+    const at = trailing ? level.end - 1 : splitBefore ? index - 1 : index;
     const base = split ? at + 1 : at;
 
     const { segments, dropped: lost } = mdastToSegments(tree, base, {
       ...(options.images === undefined ? {} : { images: options.images }),
       ...(options.path === undefined ? {} : { from: options.path }),
       ...(level.list === undefined ? {} : { level: level.list }),
+      ...(inherit ? { inherit } : {}),
     });
     const built = segmentsToRequests(segments);
     dropped.push(...lost);
@@ -186,14 +198,15 @@ export function planPatch(
 
     const head: DocsWriteRequest[] = [];
     if (split) {
-      head.push(
-        { insertText: { location: location(at, level.segmentId), text: '\n' } },
-        // The paragraph the split leaves behind is still the last paragraph's:
-        // its bullet would draw an empty list item under the new text.
-        {
+      head.push({ insertText: { location: location(at, level.segmentId), text: '\n' } });
+      // The paragraph the split leaves behind is still the last paragraph's:
+      // its bullet would draw an empty list item under the new text, unless
+      // that bullet is exactly what the new items are to inherit.
+      if (!inherit) {
+        head.push({
           deleteParagraphBullets: { range: range(base, base + 1, level.segmentId) },
-        },
-      );
+        });
+      }
     }
     const requests = [
       ...head,
@@ -507,7 +520,22 @@ export function planPatch(
       const beforeTable = blocks.some(
         (block) => block.block.type === 'table' && block.start === at,
       );
-      insert(pending, at, context, beforeTable);
+      // List items continue the list they land in. Beside an item of their
+      // kind they go in before it and take its bullet; after the last item of
+      // a list, the item before lends its newline so they take that one, and
+      // the list does not restart under a fresh bullet (MANUAL §7).
+      const first = pending[0];
+      const flat =
+        first !== undefined &&
+        first.type.startsWith('listItem:') &&
+        pending.every((block) => block.type === first.type && block.children.length === 0);
+      const next = blocks.find((block) => block.start === at);
+      const previous = [...blocks].reverse().find((block) => extent(block) === at);
+      const joinsNext = flat && next?.block.type === first.type;
+      const joinsPrevious =
+        flat && !joinsNext && at < context.end && previous?.block.type === first.type;
+      const neighbour = joinsNext ? next : joinsPrevious ? previous : undefined;
+      insert(pending, at, context, beforeTable || joinsPrevious, neighbour);
       pending = [];
       anchor = undefined;
     };

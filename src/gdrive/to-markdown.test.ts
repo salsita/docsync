@@ -8,7 +8,7 @@ import type {
   TextStyle,
 } from './api.js';
 import { DOC_IDS, fixtureDocument } from './fixtures.mock.js';
-import { CODE_FONTS, documentToMarkdown } from './to-markdown.js';
+import { CODE_FONTS, convertDocument, documentToMarkdown } from './to-markdown.js';
 
 /** A text run, the way every test below spells one. */
 function run(content: string, textStyle: TextStyle = {}): ParagraphElement {
@@ -308,6 +308,34 @@ describe('lists', () => {
       lists: list({ glyphType: 'UPPER_ALPHA', glyphFormat: '%0.' }),
     });
     expect(documentToMarkdown(document)).toBe('1. One\n');
+  });
+
+  it('nests a level that steps down without reaching the outer one', () => {
+    // 0, 2, 1: the 1 is deeper than the 0 and shallower than the 2, and it
+    // used to be neither nested nor consumed, which looped forever.
+    const document = doc([item('top'), item('deep', 2), item('middle', 1), item('next top')], {
+      lists: list(BULLET),
+    });
+    // The 2 and the 1 are two lists, one after the other, so their markers alternate.
+    expect(documentToMarkdown(document)).toBe('- top\n  - deep\n  * middle\n- next top\n');
+  });
+
+  it('skips a list item that is a suggested insertion whole, but reports its id', () => {
+    const inserted: StructuralElement = {
+      paragraph: {
+        elements: [
+          { textRun: { content: 'New item.', suggestedInsertionIds: ['s1'] } },
+          { textRun: { content: '\n', suggestedInsertionIds: ['s1'] } },
+        ],
+        paragraphStyle: { namedStyleType: 'NORMAL_TEXT' },
+        bullet: { listId: 'kix.other' },
+      },
+    };
+    const document = doc([item('one', 1), inserted, item('two', 1), item('three', 0)], {
+      lists: list(ORDERED),
+    });
+    expect(documentToMarkdown(document)).toBe('1. one\n2. two\n\n1) three\n');
+    expect(convertDocument(document).suggestions).toEqual(['s1']);
   });
 
   it('starts a list at a deeper nesting level than its first item', () => {

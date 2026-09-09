@@ -136,6 +136,21 @@ describe('locate over a run of blocks', () => {
     expect(locate(three, 'here. Two there.')?.quote).toBe('One here.\n\nTwo there.');
   });
 
+  it('stays fast on a long body with many quotes that are nowhere in it', () => {
+    // A push that suggested left a contract with 900 blocks and a hundred
+    // threads; the run search must be one pass per quote, not one per block.
+    const body = Array.from(
+      { length: 900 },
+      (_, i) => `Paragraph number ${i} says a few words.`,
+    ).join('\n\n');
+    const started = Date.now();
+    for (let i = 0; i < 100; i += 1) {
+      expect(locate(body, `nothing like this ${i} is in the document at all`)).toBeUndefined();
+    }
+    expect(locate(body, 'words. Paragraph number 500 says')).toMatchObject({ blocks: 2 });
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
+
   it('answers nothing when even a run of blocks does not hold the quote', () => {
     expect(locate(two, 'of one paragraph. Something else')).toBeUndefined();
   });

@@ -141,6 +141,13 @@ export interface ImageOptions {
    * what puts them back at their depth: Docs nests by leading tabs.
    */
   level?: number;
+  /**
+   * The blocks are list items going in beside list items of the same kind and
+   * level, so they take their bullet from the paragraph they are inserted
+   * into, as Docs gives it: no tabs, no bullet request. Creating bullets there
+   * would start a second list when the existing one has its own glyphs.
+   */
+  inherit?: boolean;
 }
 
 /**
@@ -159,6 +166,7 @@ export function mdastToSegments(
     ...(options.images === undefined ? {} : { images: options.images }),
     ...(options.from === undefined ? {} : { from: options.from }),
     ...(options.level === undefined ? {} : { level: options.level }),
+    ...(options.inherit === undefined ? {} : { inherit: options.inherit }),
   };
   return { segments: buildSegments(tree.children, context, base), dropped: context.dropped };
 }
@@ -227,6 +235,8 @@ interface Context {
   from?: string;
   /** The list level the blocks sit under; see `ImageOptions.level`. */
   level?: number;
+  /** List items inherit the neighbouring bullet; see `ImageOptions.inherit`. */
+  inherit?: boolean;
 }
 
 /** The footnote definitions of a document, which GFM puts at the end. */
@@ -376,6 +386,8 @@ interface TextOptions {
   named?: string;
   /** The bullet runs to create, in document order. */
   bullets?: Bullets[];
+  /** Keep the bullet the paragraphs inherit rather than clearing it. */
+  keepBullets?: boolean;
 }
 
 /**
@@ -436,7 +448,9 @@ function textSegment(
   // clears them too, and must — `createParagraphBullets` only reads the
   // leading tabs of a paragraph that is not already a list item, which is what
   // the manual test caught (ticket 08 Outcome).
-  requests.push({ deleteParagraphBullets: { range: range(base, base + text.length) } });
+  if (options.keepBullets !== true) {
+    requests.push({ deleteParagraphBullets: { range: range(base, base + text.length) } });
+  }
   requests.push(...styles);
 
   const footnotes: SegmentFootnote[] = [];
@@ -518,6 +532,17 @@ function listSegment(node: List, context: Context, base: number): Segment | unde
   const items: FlatItem[] = [];
   flatten(node, context.level ?? 0, items, context);
   if (items.length === 0) return undefined;
+
+  // Items going in beside their equals take the bullet Docs hands them; only
+  // a flat run can, since a nested item would need a level of its own.
+  if (context.inherit === true && items.every((item) => item.level === (context.level ?? 0))) {
+    return textSegment(
+      items.map((item) => ({ prefix: '', pieces: item.pieces })),
+      base,
+      context,
+      { keepBullets: true },
+    );
+  }
 
   // Nesting is leading tabs in the inserted text; `createParagraphBullets`
   // reads them, sets the level, and takes them out again.
