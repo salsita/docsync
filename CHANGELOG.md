@@ -12,6 +12,8 @@ version, commits, tags and pushes.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-09-09
+
 ### Changed
 
 - Every checkout carries `pull.rebase=true` in its own git config, set by

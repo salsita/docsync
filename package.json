@@ -1,6 +1,6 @@
 {
   "name": "@salsita/docsync",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A git workflow over documents that live in Notion and Google Drive",
   "license": "MIT",
   "author": "Salsita Software",
