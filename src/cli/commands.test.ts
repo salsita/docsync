@@ -712,7 +712,9 @@ describe.skipIf(process.platform === 'win32')(
 
       expect(run.code).toBe(0);
       // The follow-up commit touches the index, not the file being edited, so
-      // git fast-forwards and the edit in progress is still there.
+      // git fast-forwards and the edit in progress is still there — the
+      // checkout's `pull.rebase=true` does not turn this into a rebase, which
+      // would refuse the unstaged change (§7 push step 6, §10).
       expect(run.out).not.toContain('Nothing was merged');
       expect(w.git(co, 'rev-parse', 'HEAD')).toBe(w.git(co, 'rev-parse', 'origin/main'));
       expect(w.read(co, 'Product Specs/Auth.md')).toBe('still editing\n');

@@ -22,8 +22,11 @@ export async function push(context: Context): Promise<number> {
 
   // A pull, not a merge: git's `origin/main` still points at what was pushed,
   // and the follow-up commit of §7 only arrives with another fetch. An edit in
-  // progress blocks it only when git says it would be overwritten.
+  // progress blocks it only when git says it would be overwritten, and
+  // `--no-rebase` is what keeps it that way: the checkout's `pull.rebase=true`
+  // (§10) sends even a fast-forward down the rebase path otherwise, and a
+  // rebase refuses any unstaged change out of hand.
   say(context);
-  await fastForward(context, repo, ['pull', '--ff-only']);
+  await fastForward(context, repo, ['pull', '--ff-only', '--no-rebase']);
   return 0;
 }

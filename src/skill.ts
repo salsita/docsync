@@ -14,7 +14,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createGitRunner } from './cli/git.js';
+import { createGitRunner, type GitRunner } from './cli/git.js';
 
 /**
  * The three copies, relative to the working tree and always with `/`
@@ -58,7 +58,7 @@ export async function refreshSkillFiles(worktree: string): Promise<void> {
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, bundled);
     }
-    await excludeSkillPaths(worktree);
+    await tendRepository(worktree);
   } catch (error) {
     // The command goes on: a stale or missing skill file is not a reason to
     // refuse a fetch.
@@ -77,15 +77,14 @@ async function isCurrent(path: string, bundled: Buffer): Promise<boolean> {
 }
 
 /**
- * Adds the three skill paths and the OS junk names to the repository's
- * `info/exclude`, keeping what is there. `init` writes them for a new checkout; this is how a checkout made by
- * an older version gets them.
+ * What the refresh does to the repository rather than to the working tree: the
+ * exclude lines, and the checkout's `pull.rebase` (MANUAL §10).
  *
- * The path comes from git rather than from `<worktree>/.git`, because a linked
- * worktree's `.git` is a file pointing elsewhere and `info/exclude` lives in
- * the common directory the two share.
+ * Both go through git rather than through `<worktree>/.git`, because a linked
+ * worktree's `.git` is a file pointing elsewhere and both `info/exclude` and
+ * the config live in the common directory the two share.
  */
-async function excludeSkillPaths(worktree: string): Promise<void> {
+async function tendRepository(worktree: string): Promise<void> {
   const git = createGitRunner({
     cwd: worktree,
     out: () => undefined,
@@ -93,9 +92,19 @@ async function excludeSkillPaths(worktree: string): Promise<void> {
   });
   const found = await git.run(['rev-parse', '--git-path', 'info/exclude']);
   // Not a repository, or a git too old to answer: there is nothing to exclude
-  // from, and that is not a failure worth a line on stderr.
+  // from and no checkout to configure, and that is not a failure worth a line
+  // on stderr.
   if (found.status !== 0) return;
-  const answer = found.stdout.trim();
+  await excludeSkillPaths(worktree, found.stdout.trim());
+  await pullRebases(git);
+}
+
+/**
+ * Adds the three skill paths and the OS junk names to the repository's
+ * `info/exclude`, keeping what is there. `init` writes them for a new checkout; this is how a checkout made by
+ * an older version gets them.
+ */
+async function excludeSkillPaths(worktree: string, answer: string): Promise<void> {
   if (answer === '') return;
   const path = isAbsolute(answer) ? answer : resolve(worktree, answer);
 
@@ -111,6 +120,29 @@ async function excludeSkillPaths(worktree: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const head = existing === '' || existing.endsWith('\n') ? existing : `${existing}\n`;
   await writeFile(path, `${head}${missing.join('\n')}\n`);
+}
+
+/**
+ * Sets `pull.rebase=true` in the checkout's own config when the repository has
+ * no value of its own (MANUAL §3, §10), so the first `git pull` over a local
+ * commit rebases instead of asking how to reconcile divergent branches.
+ *
+ * `--local` on both calls: a value in the repository config is what makes a
+ * checkout behave the same on every machine, and a global or system value is
+ * the machine's answer, not this checkout's. A local value somebody set, `false`
+ * included, is a choice and is kept.
+ */
+async function pullRebases(git: GitRunner): Promise<void> {
+  const asked = await git.run(['config', '--local', '--get', 'pull.rebase']);
+  if (asked.status === 0) return;
+  // Status 1 is git's "no such key". Anything else is a config git could not
+  // read, and the write below fails in its turn and says so.
+  const set = await git.run(['config', '--local', 'pull.rebase', 'true']);
+  if (set.status === 0) return;
+  // A read-only checkout, like a skill file that cannot be written: one line,
+  // and the command goes on (MANUAL §10).
+  const said = set.stderr.trim() === '' ? `git exited with ${set.status}` : set.stderr.trim();
+  process.stderr.write(`docsync: could not set pull.rebase in this checkout: ${said}\n`);
 }
 
 function reason(error: unknown): string {
