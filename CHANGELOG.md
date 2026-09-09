@@ -12,6 +12,8 @@ version, commits, tags and pushes.
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-09-09
+
 ### Changed
 
 - Releases go through npm trusted publishing: `scripts/release.sh` bumps the
