@@ -664,7 +664,7 @@ describe.skipIf(process.platform === 'win32')(
     it('push prints what it did, with the trashed documents last', async () => {
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`, `gdocs:${CONTRACTS}`);
-      w.write(co, 'Product Specs/Auth.md', w.read(co, 'Product Specs/Auth.md') + 'And out.\n');
+      w.write(co, 'Product Specs/Auth.md', `${w.read(co, 'Product Specs/Auth.md')}And out.\n`);
       w.git(co, 'rm', '--quiet', 'Contracts/logo.png');
       w.git(co, 'commit', '--quiet', '-a', '-m', 'Edit one, drop one');
 
@@ -701,7 +701,7 @@ describe.skipIf(process.platform === 'win32')(
     it('push fast-forwards onto the follow-up commit around an edit in progress', async () => {
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`);
-      w.write(co, 'Product Specs/Auth.md', w.read(co, 'Product Specs/Auth.md') + 'And out.\n');
+      w.write(co, 'Product Specs/Auth.md', `${w.read(co, 'Product Specs/Auth.md')}And out.\n`);
       w.git(co, 'commit', '--quiet', '-a', '-m', 'Edit');
       w.write(co, 'Product Specs/Auth.md', 'still editing\n');
 
@@ -810,7 +810,7 @@ describe.skipIf(process.platform === 'win32')(
       w.write(
         co,
         'Product Specs/Auth.md',
-        w.read(co, 'Product Specs/Auth.md') + '\nSession expiry is 30 days.\n',
+        `${w.read(co, 'Product Specs/Auth.md')}\nSession expiry is 30 days.\n`,
       );
       // git diff
       expect(w.git(co, 'diff', '--name-only')).toBe('Product Specs/Auth.md');

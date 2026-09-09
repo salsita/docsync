@@ -173,8 +173,7 @@ export function planPatch(
     // inserted text; a bullet created afresh beside a list with its own glyphs
     // would be a second list, at the wrong level (MANUAL §7).
     const inherit =
-      neighbour !== undefined &&
-      neighbour.block.type.startsWith('listItem:') &&
+      neighbour?.block.type.startsWith('listItem:') &&
       blocks.every((block) => block.type === neighbour.block.type && block.children.length === 0);
     // At the very end of the body there is no index to insert *at*: the last
     // paragraph's newline is the last thing there is. So the newline is split
@@ -201,7 +200,7 @@ export function planPatch(
     if (split) {
       const last = segments.at(-1);
       const first = built.requests[0] as { insertText?: { text?: string } } | undefined;
-      if (last !== undefined && last.text.endsWith('\n') && first?.insertText?.text === last.text) {
+      if (last?.text.endsWith('\n') && first?.insertText?.text === last.text) {
         first.insertText.text = last.text.slice(0, -1);
       }
     }
@@ -538,16 +537,14 @@ export function planPatch(
       // kind they go in before it and take its bullet; after the last item of
       // a list, the item before lends its newline so they take that one, and
       // the list does not restart under a fresh bullet (MANUAL §7).
-      const first = pending[0];
+      const kind = pending[0]?.type;
       const flat =
-        first !== undefined &&
-        first.type.startsWith('listItem:') &&
-        pending.every((block) => block.type === first.type && block.children.length === 0);
+        kind?.startsWith('listItem:') === true &&
+        pending.every((block) => block.type === kind && block.children.length === 0);
       const next = blocks.find((block) => block.start === at);
       const previous = [...blocks].reverse().find((block) => extent(block) === at);
-      const joinsNext = flat && next?.block.type === first.type;
-      const joinsPrevious =
-        flat && !joinsNext && at < context.end && previous?.block.type === first.type;
+      const joinsNext = flat && next?.block.type === kind;
+      const joinsPrevious = flat && !joinsNext && at < context.end && previous?.block.type === kind;
       const neighbour = joinsNext ? next : joinsPrevious ? previous : undefined;
       insert(pending, at, context, beforeTable || joinsPrevious, neighbour);
       pending = [];

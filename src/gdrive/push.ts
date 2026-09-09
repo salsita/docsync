@@ -29,7 +29,7 @@ import {
   type GDriveApi,
   PREVIEW_HINT,
 } from './api.js';
-import { objectRangeOf, type StagedImage, stageImages, withSharedImages } from './assets.js';
+import { objectRangeOf, stageImages, withSharedImages } from './assets.js';
 import { gdriveApi } from './index.js';
 import { type PatchPlan, planPatch } from './patch.js';
 import { readLive } from './ranges.js';
