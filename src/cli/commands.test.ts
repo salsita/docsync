@@ -149,6 +149,9 @@ describe.skipIf(process.platform === 'win32')(
 
       expect(w.git(co, 'remote', 'get-url', 'origin')).toBe('docsync::.docsync.yaml');
       expect(w.git(co, 'config', 'core.autocrlf')).toBe('false');
+      // §5 step 4, set by the refresh of step 6: a pull rebases the checkout's
+      // own commits onto what the source produced (§3, §10).
+      expect(w.git(co, 'config', '--local', '--get', 'pull.rebase')).toBe('true');
       expect(w.git(co, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
       expect(w.git(co, 'rev-parse', '--abbrev-ref', 'main@{upstream}')).toBe('origin/main');
     });

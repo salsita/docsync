@@ -79,11 +79,9 @@ export function createWorld(state: FakeState): World {
     GIT_AUTHOR_EMAIL: 'test@example.com',
     GIT_COMMITTER_NAME: 'Test',
     GIT_COMMITTER_EMAIL: 'test@example.com',
-    // `docsync pull` runs a bare `git pull`, which refuses to guess when the
-    // branches have diverged unless it is told how to reconcile them.
-    GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'pull.rebase',
-    GIT_CONFIG_VALUE_0: 'false',
+    // Nothing here says how to reconcile divergent branches: the refresh puts
+    // `pull.rebase=true` in the checkout's own config (MANUAL §10), and that is
+    // what the bare `git pull` of `docsync pull` reads.
   };
   delete env.GIT_DIR;
   delete env.GIT_WORK_TREE;

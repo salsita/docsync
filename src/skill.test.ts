@@ -2,8 +2,16 @@
  * The refresh of MANUAL §10: three copies of one bundled file, kept identical
  * to it, excluded from git, and never able to break the command that ran it.
  */
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -36,6 +44,16 @@ function repo(): string {
   return dir;
 }
 
+/** What the repository's own config says about a key, or undefined for no value. */
+function localConfig(dir: string, key: string): string | undefined {
+  const result = spawnSync('git', ['config', '--local', '--get', key], {
+    cwd: dir,
+    env: gitEnv(),
+    encoding: 'utf8',
+  });
+  return result.status === 0 ? result.stdout.trimEnd() : undefined;
+}
+
 function excludeOf(gitDir: string): string {
   try {
     return readFileSync(join(gitDir, '.git', 'info', 'exclude'), 'utf8');
@@ -52,6 +70,7 @@ function write(path: string, body: string): void {
 describe.skipIf(process.platform === 'win32')('refreshSkillFiles', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     for (const dir of made.splice(0)) await rm(dir, { recursive: true, force: true });
   });
 
@@ -130,6 +149,68 @@ describe.skipIf(process.platform === 'win32')('refreshSkillFiles', () => {
     expect(statSync(join(linked, '.git')).isFile()).toBe(true);
     expect(excludeOf(dir)).toContain(FIRST_SKILL);
     expect(readFileSync(join(linked, FIRST_SKILL ?? ''))).toEqual(bundled);
+  });
+
+  it('sets pull.rebase=true in the checkout own config', async () => {
+    const dir = repo();
+    expect(localConfig(dir, 'pull.rebase')).toBeUndefined();
+
+    await refreshSkillFiles(dir);
+    await refreshSkillFiles(dir);
+
+    expect(localConfig(dir, 'pull.rebase')).toBe('true');
+  });
+
+  it('keeps a pull.rebase the repository already has', async () => {
+    const dir = repo();
+    execFileSync('git', ['config', '--local', 'pull.rebase', 'false'], { cwd: dir, env: gitEnv() });
+
+    await refreshSkillFiles(dir);
+
+    expect(localConfig(dir, 'pull.rebase')).toBe('false');
+  });
+
+  it('sets it even when the global config says otherwise', async () => {
+    const dir = repo();
+    const global = join(dir, 'global-gitconfig');
+    write(global, '[pull]\n\trebase = false\n');
+    // The refresh runs git with this process' environment, so the global
+    // config it reads is the one this points at.
+    vi.stubEnv('GIT_CONFIG_GLOBAL', global);
+    vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+
+    await refreshSkillFiles(dir);
+
+    // What makes the checkout behave the same on every machine is the local
+    // value; a global one does not count as the checkout having chosen.
+    expect(localConfig(dir, 'pull.rebase')).toBe('true');
+  });
+
+  it('reports a config it cannot write once, and never fails the command', async () => {
+    const dir = repo();
+    const gitDir = join(dir, '.git');
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    // No new file in `.git`, so git cannot take the lock its config write needs.
+    chmodSync(gitDir, 0o555);
+    try {
+      await expect(refreshSkillFiles(dir)).resolves.toBeUndefined();
+    } finally {
+      chmodSync(gitDir, 0o755);
+    }
+
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(String(stderr.mock.calls[0]?.[0])).toContain('pull.rebase');
+    expect(localConfig(dir, 'pull.rebase')).toBeUndefined();
+  });
+
+  it('says nothing about pull.rebase outside a repository', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'docsync-skill-'));
+    made.push(dir);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+
+    await expect(refreshSkillFiles(dir)).resolves.toBeUndefined();
+
+    expect(stderr).not.toHaveBeenCalled();
   });
 
   it('reports a failure on stderr and never fails the command', async () => {

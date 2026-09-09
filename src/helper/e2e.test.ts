@@ -137,7 +137,9 @@ function world(options: { signedIn?: string; manifest?: string; state?: FakeStat
   delete env.GIT_WORK_TREE;
 
   const tryGit = (cwd: string, ...args: string[]): Run => {
-    const result = spawnSync('git', ['-c', 'pull.rebase=false', ...args], {
+    // No `-c pull.rebase=…`: the checkout's own config carries it (MANUAL §10),
+    // and a test that passed it would never see what a user sees.
+    const result = spawnSync('git', args, {
       cwd,
       env,
       encoding: 'utf8',
@@ -587,6 +589,33 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.tryGit(co, 'push').status).toBe(0);
       w.git(co, 'pull', '--quiet');
       expect(w.files(co)).not.toContain('notes/a.md');
+    });
+
+    it('18. a clone carries pull.rebase=true, and a plain pull rebases a local commit onto the source', () => {
+      const w = world();
+      const co = w.clone();
+      // The refresh runs during the clone itself, so a checkout has it before
+      // any docsync command was ever run in it (MANUAL §10).
+      expect(w.git(co, 'config', '--local', '--get', 'pull.rebase')).toBe('true');
+
+      w.write(co, 'Specs/Auth.md', frontmatter(AUTH, 'Auth', 'Log in, then out.\n'));
+      w.commit(co, 'edit');
+      const state = w.store.load();
+      editObject(state, NOTION_ROOT, { body: 'Root, moved on.\n' });
+      w.store.save(state);
+
+      // Plain `git pull`: the one git refuses to guess about when the branches
+      // have diverged and nothing says how to reconcile them.
+      const pull = w.tryGit(co, 'pull');
+      expect(pull.status, pull.stderr).toBe(0);
+      expect(`${pull.stdout}${pull.stderr}`).not.toContain('divergent branches');
+
+      expect(w.read(co, 'Specs.md')).toBe(frontmatter(NOTION_ROOT, 'Specs', 'Root, moved on.\n'));
+      expect(w.read(co, 'Specs/Auth.md')).toBe(frontmatter(AUTH, 'Auth', 'Log in, then out.\n'));
+      // One commit ahead of what the source produced, and a straight line.
+      expect(w.git(co, 'rev-list', '--count', 'origin/main..HEAD')).toBe('1');
+      expect(w.git(co, 'rev-parse', 'HEAD^')).toBe(w.git(co, 'rev-parse', 'origin/main'));
+      expect(w.git(co, 'rev-list', '--merges', '--count', 'HEAD')).toBe('0');
     });
   },
   60_000,
