@@ -328,3 +328,157 @@ describe('a failed write', () => {
     expect(calls).toBe(1);
   });
 });
+
+describe('the tab a write lands in (MANUAL §7, ticket 37)', () => {
+  it('stamps every location and range of a patch with the tab', async () => {
+    const { writer: write, calls } = writer([{ replies: [] }]);
+
+    await write.patchBody(
+      'doc1',
+      {
+        requests: [
+          { deleteContentRange: { range: { startIndex: 3, endIndex: 5 } } },
+          { insertText: { location: { index: 3 }, text: 'new' } },
+          {
+            updateTextStyle: {
+              range: { startIndex: 3, endIndex: 6 },
+              textStyle: { bold: true },
+              fields: 'bold',
+            },
+          },
+        ],
+        footnotes: [],
+        counts: { kept: 1, updated: 1, inserted: 0, deleted: 0 },
+        dropped: [],
+        suggestions: [],
+        rewritten: [],
+      },
+      { tabId: 't.7' },
+    );
+
+    // The API's rule: a request with no `tabId` lands in the *first* tab
+    // (MANUAL §7), so every one of them carries it.
+    expect(batch(calls[0])).toEqual([
+      { deleteContentRange: { range: { startIndex: 3, endIndex: 5, tabId: 't.7' } } },
+      { insertText: { location: { index: 3, tabId: 't.7' }, text: 'new' } },
+      {
+        updateTextStyle: {
+          range: { startIndex: 3, endIndex: 6, tabId: 't.7' },
+          textStyle: { bold: true },
+          fields: 'bold',
+        },
+      },
+    ]);
+  });
+
+  it('reads the tab, not the document, for the footnote segments', async () => {
+    const tabbed = {
+      documentId: 'doc1',
+      tabs: [
+        {
+          tabProperties: { tabId: 't.0', title: 'One', index: 0 },
+          documentTab: { body: { content: [{ endIndex: 3 }] }, footnotes: {} },
+        },
+        {
+          tabProperties: { tabId: 't.7', title: 'Two', index: 1 },
+          documentTab: {
+            body: { content: [{ endIndex: 9 }] },
+            footnotes: { 'kix.f1': { content: [{ endIndex: 2 }] } },
+          },
+        },
+      ],
+    };
+    const { writer: write, calls } = writer([
+      { replies: [{ createFootnote: { footnoteId: 'kix.f1' } }] },
+      tabbed,
+      { replies: [] },
+    ]);
+
+    await write.patchBody(
+      'doc1',
+      {
+        requests: [{ createFootnote: { location: { index: 4 } } }],
+        footnotes: [
+          {
+            requestIndex: 0,
+            requests: (segmentId: string) => [
+              { insertText: { location: { segmentId, index: 0 }, text: 'A note.' } },
+            ],
+          },
+        ],
+        counts: { kept: 0, updated: 0, inserted: 1, deleted: 0 },
+        dropped: [],
+        suggestions: [],
+        rewritten: [],
+      },
+      { tabId: 't.7' },
+    );
+
+    // The segment's length comes from the tab the footnote is in: it is the
+    // second tab's `kix.f1`, and the delete covers its one seeded character.
+    expect(batch(calls[2])).toEqual([
+      {
+        deleteContentRange: {
+          range: { segmentId: 'kix.f1', startIndex: 0, endIndex: 1, tabId: 't.7' },
+        },
+      },
+      {
+        insertText: {
+          location: { segmentId: 'kix.f1', index: 0, tabId: 't.7' },
+          text: 'A note.',
+        },
+      },
+    ]);
+  });
+
+  it('adds a tab and answers the id the API gave it', async () => {
+    const { writer: write, calls } = writer([
+      { replies: [{ addDocumentTab: { tabProperties: { tabId: 't.new', title: 'Notes' } } }] },
+    ]);
+
+    expect(await write.addTab('doc1', 'Notes')).toBe('t.new');
+    expect(batch(calls[0])).toEqual([{ addDocumentTab: { tabProperties: { title: 'Notes' } } }]);
+  });
+
+  it('adds a nested tab under the tab its directory names', async () => {
+    const { writer: write, calls } = writer([
+      { replies: [{ addDocumentTab: { tabProperties: { tabId: 't.child' } } }] },
+    ]);
+
+    await write.addTab('doc1', 'Appendix', 't.parent');
+
+    expect(batch(calls[0])).toEqual([
+      { addDocumentTab: { tabProperties: { title: 'Appendix', parentTabId: 't.parent' } } },
+    ]);
+  });
+
+  it('retitles a tab, which is what a changed title: in a tab file is', async () => {
+    const { writer: write, calls } = writer([{ replies: [{}] }]);
+
+    await write.renameTab('doc1', 't.7', 'Full notes');
+
+    expect(batch(calls[0])).toEqual([
+      {
+        updateDocumentTabProperties: {
+          tabProperties: { tabId: 't.7', title: 'Full notes' },
+          fields: 'title',
+        },
+      },
+    ]);
+  });
+
+  it('writes a new tab body into the tab it was given', async () => {
+    const { writer: write, calls } = writer([{ replies: [] }]);
+
+    await write.writeTab('doc1', 't.new', parseMarkdown('Hello.\n'));
+
+    // A tab the same push has just made is empty, so there is nothing to
+    // delete first — as for a Doc a push has just created.
+    const requests = batch(calls[0]) as { insertText?: unknown }[];
+    expect(requests[0]).toEqual({
+      insertText: { location: { index: 1, tabId: 't.new' }, text: 'Hello.\n' },
+    });
+    // Every range of the paragraph styling that follows names the tab too.
+    expect(JSON.stringify(requests).split('"tabId":"t.new"').length - 1).toBe(requests.length);
+  });
+});

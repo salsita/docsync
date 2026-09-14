@@ -96,6 +96,18 @@ function viewOf(doc: DocsDocument, tab: Tab): DocsDocument {
 }
 
 /**
+ * One tab of a document, as a document (MANUAL §6, ticket 37).
+ *
+ * `undefined` is the whole document, which is what a Doc of one tab is; an id
+ * no tab has answers the document too, rather than nothing, so that a read of
+ * a Doc that has just lost a tab still has a body to compare against.
+ */
+export function tabOf(doc: DocsDocument, tabId: string | undefined): DocsDocument {
+  if (tabId === undefined) return doc;
+  return flattenTabs(doc).find((tab) => tab.id === tabId)?.doc ?? doc;
+}
+
+/**
  * The filename of every tab, by tab id (MANUAL §6).
  *
  * Names are assigned per directory — the root tabs together, then each parent's

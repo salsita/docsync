@@ -27,6 +27,7 @@ import {
 } from './api.js';
 import { mdastToRequests, type PlannedFootnote } from './from-markdown.js';
 import type { PatchPlan } from './patch.js';
+import { tabOf } from './tabs.js';
 
 /** What writing one body did, for the push report. */
 export interface BodyResult {
@@ -64,6 +65,16 @@ export interface GDriveWriter {
   patchBody(documentId: string, plan: PatchPlan, options?: PatchOptions): Promise<BodyResult>;
   /** A new Doc under a folder, with its body. Answers the new file's id. */
   createDoc(parentId: string, name: string, tree: Root): Promise<CreatedDoc>;
+  /**
+   * A new tab of a Doc (MANUAL §6, ticket 37). `parentTabId` is the tab whose
+   * directory the new file sits in. Answers the id the API gave the tab, which
+   * is the only place it comes from.
+   */
+  addTab(documentId: string, title: string, parentTabId?: string): Promise<string>;
+  /** The body of a tab this push has just made: it is empty, so nothing is cleared. */
+  writeTab(documentId: string, tabId: string, tree: Root): Promise<BodyResult>;
+  /** A tab's title, which is what a changed `title:` in a tab file is (MANUAL §6). */
+  renameTab(documentId: string, tabId: string, title: string): Promise<void>;
   /** A new folder under a folder, for a path whose directory does not exist. */
   createFolder(parentId: string, name: string): Promise<string>;
   /** A new revision of a binary: same id, same sharing, same comments. */
@@ -81,6 +92,31 @@ export interface GDriveWriter {
 /** How a patch is written (MANUAL §7). */
 export interface PatchOptions {
   suggest?: boolean;
+  /**
+   * The tab the patch is addressed to (MANUAL §6, ticket 37). The API's rule is
+   * that a request with no `tabId` lands in the *first* tab, so a push names
+   * the tab on every location and range it sends, single-tab Docs included.
+   */
+  tabId?: string;
+}
+
+/**
+ * Every location and range of a batch, stamped with the tab it belongs to.
+ *
+ * A location and a range are exactly the objects that carry an index, which is
+ * the same test `from-markdown.ts` uses to stamp a footnote's segment id.
+ */
+function inTab(requests: readonly DocsWriteRequest[], tabId: string): DocsWriteRequest[] {
+  const stamp = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(stamp);
+    if (typeof value !== 'object' || value === null) return value;
+    const record = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [key, one] of Object.entries(record)) out[key] = stamp(one);
+    if ('index' in record || 'startIndex' in record) out.tabId = tabId;
+    return out;
+  };
+  return requests.map((request) => stamp(request) as DocsWriteRequest);
 }
 
 export function createGDriveWriter(api: GDriveApi): GDriveWriter {
@@ -96,6 +132,7 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
     documentId: string,
     tree: Root,
     clear: DocsDocument | undefined,
+    tabId?: string,
   ): Promise<BodyResult> {
     const plan = mdastToRequests(tree);
     const head: DocsWriteRequest[] = [];
@@ -110,7 +147,7 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
       return { dropped: plan.dropped, batches: 0 };
     }
 
-    const { replies } = await api.batchUpdate(documentId, [...head, ...plan.requests]);
+    const { replies } = await api.batchUpdate(documentId, send([...head, ...plan.requests], tabId));
     if (plan.footnotes.length === 0) return { dropped: plan.dropped, batches: 1 };
 
     // The segments exist now, and only the document can say how long each one
@@ -119,12 +156,22 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
       plan.footnotes,
       replies,
       head.length,
-      await api.getDocument(documentId),
+      await readTab(documentId, tabId),
     );
     if (second.length === 0) return { dropped: plan.dropped, batches: 1 };
 
-    await api.batchUpdate(documentId, second);
+    await api.batchUpdate(documentId, send(second, tabId));
     return { dropped: plan.dropped, batches: 2 };
+  }
+
+  /** A batch, addressed to a tab when the caller named one (ticket 37). */
+  function send(requests: readonly DocsWriteRequest[], tabId: string | undefined) {
+    return tabId === undefined ? [...requests] : inTab(requests, tabId);
+  }
+
+  /** The document as the tab it is being written to, for the footnote segments. */
+  async function readTab(documentId: string, tabId: string | undefined): Promise<DocsDocument> {
+    return tabOf(await api.getDocument(documentId), tabId);
   }
 
   return {
@@ -134,6 +181,7 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
 
     async patchBody(documentId, plan, options = {}) {
       const suggest = options.suggest === true;
+      const tabId = options.tabId;
       // In suggesting mode the count is what the response reports, which on
       // the real API is nothing: the ids only show up on the next read.
       const made = (result: { suggestionIds: string[] }): number => result.suggestionIds.length;
@@ -147,7 +195,7 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
           : { commentUpdateState: result.commentUpdateState };
 
       if (plan.requests.length === 0) return { dropped: plan.dropped, batches: 0, ...suggested(0) };
-      const first = await api.batchUpdate(documentId, plan.requests, { suggest });
+      const first = await api.batchUpdate(documentId, send(plan.requests, tabId), { suggest });
       const count = made(first);
       if (plan.footnotes.length === 0) {
         return { dropped: plan.dropped, batches: 1, ...suggested(count), ...state(first) };
@@ -159,12 +207,12 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
         plan.footnotes,
         first.replies,
         0,
-        await api.getDocument(documentId),
+        await readTab(documentId, tabId),
       );
       if (second.length === 0) {
         return { dropped: plan.dropped, batches: 1, ...suggested(count), ...state(first) };
       }
-      const last = await api.batchUpdate(documentId, second, { suggest });
+      const last = await api.batchUpdate(documentId, send(second, tabId), { suggest });
       return {
         dropped: plan.dropped,
         batches: 2,
@@ -177,6 +225,37 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
       const file = await api.createFile({ name, mimeType: DOCUMENT_MIME, parents: [parentId] });
       // A new document is empty, so there is nothing to delete first.
       return { id: file.id, ...(await writeBody(file.id, tree, undefined)) };
+    },
+
+    async addTab(documentId, title, parentTabId) {
+      const { replies } = await api.batchUpdate(documentId, [
+        {
+          addDocumentTab: {
+            tabProperties: {
+              title,
+              ...(parentTabId === undefined ? {} : { parentTabId }),
+            },
+          },
+        },
+      ]);
+      const made = replies[0]?.addDocumentTab?.tabProperties?.tabId;
+      if (made === undefined || made === '') {
+        throw new Error(`${documentId}: the API added a tab but named no tab id`);
+      }
+      return made;
+    },
+
+    async writeTab(documentId, tabId, tree) {
+      // A tab this push has just made is empty, as a Doc it has just created is.
+      return writeBody(documentId, tree, undefined, tabId);
+    },
+
+    async renameTab(documentId, tabId, title) {
+      await api.batchUpdate(documentId, [
+        {
+          updateDocumentTabProperties: { tabProperties: { tabId, title }, fields: 'title' },
+        },
+      ]);
     },
 
     async createFolder(parentId, name) {

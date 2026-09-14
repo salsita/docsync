@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DocsDocument, Tab } from './api.js';
-import { flattenTabs, tabNames, tabPaths } from './tabs.js';
+import { flattenTabs, tabNames, tabOf, tabPaths } from './tabs.js';
 
 /** One tab, spelled the way `documents.get` answers it. */
 function tab(
@@ -103,6 +103,18 @@ describe('flattenTabs', () => {
   it('skips a tab with no id, which is a tab nothing can address', () => {
     const doc: DocsDocument = { tabs: [{ documentTab: { body: { content: [] } } }] };
     expect(flattenTabs(doc)).toEqual([]);
+  });
+});
+
+describe('tabOf', () => {
+  it('answers the tab a write is addressed to', () => {
+    expect(tabOf(threeTabs, 't.1').title).toBe('Full notes');
+  });
+
+  it('answers the document itself for no tab, and for one it does not have', () => {
+    expect(tabOf(threeTabs, undefined)).toBe(threeTabs);
+    // A Doc that has just lost a tab still has a body to be read as.
+    expect(tabOf(threeTabs, 't.gone')).toBe(threeTabs);
   });
 });
 
