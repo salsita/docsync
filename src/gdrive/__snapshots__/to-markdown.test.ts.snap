@@ -1,5 +1,15 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`the recorded documents > converts 1IkA6kWgvIw_TWy0_xm73kHt16aRoAf9JuXnFuxJg1ng tab First tab 1`] = `
+"Content of the first tab.
+"
+`;
+
+exports[`the recorded documents > converts 1IkA6kWgvIw_TWy0_xm73kHt16aRoAf9JuXnFuxJg1ng tab Second tab 1`] = `
+"Content of the second tab.
+"
+`;
+
 exports[`the recorded documents > converts 1JpyYD74bPVxNEv-urdbH1E_wIs9Kx4wxBVTM_N2rX2k 1`] = `
 "Tests filename derivation from a hostile title.
 "

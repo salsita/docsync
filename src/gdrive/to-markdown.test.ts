@@ -8,6 +8,7 @@ import type {
   TextStyle,
 } from './api.js';
 import { DOC_IDS, fixtureDocument } from './fixtures.mock.js';
+import { flattenTabs } from './tabs.js';
 import { CODE_FONTS, convertDocument, documentToMarkdown } from './to-markdown.js';
 
 /** A text run, the way every test below spells one. */
@@ -515,9 +516,15 @@ describe('the rest of the elements', () => {
 describe('the recorded documents', () => {
   // Reviewed by eye once and locked. A change to any of these is a change to
   // every checked-out Google Doc in the world, so it must be deliberate.
+  //
+  // The unit is the tab, not the reply: a Doc with several tabs carries no
+  // top-level body at all, and each of its tabs converts on its own (MANUAL
+  // §6, ticket 37). A Doc with one tab has the snapshot it always had.
   for (const id of DOC_IDS) {
-    it(`converts ${id}`, () => {
-      expect(documentToMarkdown(fixtureDocument(id))).toMatchSnapshot();
-    });
+    for (const tab of flattenTabs(fixtureDocument(id))) {
+      it(`converts ${id}${tab.id === undefined ? '' : ` tab ${tab.title}`}`, () => {
+        expect(documentToMarkdown(tab.doc)).toMatchSnapshot();
+      });
+    }
   }
 });

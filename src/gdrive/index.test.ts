@@ -3,6 +3,7 @@ import { createFakeCredentialProvider } from '../auth/provider.js';
 import type { IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { splitGDocsRef } from '../source-ref.js';
+import type { DocsDocument, GDriveApi } from './api.js';
 import { countingApi, DOC_IDS, fixtureApi, fixtureDocument, ROOT_ID } from './fixtures.mock.js';
 import { changedSince, describe as describeRef, fetchRoot } from './index.js';
 import { flattenTabs } from './tabs.js';
@@ -688,4 +689,104 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
     const [first] = flattenTabs(doc);
     return documentToMarkdown(first?.doc ?? {});
   }
+
+  /** The fixture API with one document answered by a document of our own. */
+  function serving(document: DocsDocument, over: Partial<GDriveApi> = {}) {
+    const backing = fixtureApi();
+    return {
+      api: {
+        ...backing,
+        async getDocument(id: string, mode?: 'preview' | 'inline') {
+          return id === TABBED ? document : backing.getDocument(id, mode);
+        },
+        ...over,
+      },
+    };
+  }
+
+  /** The checkout as the last fetch left it, with the Doc as a directory. */
+  function asDirectory(): Map<string, IndexEntry> {
+    return new Map<string, IndexEntry>([
+      ['drive/Tabbed/', entry({ path: 'drive/Tabbed/', src: { source: 'gdocs', id: TABBED } })],
+      [FIRST, entry({ path: FIRST, src: { source: 'gdocs', id: `${TABBED}#t.0` } })],
+      [SECOND, entry({ path: SECOND, src: { source: 'gdocs', id: `${TABBED}#${SECOND_TAB}` } })],
+    ]);
+  }
+
+  it('comes back to one file when the Doc comes back down to one tab', () => {
+    // The reverse of the move above: the surviving tab is the Doc again, its id
+    // loses the tab, and the other tab files go (ticket 37).
+    const oneTab: DocsDocument = {
+      documentId: TABBED,
+      title: 'Tabbed',
+      tabs: [
+        {
+          tabProperties: { tabId: 't.0', title: 'First tab', index: 0 },
+          documentTab: {
+            body: {
+              content: [
+                {
+                  startIndex: 1,
+                  endIndex: 26,
+                  paragraph: { elements: [{ textRun: { content: 'Content of the tab.\n' } }] },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+
+    return fetchRoot(root, provider, asDirectory(), serving(oneTab)).then((result) => {
+      expect(pathsOf(result.files)).toEqual(['drive/Tabbed.md']);
+      expect(result.files.find((file) => file.path === 'drive/Tabbed.md')?.entry?.src).toEqual({
+        source: 'gdocs',
+        id: TABBED,
+      });
+      expect(result.entries.some((one) => one.path === 'drive/Tabbed/')).toBe(false);
+    });
+  });
+
+  it('puts an image of the second tab in the assets directory of that tab', async () => {
+    const withImage = structuredClone(fixtureDocument(TABBED)) as DocsDocument;
+    const second = withImage.tabs?.[1]?.documentTab;
+    if (second !== undefined) {
+      second.inlineObjects = {
+        'kix.tabimage': {
+          objectId: 'kix.tabimage',
+          inlineObjectProperties: {
+            embeddedObject: { imageProperties: { contentUri: 'https://example.invalid/i' } },
+          },
+        },
+      };
+      second.body?.content?.push({
+        startIndex: 28,
+        endIndex: 30,
+        paragraph: { elements: [{ inlineObjectElement: { inlineObjectId: 'kix.tabimage' } }] },
+      });
+    }
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+
+    const result = await fetchRoot(
+      root,
+      provider,
+      new Map(),
+      serving(withImage, {
+        async downloadUri() {
+          return { bytes: png, contentType: 'image/png' };
+        },
+      }),
+    );
+
+    // Object ids and indexes are per tab body, so an asset belongs to the tab
+    // file it sits in and to no other (ticket 37).
+    const asset = result.files.find(
+      (file) => file.entry?.type === 'asset' && file.path.startsWith('drive/Tabbed'),
+    );
+    expect(asset?.path).toBe('drive/Tabbed/Second tab.assets/image-1.png');
+    expect(asset?.entry?.document).toBe(SECOND);
+    expect(result.files.find((file) => file.path === SECOND)?.body).toContain(
+      '![](Second%20tab.assets/image-1.png)',
+    );
+  });
 });
