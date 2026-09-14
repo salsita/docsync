@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/index.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
+import { parseMarkdown } from '../markdown.js';
 import type { FileChange } from '../push-types.js';
 import type { DocsDocument } from './api.js';
 import { MAX_IMAGE_BYTES } from './assets.js';
@@ -16,7 +17,7 @@ import { createFakeDrive, type FakeDrive } from './fake-api.mock.js';
 import { markdownToRequests } from './from-markdown.js';
 import { pushRoot } from './push.js';
 import { flattenTabs } from './tabs.js';
-import { footnoteRequests } from './write.js';
+import { createGDriveWriter, footnoteRequests } from './write.js';
 
 const ROOT_ID = 'folder-root';
 const SUB_ID = 'folder-sub';
@@ -739,5 +740,191 @@ describe('a large rewrite (ticket 32)', () => {
     ]);
 
     expect(api.markdown(ELEMENTS_ID)).toBe(next);
+  });
+});
+
+describe('a Doc with several tabs (MANUAL §6, §7, ticket 37)', () => {
+  const TABBED_ID = 'doc-tabbed';
+  const SECOND = 't.new1';
+  const DIRECTORY = 'drive/Tabbed/';
+  const ONE = 'drive/Tabbed/One.md';
+  const TWO = 'drive/Tabbed/Two.md';
+
+  /** A Drive holding one Doc of two tabs, each with a paragraph of its own. */
+  async function tabbedDrive(): Promise<FakeDrive> {
+    const api = createFakeDrive([
+      { id: ROOT_ID, name: 'Docsync test', mimeType: 'application/vnd.google-apps.folder' },
+      {
+        id: SUB_ID,
+        name: 'Sub',
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [ROOT_ID],
+      },
+      { id: TABBED_ID, name: 'Tabbed', parents: [ROOT_ID] },
+    ]);
+    const writer = createGDriveWriter(api);
+    await writer.writeTab(TABBED_ID, 't.0', parseMarkdown('One.\n'));
+    expect(await writer.addTab(TABBED_ID, 'Two')).toBe(SECOND);
+    await writer.writeTab(TABBED_ID, SECOND, parseMarkdown('Two.\n'));
+    api.calls.length = 0;
+    return api;
+  }
+
+  /** The checkout of that Doc: the directory, and one file per tab. */
+  const tabbedIndex: DocumentIndex = new Map(
+    [
+      entry(DIRECTORY, TABBED_ID, { type: 'gdoc' }),
+      entry(ONE, `${TABBED_ID}#t.0`),
+      entry(TWO, `${TABBED_ID}#${SECOND}`),
+    ].map((one) => [one.path, one]),
+  );
+
+  const pushTabs = (api: FakeDrive, changes: FileChange[], over: DocumentIndex = tabbedIndex) =>
+    pushRoot(root, changes, provider, over, { api });
+
+  it('patches the tab the file names, and no other', async () => {
+    const api = await tabbedDrive();
+
+    const report = await pushTabs(api, [
+      {
+        kind: 'modified',
+        path: TWO,
+        text: file(`${TABBED_ID}#${SECOND}`, 'Two', 'Two, rewritten.\n'),
+        previousText: file(`${TABBED_ID}#${SECOND}`, 'Two', 'Two.\n'),
+      },
+    ]);
+
+    expect(api.markdown(TABBED_ID, SECOND)).toBe('Two, rewritten.\n');
+    // The other tab is untouched: a request with no `tabId` would have landed
+    // in it, which is the trap this ticket is about (MANUAL §7).
+    expect(api.markdown(TABBED_ID, 't.0')).toBe('One.\n');
+    expect(report).toEqual([
+      {
+        path: TWO,
+        title: 'Two',
+        action: 'updated',
+        blocks: { kept: 0, updated: 1, inserted: 0, deleted: 0 },
+      },
+    ]);
+  });
+
+  it('refuses an edit whose base is not what that tab holds', async () => {
+    const api = await tabbedDrive();
+
+    // The base check is per tab: the text below is the *first* tab's, so this
+    // is the source having changed under the push (MANUAL §7).
+    await expect(
+      pushTabs(api, [
+        {
+          kind: 'modified',
+          path: TWO,
+          text: file(`${TABBED_ID}#${SECOND}`, 'Two', 'One, rewritten.\n'),
+          previousText: file(`${TABBED_ID}#${SECOND}`, 'Two', 'One.\n'),
+        },
+      ]),
+    ).rejects.toThrow('the source changed');
+  });
+
+  it('makes a new tab of a new file with frontmatter in the directory', async () => {
+    const api = await tabbedDrive();
+
+    const report = await pushTabs(api, [
+      { kind: 'added', path: 'drive/Tabbed/Three.md', text: file(undefined, 'Three', 'Three.\n') },
+    ]);
+
+    expect(api.calls.filter((one) => one.startsWith('addTab'))).toEqual([
+      `addTab ${TABBED_ID} Three`,
+    ]);
+    expect(api.tabs(TABBED_ID).map((tab) => tab.title)).toEqual(['Tabbed', 'Two', 'Three']);
+    expect(api.markdown(TABBED_ID, 't.new2')).toBe('Three.\n');
+    // No Drive file and no folder was made: a tab is inside the Doc.
+    expect(api.calls.some((one) => one.startsWith('create'))).toBe(false);
+    expect(report).toEqual([{ path: 'drive/Tabbed/Three.md', title: 'Three', action: 'created' }]);
+  });
+
+  it('nests a new tab under the tab whose directory it sits in', async () => {
+    const api = await tabbedDrive();
+
+    await pushTabs(api, [
+      {
+        kind: 'added',
+        path: 'drive/Tabbed/Two/Under.md',
+        text: file(undefined, 'Under', 'Under.\n'),
+      },
+    ]);
+
+    expect(api.tabs(TABBED_ID).at(-1)).toMatchObject({ title: 'Under', parentId: SECOND });
+  });
+
+  it('turns one tab into many from the checkout: a git mv and a new file', async () => {
+    const api = await tabbedDrive();
+    // The Doc as it is checked out today: one file, one tab.
+    const before: DocumentIndex = new Map([
+      ['drive/Tabbed.md', entry('drive/Tabbed.md', TABBED_ID)],
+    ]);
+
+    const report = await pushTabs(
+      api,
+      [
+        { kind: 'renamed', path: ONE, previousPath: 'drive/Tabbed.md' },
+        { kind: 'added', path: TWO, text: file(undefined, 'Two', 'Brand new.\n') },
+      ],
+      before,
+    );
+
+    // A is the Doc's own tab; B is a new tab of the same Doc, and not a new
+    // Doc under a Drive folder named `Tabbed` (ticket 37).
+    expect(api.calls.filter((one) => one.startsWith('create'))).toEqual([]);
+    expect(api.calls.filter((one) => one.startsWith('addTab'))).toEqual([
+      `addTab ${TABBED_ID} Two`,
+    ]);
+    // The moved file names its tab, so the tab takes the filename's title, as
+    // a renamed Doc file retitles its Doc (MANUAL §6).
+    expect(api.calls).toContain(`renameTab ${TABBED_ID} t.0 One`);
+    expect(report.map((one) => one.action)).toEqual(['renamed', 'created']);
+  });
+
+  it('retitles a tab when the file title changes, and renames no Drive file', async () => {
+    const api = await tabbedDrive();
+
+    const report = await pushTabs(api, [
+      {
+        kind: 'modified',
+        path: TWO,
+        text: file(`${TABBED_ID}#${SECOND}`, 'Full notes', 'Two.\n'),
+        previousText: file(`${TABBED_ID}#${SECOND}`, 'Two', 'Two.\n'),
+      },
+    ]);
+
+    expect(api.calls).toContain(`renameTab ${TABBED_ID} ${SECOND} Full notes`);
+    expect(api.calls.some((one) => one.startsWith('rename '))).toBe(false);
+    expect(api.files.get(TABBED_ID)?.name).toBe('Tabbed');
+    expect(report[0]?.title).toBe('Full notes');
+  });
+
+  it('trashes the Doc when the whole directory is gone', async () => {
+    const api = await tabbedDrive();
+
+    const report = await pushTabs(api, [{ kind: 'deleted', path: DIRECTORY }]);
+
+    expect(api.calls).toEqual([`trash ${TABBED_ID}`]);
+    expect(api.files.get(TABBED_ID)?.trashed).toBe(true);
+    expect(report).toEqual([{ path: DIRECTORY, title: 'Tabbed', action: 'trashed' }]);
+  });
+
+  it('retitles the Doc when the directory is renamed, and moves it when it moves', async () => {
+    const api = await tabbedDrive();
+
+    const report = await pushTabs(api, [
+      { kind: 'renamed', path: 'drive/Sub/Notes/', previousPath: DIRECTORY },
+    ]);
+
+    // The directory is the Doc: its name is the title, its place is the Drive
+    // folder. It is never created as a folder of its own (ticket 37).
+    expect(api.calls).toEqual([
+      `move ${TABBED_ID} ${ROOT_ID}->${SUB_ID}`,
+      `rename ${TABBED_ID} Notes`,
+    ]);
+    expect(report).toEqual([{ path: 'drive/Sub/Notes/', title: 'Notes', action: 'renamed' }]);
   });
 });
