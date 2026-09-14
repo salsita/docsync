@@ -275,3 +275,33 @@ export function threadsOf(
 ): Thread[] {
   return [...commentThreads(comments, body), ...suggestionThreads(doc, body)];
 }
+
+/** One tab of a Doc, as a sidecar is built for it (MANUAL §6, ticket 37). */
+export interface TabBody {
+  doc: DocsDocument;
+  body: string;
+}
+
+/**
+ * The threads of a Doc, split across its tabs (MANUAL §6, ticket 37).
+ *
+ * Drive holds a comment against the *file*: the thread carries the text it is
+ * attached to and an opaque anchor that names no tab. So a thread goes to the
+ * first tab, in tab order, whose body holds its quote — docsync already places
+ * a thread by its quoted text — and a thread that is placed nowhere goes to the
+ * first tab's sidecar, where it is the unanchored thread it always was.
+ *
+ * Suggestions need no such rule: each one is in the tab whose body carries it.
+ */
+export function placeThreads(
+  tabs: readonly TabBody[],
+  comments: readonly DriveComment[],
+): Thread[][] {
+  const mine: DriveComment[][] = tabs.map(() => []);
+  for (const comment of comments) {
+    const quoted = decodeEntities(comment.quotedFileContent?.value ?? '').trim();
+    const at = quoted === '' ? 0 : tabs.findIndex((tab) => locate(tab.body, quoted) !== undefined);
+    mine[at === -1 ? 0 : at]?.push(comment);
+  }
+  return tabs.map((tab, at) => threadsOf(tab.doc, mine[at] ?? [], tab.body));
+}

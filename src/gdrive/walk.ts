@@ -75,11 +75,20 @@ export interface WalkResult {
  * Walks one root. `previous` maps a file id to the repo-relative path it had at
  * the last fetch, which is what keeps a name (`Notes (2).md`) attached to the
  * same file even when a sibling appears or disappears.
+ *
+ * `tabbed` is the ids of the Docs the last fetch checked out as a *directory*,
+ * because they hold more than one tab (MANUAL §6, ticket 37). Such a Doc is
+ * named like a folder rather than like a file — `Notes`, not `Notes.md` — so
+ * that it collides with a Drive folder of the same title as two files would,
+ * and `index.ts` puts one file per tab inside it. The walk lists; only a read
+ * of the document can say how many tabs it has, which is why this is told
+ * rather than discovered.
  */
 export async function walkRoot(
   api: GDriveApi,
   root: Root,
   previous: ReadonlyMap<string, string> = new Map(),
+  tabbed: ReadonlySet<string> = new Set(),
 ): Promise<WalkResult> {
   const files: WalkedFile[] = [];
   const skipped: SkippedObject[] = [];
@@ -90,8 +99,9 @@ export async function walkRoot(
   // directory holding its children (MANUAL §4).
   if (rootFile.mimeType !== FOLDER_MIME) {
     const kind = kindOf(rootFile.mimeType);
+    const ext = tabbed.has(rootFile.id) ? '' : extensionFor(rootFile, kind);
     const path = root.path.endsWith('/')
-      ? `${root.path}${fileNameFor(rootFile.name, extensionFor(rootFile, kind))}`
+      ? `${root.path}${fileNameFor(rootFile.name, ext)}`
       : root.path;
     if (kind === undefined) {
       skipped.push({ id: rootFile.id, title: rootFile.name, path, reason: 'unsupported' });
@@ -124,7 +134,11 @@ export async function walkRoot(
       listing.map((file) => ({
         id: file.id,
         title: file.name,
-        ext: file.mimeType === FOLDER_MIME ? '' : extensionFor(file, kinds.get(file.id)),
+        // A tabbed Doc is a directory, so it is named like one (ticket 37).
+        ext:
+          file.mimeType === FOLDER_MIME || tabbed.has(file.id)
+            ? ''
+            : extensionFor(file, kinds.get(file.id)),
       })),
       namesIn(previous, directory),
     );

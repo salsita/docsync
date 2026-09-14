@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/provider.js';
 import type { IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
+import { splitGDocsRef } from '../source-ref.js';
 import { countingApi, DOC_IDS, fixtureApi, fixtureDocument, ROOT_ID } from './fixtures.mock.js';
 import { changedSince, describe as describeRef, fetchRoot } from './index.js';
+import { flattenTabs } from './tabs.js';
+import { documentToMarkdown } from './to-markdown.js';
 
 const ELEMENTS = '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4';
 const TEXT = '1oiqaDywxRX2qqjSpAlu2gZjS-0BWcqfr';
+/** The recorded Doc with two tabs (ticket 37). */
+const TABBED = '1IkA6kWgvIw_TWy0_xm73kHt16aRoAf9JuXnFuxJg1ng';
+const SECOND_TAB = 't.bq5s9c5xq0db';
 
 const root: Root = { src: { source: 'gdocs', id: ROOT_ID }, path: 'drive/', ignore: [] };
 
@@ -33,11 +39,21 @@ describe('fetchRoot', () => {
   it('answers one file per checked-out document, with its index entry', async () => {
     const result = await fetchRoot(root, provider, new Map(), options);
 
-    // Ten documents, the one image the Elements Doc holds, and no sidecar:
+    // Ten documents — one of them a Doc of two tabs, which is two files
+    // (ticket 37) — the one image the Elements Doc holds, and no sidecar:
     // comments are off unless the root asks for them (MANUAL §4, §12 phase 2).
-    expect(result.files).toHaveLength(11);
+    expect(result.files).toHaveLength(13);
     expect(result.files.filter((file) => file.entry?.type === 'asset')).toHaveLength(1);
-    expect(result.entries).toEqual(documents(result.files).map((file) => file.entry));
+    // Every file's entry, and the tabbed Doc's directory, which has no file.
+    expect(result.entries).toEqual([
+      ...documents(result.files).map((file) => file.entry),
+      {
+        path: 'drive/Tabbed/',
+        src: { source: 'gdocs', id: TABBED },
+        type: 'gdoc',
+        lastEditedTime: '2026-09-14T16:12:18.434Z',
+      },
+    ]);
     expect(result.files.filter((file) => file.entry === undefined)).toHaveLength(0);
     expect(result.skipped).toEqual([]);
   });
@@ -179,7 +195,13 @@ describe('fetchRoot', () => {
         ...everything,
         progress: (line) => lines.push(line),
       });
-      const total = documents(second.files).filter((file) => file.entry.type !== 'asset').length;
+      // One line per Doc downloaded: a Doc of several tabs is one download,
+      // however many files it becomes (ticket 37).
+      const total = new Set(
+        documents(second.files)
+          .filter((file) => file.entry.type !== 'asset')
+          .map((file) => splitGDocsRef(file.entry.src).docId),
+      ).size;
 
       expect(lines[0]).toBe('listing drive/');
       expect(lines[1]?.startsWith(`1/${total} `)).toBe(true);
@@ -459,11 +481,15 @@ describe('changedSince', () => {
     const first = await fetchRoot(root, provider, new Map(), options);
 
     // Documents only: an image moves with the Doc that holds it (§12 phase 2).
+    // A Doc the index has never seen is named as the walk names it, since only
+    // a read of it could say that it has tabs (ticket 37).
     expect(await changedSince(root, provider, new Map(), options)).toEqual(
-      documents(first.files)
-        .filter((file) => file.entry.type !== 'asset')
-        .map((file) => file.path)
-        .sort(),
+      [
+        ...documents(first.files)
+          .filter((file) => file.entry.type !== 'asset' && !file.path.startsWith('drive/Tabbed/'))
+          .map((file) => file.path),
+        'drive/Tabbed.md',
+      ].sort(),
     );
   });
 
@@ -522,16 +548,17 @@ describe('progress (MANUAL §7)', () => {
     // The total is known once the walk is done, so every line carries it.
     expect(lines).toEqual([
       'listing drive/',
-      '1/10 drive/Elements.md',
-      '2/10 drive/dummy.pdf',
-      '3/10 drive/plain.txt',
-      '4/10 drive/Numbers.xlsx',
-      '5/10 drive/Notes.md',
-      '6/10 drive/Notes (2).md',
-      '7/10 drive/Hidden leading dot.md',
-      '8/10 drive/Title-With- Illegal-Chars- -Quoted- -Tag- -Pipe-.md',
-      '9/10 drive/Leaf.md',
-      '10/10 drive/Sub/Nested.md',
+      '1/11 drive/Tabbed.md',
+      '2/11 drive/Elements.md',
+      '3/11 drive/dummy.pdf',
+      '4/11 drive/plain.txt',
+      '5/11 drive/Numbers.xlsx',
+      '6/11 drive/Notes.md',
+      '7/11 drive/Notes (2).md',
+      '8/11 drive/Hidden leading dot.md',
+      '9/11 drive/Title-With- Illegal-Chars- -Quoted- -Tag- -Pipe-.md',
+      '10/11 drive/Leaf.md',
+      '11/11 drive/Sub/Nested.md',
     ]);
   });
 
@@ -561,4 +588,104 @@ describe('progress (MANUAL §7)', () => {
     expect(lines.filter((line) => line.startsWith('comments '))).toHaveLength(DOC_IDS.length);
     expect(lines).toHaveLength(1 + DOC_IDS.length);
   });
+});
+
+describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
+  /** Where the recorded two-tab Doc lands, tab by tab. */
+  const FIRST = 'drive/Tabbed/First tab.md';
+  const SECOND = 'drive/Tabbed/Second tab.md';
+
+  const pathsOf = (files: readonly { path: string }[]): string[] =>
+    files.map((file) => file.path).filter((path) => path.startsWith('drive/Tabbed'));
+
+  it('is a directory holding one file per tab', async () => {
+    const result = await fetchRoot(root, provider, new Map(), options);
+
+    expect(pathsOf(result.files)).toEqual([FIRST, SECOND]);
+    expect(result.files.find((file) => file.path === FIRST)?.body).toContain(
+      'Content of the first tab.',
+    );
+    expect(result.files.find((file) => file.path === SECOND)?.body).toContain(
+      'Content of the second tab.',
+    );
+  });
+
+  it('gives each tab file its own id, title and URL', async () => {
+    const result = await fetchRoot(root, provider, new Map(), options);
+    const second = result.files.find((file) => file.path === SECOND);
+
+    expect(
+      second?.text?.startsWith(
+        `---\nid: gdocs:${TABBED}#${SECOND_TAB}\ntitle: Second tab\n` +
+          `url: https://docs.google.com/document/d/${TABBED}/edit?tab=${SECOND_TAB}\n---\n`,
+      ),
+    ).toBe(true);
+    expect(second?.entry).toMatchObject({
+      path: SECOND,
+      type: 'gdoc',
+      src: { source: 'gdocs', id: `${TABBED}#${SECOND_TAB}` },
+    });
+  });
+
+  it('records the directory itself, so a push finds the Doc', async () => {
+    const result = await fetchRoot(root, provider, new Map(), options);
+    const directory = result.entries.find((one) => one.path === 'drive/Tabbed/');
+
+    // A nested tab's depth varies, so the paths alone cannot say where the
+    // Doc's directory starts: the index says (ticket 37).
+    expect(directory).toMatchObject({
+      path: 'drive/Tabbed/',
+      type: 'gdoc',
+      src: { source: 'gdocs', id: TABBED },
+    });
+    // And it is an entry only: no file is written for a directory.
+    expect(result.files.some((file) => file.path.endsWith('/'))).toBe(false);
+  });
+
+  it('leaves a one-tab Doc exactly as it was', async () => {
+    const result = await fetchRoot(root, provider, new Map(), options);
+    const elements = result.files.find((file) => file.path === 'drive/Elements.md');
+
+    // The "One tab" row of ticket 37: `<title>.md`, `id: gdocs:<docId>`, a URL
+    // without a tab. Nothing to migrate for nearly every Doc there is.
+    expect(elements?.entry?.src).toEqual({ source: 'gdocs', id: ELEMENTS });
+    expect(elements?.text).toContain(`url: https://docs.google.com/document/d/${ELEMENTS}/edit\n`);
+  });
+
+  it('carries the tab files over when the Doc did not change', async () => {
+    const first = await fetchRoot(root, provider, new Map(), options);
+    const previous = new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+
+    const second = await fetchRoot(root, provider, previous, options);
+
+    expect(pathsOf(second.files)).toEqual([FIRST, SECOND]);
+    expect(
+      second.files
+        .filter((file) => file.path.startsWith('drive/Tabbed'))
+        .every((file) => file.changed === false),
+    ).toBe(true);
+    expect(second.entries.some((one) => one.path === 'drive/Tabbed/')).toBe(true);
+  });
+
+  it('moves the file, its sidecar and its assets when a Doc gains a tab', async () => {
+    // The checkout of yesterday: one file, its sidecar and its image, because
+    // the Doc had one tab (ticket 37, "Fetch, one → many at the source").
+    const previous = new Map<string, IndexEntry>([
+      ['drive/Tabbed.md', entry({ path: 'drive/Tabbed.md', src: { source: 'gdocs', id: TABBED } })],
+    ]);
+
+    const result = await fetchRoot(root, provider, previous, options);
+
+    // The first tab takes the old file's content to its new path, so git's
+    // rename detection pairs them and `git log --follow` crosses the move.
+    expect(pathsOf(result.files)).toEqual([FIRST, SECOND]);
+    expect(result.files.find((file) => file.path === FIRST)?.body).toBe(fixtureBodyOfFirstTab());
+  });
+
+  /** The first tab's Markdown, converted on its own, for the move above. */
+  function fixtureBodyOfFirstTab(): string {
+    const doc = fixtureDocument(TABBED);
+    const [first] = flattenTabs(doc);
+    return documentToMarkdown(first?.doc ?? {});
+  }
 });

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { DocsDocument } from './api.js';
-import { commentThreads, type DriveComment, suggestionThreads } from './comments.js';
+import {
+  commentThreads,
+  type DriveComment,
+  placeThreads,
+  suggestionThreads,
+  threadsOf,
+} from './comments.js';
 import { fixtureComments, fixtureInlineDocument } from './fixtures.mock.js';
 import { documentToMarkdown } from './to-markdown.js';
 
@@ -294,5 +300,73 @@ describe('a suggestion that spans paragraphs', () => {
     expect(thread?.id).toBe('suggest.style');
     expect(thread?.before).toBeUndefined();
     expect(thread?.quote).toBe('First.\n\nSecond.');
+  });
+});
+
+describe('placeThreads (MANUAL §6, ticket 37)', () => {
+  /** Two tabs, each one paragraph, as a Doc with several tabs answers. */
+  const tabs = [
+    {
+      doc: paragraph([{ content: 'The first tab says this.\n' }]),
+      body: 'The first tab says this.',
+    },
+    {
+      doc: paragraph([{ content: 'The second tab says that.\n' }]),
+      body: 'The second tab says that.',
+    },
+  ];
+
+  const comment = (id: string, quoted: string): DriveComment => ({
+    id,
+    createdTime: '2026-09-03T07:55:00Z',
+    author: { displayName: 'Jane' },
+    content: 'A word about this.',
+    quotedFileContent: { mimeType: 'text/html', value: quoted },
+  });
+
+  it('puts a thread in the first tab whose body holds its quote', () => {
+    // Drive comments are per file and their anchors carry no tab, so the
+    // quoted text is what says which tab a thread belongs to (ticket 37).
+    const placed = placeThreads(tabs, [comment('c1', 'says that'), comment('c2', 'says this')]);
+
+    expect(placed[0]?.map((one) => one.id)).toEqual(['c2']);
+    expect(placed[1]?.map((one) => one.id)).toEqual(['c1']);
+  });
+
+  it('puts a thread that is placed nowhere in the first tab', () => {
+    const placed = placeThreads(tabs, [comment('c3', 'nothing like this text')]);
+
+    expect(placed[0]?.map((one) => one.id)).toEqual(['c3']);
+    expect(placed[1]).toEqual([]);
+    // And it is still the unplaceable thread it was: the bare text, no anchor.
+    expect(placed[0]?.[0]?.quote).toBe('nothing like this text');
+    expect(placed[0]?.[0]?.offset).toBeUndefined();
+  });
+
+  it('keeps the suggestions of a tab in that tab', () => {
+    const suggesting = [
+      {
+        doc: paragraph([{ content: 'One.' }, { content: ' Added.', ins: ['s.1'] }]),
+        body: 'One.',
+      },
+      {
+        doc: paragraph([{ content: 'Two.' }, { content: ' Also.', ins: ['s.2'] }]),
+        body: 'Two.',
+      },
+    ];
+
+    const placed = placeThreads(suggesting, []);
+
+    // A suggestion belongs to the tab whose body carries it, by construction.
+    expect(placed[0]?.map((one) => one.id)).toEqual(['s.1']);
+    expect(placed[1]?.map((one) => one.id)).toEqual(['s.2']);
+  });
+
+  it('is the threads of the one document when there is one tab', () => {
+    const one = [{ doc: fixtureInlineDocument(ELEMENTS), body }];
+
+    expect(placeThreads(one, fixtureComments(ELEMENTS))[0]).toEqual(
+      threadsOf(fixtureInlineDocument(ELEMENTS), fixtureComments(ELEMENTS), body),
+    );
   });
 });

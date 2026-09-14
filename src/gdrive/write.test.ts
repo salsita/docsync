@@ -136,7 +136,8 @@ describe('replaceBody', () => {
     const result = await write.replaceBody('doc1', parseMarkdown('Hello.\n'));
 
     expect(calls[0]?.url).toBe(
-      `${DOCS_ENDPOINT}/documents/doc1?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS`,
+      `${DOCS_ENDPOINT}/documents/doc1?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS` +
+        '&includeTabsContent=true',
     );
     expect(calls[1]?.url).toBe(`${DOCS_ENDPOINT}/documents/doc1:batchUpdate`);
     expect(calls[1]?.method).toBe('POST');

@@ -53,6 +53,7 @@ describe('walkRoot over the recorded tree', () => {
       'doc drive/Notes (2).md',
       'doc drive/Notes.md',
       'doc drive/Sub/Nested.md',
+      'doc drive/Tabbed.md',
       'doc drive/Title-With- Illegal-Chars- -Quoted- -Tag- -Pipe-.md',
       'export drive/Numbers.xlsx',
     ]);

@@ -31,6 +31,7 @@ import { DOC_IDS, fixtureDocument } from './fixtures.mock.js';
 import { markdownToRequests } from './from-markdown.js';
 import { planPatch } from './patch.js';
 import { readLive } from './ranges.js';
+import { flattenTabs } from './tabs.js';
 import { documentToMarkdown } from './to-markdown.js';
 import { footnoteRequests } from './write.js';
 
@@ -81,20 +82,32 @@ function pushed(markdown: string, documentId = 'model'): string {
   return documentToMarkdown(model.document());
 }
 
+/**
+ * Every body the fixtures hold, one per tab: a Doc with several tabs has one
+ * body per tab and none of its own, and each of them round-trips on its own
+ * (MANUAL §6, ticket 37).
+ */
+const BODIES = DOC_IDS.flatMap((id) =>
+  flattenTabs(fixtureDocument(id)).map((tab) => ({
+    name: tab.id === undefined ? id : `${id}#${tab.id}`,
+    doc: tab.doc,
+  })),
+);
+
 describe('the 07 + 08 round trip', () => {
-  for (const id of DOC_IDS) {
-    it(`writes ${id} back to the Markdown it was read as`, () => {
-      const markdown = documentToMarkdown(fixtureDocument(id));
+  for (const body of BODIES) {
+    it(`writes ${body.name} back to the Markdown it was read as`, () => {
+      const markdown = documentToMarkdown(body.doc);
       const { text } = project(markdown);
-      expect(pushed(markdown, id)).toBe(text);
+      expect(pushed(markdown, body.name)).toBe(text);
     });
   }
 
   it('excludes exactly the known losses, and only from Elements', () => {
     const excluded = new Map<string, string[]>();
-    for (const id of DOC_IDS) {
-      const { excluded: found } = project(documentToMarkdown(fixtureDocument(id)));
-      if (found.length > 0) excluded.set(id, found);
+    for (const body of BODIES) {
+      const { excluded: found } = project(documentToMarkdown(body.doc));
+      if (found.length > 0) excluded.set(body.name, found);
     }
     expect(Object.fromEntries(excluded)).toEqual({
       '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4': [
@@ -129,12 +142,12 @@ function editOne(markdown: string): { next: string; line: number } {
 }
 
 describe('the 16 patch round trip', () => {
-  for (const id of DOC_IDS) {
-    it(`edits one paragraph of ${id} and writes back only that`, () => {
+  for (const body of BODIES) {
+    it(`edits one paragraph of ${body.name} and writes back only that`, () => {
       // The base is what a push of the fetched text would have left behind,
       // since that is the document the next push starts from.
-      const { text: base } = project(documentToMarkdown(fixtureDocument(id)));
-      const made = model(base, id);
+      const { text: base } = project(documentToMarkdown(body.doc));
+      const made = model(base, body.name);
       expect(documentToMarkdown(made.document())).toBe(base);
 
       const { next } = editOne(base);
