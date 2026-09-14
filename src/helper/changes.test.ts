@@ -71,6 +71,24 @@ const index = new Map(
   ].map((one) => [one.path, one]),
 );
 
+/**
+ * A Google Doc of two tabs, checked out as a directory of one file per tab,
+ * with an entry for the directory itself (MANUAL §6, ticket 37).
+ */
+const TABBED = '1IdTabbedDocXXXXXXXXXXXX';
+for (const one of [
+  { path: 'Files/Tabbed/', id: TABBED },
+  { path: 'Files/Tabbed/One.md', id: `${TABBED}#t.0` },
+  { path: 'Files/Tabbed/Two.md', id: `${TABBED}#t.1` },
+]) {
+  index.set(one.path, {
+    path: one.path,
+    src: { source: 'gdocs', id: one.id },
+    type: 'gdoc',
+    lastEditedTime: '2026-01-01T00:00:00.000Z',
+  });
+}
+
 const FRONT = '---\ntitle: New\n---\n\nBody.\n';
 const blobs: Record<string, string> = {
   'Specs/Auth.md': `---\nid: notion:${'b'.repeat(32)}\ntitle: Auth\n---\n\nEdited.\n`,
@@ -101,6 +119,12 @@ const blobs: Record<string, string> = {
   'Client/Plain.md': 'frontmatter gone\n',
   'Client/logo.png': 'PNG2',
   'Client/Brief.assets/shot.png': 'SHOT2',
+  'Files/Tabbed/One.md': `---\nid: gdocs:${TABBED}#t.0\ntitle: One\n---\n\nOne, edited.\n`,
+  'Files/Tabbed/Two.md': `---\nid: gdocs:${TABBED}#t.1\ntitle: Two\n---\n\nTwo.\n`,
+  'Files/Tabbed/Three.md': FRONT,
+  'Files/Notes/One.md': `---\nid: gdocs:${TABBED}#t.0\ntitle: One\n---\n\nOne.\n`,
+  'Files/Notes/Two.md': `---\nid: gdocs:${TABBED}#t.1\ntitle: Two\n---\n\nTwo.\n`,
+  'Files/Out.md': `---\nid: gdocs:${TABBED}#t.0\ntitle: One\n---\n\nOne.\n`,
 };
 const read = async (path: string): Promise<Uint8Array> => {
   const text = blobs[path];
@@ -118,6 +142,8 @@ const baseBlobs: Record<string, string> = {
   'Files/notes.md': 'plain notes\n',
   'notes/roadmap.md': BASE_ROAD,
   'Client/Brief.md': '---\nid: gdocs:1IdClientBrief\n---\n\nBase brief.\n',
+  'Files/Tabbed/One.md': `---\nid: gdocs:${TABBED}#t.0\ntitle: One\n---\n\nOne.\n`,
+  'Files/Tabbed/Two.md': `---\nid: gdocs:${TABBED}#t.1\ntitle: Two\n---\n\nTwo.\n`,
 };
 const readBase = async (path: string): Promise<Uint8Array | undefined> => {
   const text = baseBlobs[path];
@@ -633,5 +659,90 @@ describe('planChanges', () => {
     expect(await plan({ status: 'T', path: 'Files/New.md' })).toEqual([
       { root: DRIVE, changes: [{ kind: 'added', path: 'Files/New.md', text: FRONT }] },
     ]);
+  });
+});
+
+describe('a Google Doc of several tabs (MANUAL §6, §8, ticket 37)', () => {
+  const REFUSAL =
+    'Files/Tabbed/Two.md is a tab of Files/Tabbed/; deleting a tab is permanent, ' +
+    'so docsync does not do it. Delete it in Docs, or restore it with ' +
+    'git checkout -- Files/Tabbed/Two.md';
+
+  it('refuses to delete one tab of a Doc, and pushes nothing for it', async () => {
+    // `deleteTab` has no trash, and §8 says a deletion is never permanent.
+    expect(await refusal(D('Files/Tabbed/Two.md'))).toBe(REFUSAL);
+    expect(await plan(D('Files/Tabbed/Two.md'))).toEqual([]);
+  });
+
+  it('refuses a tab file renamed out of its directory in the same words', async () => {
+    expect(await refusal(R('Files/Tabbed/Two.md', 'Files/Out.md'))).toBe(REFUSAL);
+  });
+
+  it('trashes the Doc when every tab file is gone', async () => {
+    // The directory is the Doc, so deleting the whole of it is deleting the
+    // document, which is a trashing like any other (MANUAL §8).
+    expect(await plan(D('Files/Tabbed/One.md'), D('Files/Tabbed/Two.md'))).toEqual([
+      { root: DRIVE, changes: [{ kind: 'deleted', path: 'Files/Tabbed/' }] },
+    ]);
+    expect(await refusals(D('Files/Tabbed/One.md'), D('Files/Tabbed/Two.md'))).toEqual([]);
+  });
+
+  it('renames the directory as one change when every tab file moves with it', async () => {
+    const changes = await plan(
+      R('Files/Tabbed/One.md', 'Files/Notes/One.md'),
+      R('Files/Tabbed/Two.md', 'Files/Notes/Two.md'),
+    );
+
+    expect(changes).toEqual([
+      {
+        root: DRIVE,
+        changes: [{ kind: 'renamed', path: 'Files/Notes/', previousPath: 'Files/Tabbed/' }],
+      },
+    ]);
+  });
+
+  it('carries the content of a tab file the directory rename also changed', async () => {
+    const changes = await plan(
+      R('Files/Tabbed/One.md', 'Files/Notes/One.md', 'R090'),
+      R('Files/Tabbed/Two.md', 'Files/Notes/Two.md'),
+    );
+
+    expect(changes[0]?.changes).toEqual([
+      { kind: 'renamed', path: 'Files/Notes/', previousPath: 'Files/Tabbed/' },
+      expect.objectContaining({ kind: 'modified', path: 'Files/Notes/One.md' }),
+    ]);
+  });
+
+  it('is an ordinary rename when a tab file is renamed inside the directory', async () => {
+    // The tab is retitled at the source; nothing moves out of the Doc.
+    expect(await plan(R('Files/Tabbed/Two.md', 'Files/Tabbed/Second.md'))).toEqual([
+      {
+        root: DRIVE,
+        changes: [
+          {
+            kind: 'renamed',
+            path: 'Files/Tabbed/Second.md',
+            previousPath: 'Files/Tabbed/Two.md',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('is a plain addition when a new file appears in the directory', async () => {
+    // A new `.md` with frontmatter inside a tabbed Doc's directory is a new
+    // tab; the adapter is what knows that (ticket 37).
+    expect(await plan(A('Files/Tabbed/Three.md'))).toEqual([
+      { root: DRIVE, changes: [{ kind: 'added', path: 'Files/Tabbed/Three.md', text: FRONT }] },
+    ]);
+  });
+
+  it('carries an edit to one tab file as an edit to that file', async () => {
+    const changes = await plan(M('Files/Tabbed/One.md'));
+
+    expect(changes[0]?.changes[0]).toMatchObject({
+      kind: 'modified',
+      path: 'Files/Tabbed/One.md',
+    });
   });
 });

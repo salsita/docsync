@@ -18,7 +18,7 @@ import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { rootOf as rootIn } from '../manifest/validate.js';
 import type { FileChange } from '../source.js';
-import { formatSourceRef } from '../source-ref.js';
+import { formatSourceRef, splitGDocsRef } from '../source-ref.js';
 import type { DiffEntry } from './git.js';
 import { INDEX_PATH } from './index-file.js';
 
@@ -146,7 +146,103 @@ export async function planChanges(
   };
   const rootOf = (path: string): Root | undefined => rootIn(roots, path);
 
+  /**
+   * What a change to a tab file means (MANUAL §6, §8, ticket 37).
+   *
+   * A Google Doc with several tabs is a directory of one `.md` per tab, and
+   * three of the things that can happen to such a directory are not what they
+   * look like path by path:
+   *
+   * - every tab file gone is the **Doc** deleted, which is a trashing;
+   * - every tab file moved to one new directory is the **directory** renamed,
+   *   which retitles the Doc and may move it between Drive folders;
+   * - *some* tab files gone — deleted, or renamed out of the directory — is
+   *   refused: `deleteTab` has no trash, and §8 promises that nothing a push
+   *   does is permanent.
+   *
+   * Everything else about a tab file is ordinary: an edit is an edit, a rename
+   * inside the directory retitles the tab, and a new file in it is an addition
+   * the adapter turns into a tab.
+   */
+  const skip = new Set<DiffEntry>();
+  const tabsOfDoc = new Map<string, IndexEntry[]>();
+  const directoryOfDoc = new Map<string, string>();
+  const docOfTabFile = new Map<string, string>();
+  for (const entry of index.values()) {
+    if (entry.src.source !== 'gdocs' || entry.type !== 'gdoc') continue;
+    const { docId, tabId } = splitGDocsRef(entry.src);
+    if (tabId !== undefined) {
+      tabsOfDoc.set(docId, [...(tabsOfDoc.get(docId) ?? []), entry]);
+      docOfTabFile.set(entry.path, docId);
+    } else if (entry.path.endsWith('/')) {
+      directoryOfDoc.set(docId, entry.path);
+    }
+  }
+
+  for (const [docId, tabs] of tabsOfDoc) {
+    const directory = directoryOfDoc.get(docId);
+    if (directory === undefined) continue;
+    const root = rootOf(directory);
+    // A read-only or suggesting root refuses every one of these by itself, in
+    // its own words, and says so about the path the person can restore.
+    if (root === undefined || root.readOnly === true || root.suggest === true) continue;
+
+    const mine = diff.filter((one) => docOfTabFile.get(one.previousPath ?? one.path) === docId);
+    const deleted = mine.filter((one) => one.status[0] === 'D');
+    const movedOut = mine.filter(
+      (one) =>
+        one.status[0] === 'R' && one.previousPath !== undefined && !one.path.startsWith(directory),
+    );
+    if (deleted.length === 0 && movedOut.length === 0) continue;
+
+    // The whole directory: every tab file deleted, and none moved anywhere.
+    if (deleted.length === tabs.length && movedOut.length === 0) {
+      for (const one of deleted) skip.add(one);
+      add(root, { kind: 'deleted', path: directory });
+      continue;
+    }
+
+    // The whole directory, moved: every tab file renamed out of it, all of
+    // them into the same new directory, which is where the Doc now is.
+    const to = new Set(movedOut.map((one) => movedTo(one, directory)));
+    const moved = [...to][0];
+    if (
+      deleted.length === 0 &&
+      movedOut.length === tabs.length &&
+      to.size === 1 &&
+      moved !== undefined &&
+      rootOf(moved) === root
+    ) {
+      for (const one of movedOut) skip.add(one);
+      add(root, { kind: 'renamed', path: moved, previousPath: directory });
+      // A tab file the same rename also edited is still an edit of that file.
+      for (const one of movedOut) {
+        const was = one.previousPath === undefined ? undefined : index.get(one.previousPath);
+        if (one.status === 'R100' || one.previousPath === undefined || was === undefined) continue;
+        add(root, {
+          kind: 'modified',
+          path: one.path,
+          text: Buffer.from(await read(one.path)).toString('utf8'),
+          ...(await base(was, one.previousPath, readBase)),
+        });
+      }
+      continue;
+    }
+
+    for (const one of [...deleted, ...movedOut]) {
+      skip.add(one);
+      const path = one.previousPath ?? one.path;
+      refuse(
+        path,
+        `a tab of ${directory}`,
+        `${path} is a tab of ${directory}; deleting a tab is permanent, so docsync does not ` +
+          `do it. Delete it in Docs, or restore it with git checkout -- ${path}`,
+      );
+    }
+  }
+
   for (const entry of diff) {
+    if (skip.has(entry)) continue;
     // Anything recorded while this entry is sorted means it is refused, and
     // nothing about it reaches a root.
     const before = refusals.length;
@@ -315,6 +411,19 @@ export async function planChanges(
     refusals,
     local,
   };
+}
+
+/**
+ * Where a tab file renamed out of its Doc's directory landed, as a directory:
+ * the same path with the tab file's place inside the directory cut off. It is
+ * `undefined` when the file moved to a different place inside the Doc as well,
+ * which is not a rename of the directory.
+ */
+function movedTo(entry: DiffEntry, directory: string): string | undefined {
+  const inside = (entry.previousPath ?? '').slice(directory.length);
+  return entry.path.endsWith(inside)
+    ? entry.path.slice(0, entry.path.length - inside.length)
+    : undefined;
 }
 
 /**
