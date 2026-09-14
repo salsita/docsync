@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  docRefOf,
   formatSourceRef,
   isSourceRef,
   isSourceRefError,
@@ -8,6 +9,8 @@ import {
   type SourceRef,
   sourceRefEquals,
   sourceUrl,
+  splitGDocsRef,
+  tabRef,
 } from './source-ref.js';
 
 /** A canonical Notion id, and the same id in the forms people paste. */
@@ -21,8 +24,12 @@ const OTHER = 'aaaaaaaabbbbccccddddeeeeeeeeeeee';
 /** A Google id: opaque, 32 characters of the accepted alphabet. */
 const GID = '1AbCdEfGhIjKlMnOpQrStUvWxYz-_012';
 
+/** A Docs tab id. Google spells every one of them `t.` and then some. */
+const TAB = 't.tnk7m8xbx5t9';
+
 const notion: SourceRef = { source: 'notion', id: NID };
 const gdocs: SourceRef = { source: 'gdocs', id: GID };
+const gdocsTab: SourceRef = { source: 'gdocs', id: `${GID}#${TAB}` };
 
 /** Literal refs: accepted by `parseSourceRef` and by `parseSourceRefOrUrl`. */
 const LITERAL: Array<[string, SourceRef]> = [
@@ -33,6 +40,8 @@ const LITERAL: Array<[string, SourceRef]> = [
   [`  notion:${NID}  `, notion],
   [`gdocs:${GID}`, gdocs],
   [`\tgdocs:${GID}\n`, gdocs],
+  // One tab of a Google Doc (MANUAL §6, ticket 37). The id stays one token.
+  [`gdocs:${GID}#${TAB}`, gdocsTab],
 ];
 
 /** URLs: accepted by `parseSourceRefOrUrl` only. */
@@ -65,6 +74,8 @@ const URLS: Array<[string, SourceRef]> = [
   [`https://docs.google.com/document/u/0/d/${GID}/edit`, gdocs],
   [`https://docs.google.com/document/d/${GID}/edit?usp=sharing`, gdocs],
   [`https://docs.google.com/document/d/${GID}/edit#heading=h.abc`, gdocs],
+  // A tab's own URL names the whole Doc: `docsync add` adds all of it (ticket 37).
+  [`https://docs.google.com/document/d/${GID}/edit?tab=${TAB}`, gdocs],
   [`https://drive.google.com/drive/folders/${GID}`, gdocs],
   [`https://drive.google.com/drive/u/2/folders/${GID}`, gdocs],
   [`https://drive.google.com/file/d/${GID}/view`, gdocs],
@@ -93,6 +104,14 @@ const REJECTED: string[] = [
   `gdocs:1AbCdE/${GID}`,
   `notion:${NID}/child`,
   `drive:${GID}`,
+  // A fragment is a tab and nothing else: every tab id starts with `t.`, which
+  // is what keeps `#<n>` (an object anchor) out of an id (ticket 37).
+  `gdocs:${GID}#`,
+  `gdocs:${GID}#heading`,
+  `gdocs:${GID}#3`,
+  `gdocs:${GID}#${TAB}#${TAB}`,
+  `gdocs:1AbCdE#${TAB}`,
+  `notion:${NID}#${TAB}`,
   `NOTION:${NID}`,
   `notion:${NID} ${NID}`,
   'Archive/**',
@@ -225,6 +244,34 @@ describe('sourceRefEquals', () => {
   });
 });
 
+describe('splitGDocsRef', () => {
+  it('splits a tab ref into the Doc and the tab (ticket 37)', () => {
+    expect(splitGDocsRef(gdocsTab)).toEqual({ docId: GID, tabId: TAB });
+  });
+
+  it('answers the Doc alone for a ref that names no tab', () => {
+    expect(splitGDocsRef(gdocs)).toEqual({ docId: GID });
+  });
+
+  it('answers the Doc of a tab ref, which is what the manifest holds', () => {
+    expect(docRefOf(gdocsTab)).toEqual(gdocs);
+    expect(docRefOf(gdocs)).toEqual(gdocs);
+  });
+});
+
+describe('tabRef', () => {
+  it('builds the ref a tab file carries, and round-trips it', () => {
+    const ref = tabRef(GID, TAB);
+    expect(formatSourceRef(ref)).toBe(`gdocs:${GID}#${TAB}`);
+    expect(parseSourceRef(formatSourceRef(ref))).toEqual(ref);
+  });
+
+  it('is the plain Doc ref when there is no tab to name', () => {
+    expect(tabRef(GID, undefined)).toEqual(gdocs);
+    expect(tabRef(GID, '')).toEqual(gdocs);
+  });
+});
+
 describe('sourceUrl', () => {
   it('a Notion page, without a workspace slug', () => {
     // The slug is decoration: Notion redirects a bare id to the real URL.
@@ -253,6 +300,17 @@ describe('sourceUrl', () => {
     expect(sourceUrl({ source: 'gdocs', id: GID })).toBe(
       `https://drive.google.com/file/d/${GID}/view`,
     );
+  });
+
+  it('a Google Doc tab, which opens on that tab (ticket 37)', () => {
+    expect(sourceUrl(gdocsTab, 'application/vnd.google-apps.document')).toBe(
+      `https://docs.google.com/document/d/${GID}/edit?tab=${TAB}`,
+    );
+    // The mime type of a Doc is what Drive reports for the file; a tab ref
+    // without one is still a Doc, since only a Doc has tabs.
+    expect(sourceUrl(gdocsTab)).toBe(`https://docs.google.com/document/d/${GID}/edit?tab=${TAB}`);
+    // And that URL names the whole Doc again, as every Docs URL does.
+    expect(parseSourceRefOrUrl(sourceUrl(gdocsTab))).toEqual(gdocs);
   });
 
   it('answers a URL that parses back to the ref it came from', () => {

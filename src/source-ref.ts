@@ -16,7 +16,10 @@
  *   the CLI can say what it expected. Use this one for anything a human typed.
  *
  * Canonical ids: a Notion id is 32 lowercase hex digits without dashes, and a
- * Google id is verbatim, since Drive ids are opaque. `formatSourceRef` prints
+ * Google id is verbatim, since Drive ids are opaque. One Google form carries a
+ * second id inside the first: `gdocs:<docId>#<tabId>` is one tab of a Google
+ * Doc (MANUAL §6, ticket 37), which `splitGDocsRef` takes apart and nothing
+ * else has to. `formatSourceRef` prints
  * the canonical form, which is always a literal ref and never contains a
  * slash — which is what lets an ignore list mix refs with globs.
  *
@@ -45,6 +48,16 @@ const REF = /^([A-Za-z]+):([^\s/]+)$/;
 const NOTION_HEX = /^[0-9a-f]{32}$/i;
 const NOTION_DASHED = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const GOOGLE_ID = /^[A-Za-z0-9_-]{20,}$/;
+
+/**
+ * A Google Docs tab id (MANUAL §6, ticket 37). Every one of them is `t.` and
+ * then some, which is what lets `gdocs:<docId>#<tabId>` stay one token: the
+ * fragment cannot be mistaken for the `#<startIndex>` a placeholder addresses a
+ * structural element by.
+ */
+const GOOGLE_TAB_ID = /^t\.[A-Za-z0-9_-]+$/;
+
+const GOOGLE_TAB_SHAPE = 'A Google Docs tab id starts with "t.".';
 
 // The id inside a Notion URL path: a dashed UUID or a bare 32-hex run, in
 // either case bounded so a longer hex run is not silently truncated.
@@ -161,7 +174,15 @@ function parseLiteral(text: string): SourceRef | SourceRefError | undefined {
       : { source: 'notion', id: canonical };
   }
   if (source === 'gdocs') {
-    return GOOGLE_ID.test(id) ? { source: 'gdocs', id } : fail(text, GOOGLE_ID_SHAPE);
+    // `<docId>` or `<docId>#<tabId>`, and nothing else: a second `#` is not a
+    // ref at all (ticket 37).
+    const [docId = '', tabId, ...rest] = id.split('#');
+    if (!GOOGLE_ID.test(docId)) return fail(text, GOOGLE_ID_SHAPE);
+    if (rest.length > 0) return fail(text, GOOGLE_TAB_SHAPE);
+    if (tabId === undefined) return { source: 'gdocs', id: docId };
+    return GOOGLE_TAB_ID.test(tabId)
+      ? { source: 'gdocs', id: `${docId}#${tabId}` }
+      : fail(text, GOOGLE_TAB_SHAPE);
   }
   return undefined;
 }
@@ -209,10 +230,46 @@ const GOOGLE_FOLDER = 'application/vnd.google-apps.folder';
 export function sourceUrl(ref: SourceRef, mimeType?: string): string {
   if (ref.source === 'notion') return `https://www.notion.so/${ref.id}`;
   if (mimeType === GOOGLE_FOLDER) return `https://drive.google.com/drive/folders/${ref.id}`;
+  const { docId, tabId } = splitGDocsRef(ref);
+  // Only a Google Doc has tabs, so a tab ref is one whatever Drive said the
+  // file was — and the URL opens on that tab (MANUAL §6, ticket 37).
+  if (tabId !== undefined) {
+    return `https://docs.google.com/document/d/${docId}/edit?tab=${tabId}`;
+  }
   const kind = mimeType === undefined ? undefined : GOOGLE_PATHS[mimeType];
   return kind === undefined
-    ? `https://drive.google.com/file/d/${ref.id}/view`
-    : `https://docs.google.com/${kind}/d/${ref.id}/edit`;
+    ? `https://drive.google.com/file/d/${docId}/view`
+    : `https://docs.google.com/${kind}/d/${docId}/edit`;
+}
+
+/** A `gdocs:` ref taken apart: the Doc, and the tab of it when it names one. */
+export interface GDocsTarget {
+  docId: string;
+  /** The tab, for a ref of the form `gdocs:<docId>#<tabId>` (MANUAL §6). */
+  tabId?: string;
+}
+
+/**
+ * Splits a `gdocs:` ref into the Doc and the tab (ticket 37).
+ *
+ * The id is one token everywhere it is stored — frontmatter, the index, a
+ * manifest — and this is the one place that takes it apart, so that nothing
+ * else has to know that the separator is a `#`.
+ */
+export function splitGDocsRef(ref: SourceRef): GDocsTarget {
+  const at = ref.id.indexOf('#');
+  if (at === -1) return { docId: ref.id };
+  return { docId: ref.id.slice(0, at), tabId: ref.id.slice(at + 1) };
+}
+
+/** The Doc a ref names, tab or no tab: what a manifest and an ignore list mean. */
+export function docRefOf(ref: SourceRef): SourceRef {
+  return { source: ref.source, id: splitGDocsRef(ref).docId };
+}
+
+/** The ref of one tab, or of the Doc itself when there is no tab to name. */
+export function tabRef(docId: string, tabId: string | undefined): SourceRef {
+  return { source: 'gdocs', id: tabId === undefined || tabId === '' ? docId : `${docId}#${tabId}` };
 }
 
 /** Whether two refs address the same object. */
