@@ -177,7 +177,49 @@ export interface InlineObject {
   };
 }
 
-/** A Google Doc, as `documents.get` answers it. */
+/**
+ * What one tab is called and where it sits (MANUAL §6, ticket 37).
+ *
+ * `tabId` is immutable and always starts with `t.`; `index` orders a tab among
+ * its siblings, and `parentTabId` is empty on a root-level tab.
+ */
+export interface TabProperties {
+  tabId?: string;
+  title?: string;
+  index?: number;
+  parentTabId?: string;
+  nestingLevel?: number;
+}
+
+/**
+ * One tab's contents: everything a document used to carry at the top level.
+ * Asked for with `includeTabsContent=true`, which is when the reply stops
+ * carrying a top-level `body` at all.
+ */
+export interface DocumentTab {
+  body?: { content?: StructuralElement[] };
+  lists?: Record<string, DocsList>;
+  footnotes?: Record<string, Footnote>;
+  inlineObjects?: Record<string, InlineObject>;
+  positionedObjects?: Record<string, unknown>;
+}
+
+/** One tab of a document, and the tabs nested inside it. */
+export interface Tab {
+  tabProperties?: TabProperties;
+  documentTab?: DocumentTab;
+  childTabs?: Tab[];
+}
+
+/**
+ * A Google Doc, as `documents.get` answers it.
+ *
+ * With `includeTabsContent=true` — which is how docsync always asks (ticket
+ * 37) — the contents are under `tabs` and `body` is absent. The top-level
+ * fields are still spelled here because a document *view* of one tab has the
+ * same shape (`tabs.ts`), and because recorded fixtures taken before the flag
+ * carry them.
+ */
 export interface DocsDocument {
   documentId?: string;
   title?: string;
@@ -185,6 +227,8 @@ export interface DocsDocument {
   lists?: Record<string, DocsList>;
   footnotes?: Record<string, Footnote>;
   inlineObjects?: Record<string, InlineObject>;
+  /** Every root-level tab, each with its own children (MANUAL §6). */
+  tabs?: Tab[];
 }
 
 /** One `batchUpdate` request. The API's own JSON, not a wrapper. */
@@ -196,6 +240,8 @@ export type DocsWriteRequest = Record<string, unknown>;
  */
 export interface DocsWriteReply {
   createFootnote?: { footnoteId?: string };
+  /** The tab `addDocumentTab` made, which is where its id comes from (ticket 37). */
+  addDocumentTab?: { tabProperties?: TabProperties };
   /**
    * The suggestion this request became, in suggesting mode (MANUAL §7). A
    * Developer Preview field: a batch sent with `writeMode: SUGGEST` writes
@@ -442,7 +488,12 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
       // push asks for them inline: it has to know they are there, and it has
       // to see the document as it is to address it (ticket 16).
       const view = mode === 'inline' ? 'SUGGESTIONS_INLINE' : 'PREVIEW_WITHOUT_SUGGESTIONS';
-      return json<DocsDocument>(`${DOCS_ENDPOINT}/documents/${id}?suggestionsViewMode=${view}`);
+      // Always with the tabs (ticket 37): asked without the flag, the API
+      // answers the first tab as the legacy `body` and says nothing about the
+      // rest, so a Gemini notes Doc would arrive as its "Quick notes" alone.
+      return json<DocsDocument>(
+        `${DOCS_ENDPOINT}/documents/${id}?suggestionsViewMode=${view}&includeTabsContent=true`,
+      );
     },
 
     async comments(id) {

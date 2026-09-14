@@ -95,7 +95,8 @@ describe('getDocument', () => {
 
     expect(await api.getDocument('d')).toEqual({ documentId: 'd', title: 'Doc' });
     expect(calls[0]).toBe(
-      `${DOCS_ENDPOINT}/documents/d?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS`,
+      `${DOCS_ENDPOINT}/documents/d?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS` +
+        '&includeTabsContent=true',
     );
   });
 
@@ -103,7 +104,31 @@ describe('getDocument', () => {
     const { api, calls } = apiWith([{ body: { documentId: 'd' } }]);
 
     await api.getDocument('d', 'inline');
-    expect(calls[0]).toBe(`${DOCS_ENDPOINT}/documents/d?suggestionsViewMode=SUGGESTIONS_INLINE`);
+    expect(calls[0]).toBe(
+      `${DOCS_ENDPOINT}/documents/d?suggestionsViewMode=SUGGESTIONS_INLINE&includeTabsContent=true`,
+    );
+  });
+
+  it('always asks for the tabs, since asking is the only way to hear of them', async () => {
+    // Without the flag the API answers the first tab as the legacy `body` and
+    // says nothing about the rest, which is the bug of ticket 37 (MANUAL §6).
+    const { api, calls } = apiWith([{ body: { documentId: 'd' } }, { body: { documentId: 'd' } }]);
+
+    await api.getDocument('d');
+    await api.getDocument('d', 'inline');
+    for (const call of calls) expect(call).toContain('includeTabsContent=true');
+  });
+
+  it('answers the tabs the reply carries', async () => {
+    const tabs = [
+      {
+        tabProperties: { tabId: 't.0', title: 'Quick notes', index: 0, nestingLevel: 0 },
+        documentTab: { body: { content: [] } },
+      },
+    ];
+    const { api } = apiWith([{ body: { documentId: 'd', title: 'Doc', tabs } }]);
+
+    expect((await api.getDocument('d')).tabs).toEqual(tabs);
   });
 });
 
