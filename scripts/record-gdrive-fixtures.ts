@@ -24,6 +24,13 @@
  * behind it, saved as `asset-<objectId><ext>` (ticket 14). The bytes are what
  * the fetch tests compare against, so a stale URI costs nothing.
  *
+ * Every `documents.get` asks with `includeTabsContent=true`, which is how the
+ * adapter asks (ticket 37): without it the API answers the first tab as the
+ * legacy `body` and says nothing about the rest. The fixtures recorded before
+ * this ticket were taken without the flag and are deliberately left as they
+ * are — a document with no `tabs` field is a shape the adapter still reads, and
+ * those recordings are what proves it.
+ *
  * Re-run only deliberately.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -190,10 +197,12 @@ async function record(folderId: string, path: string): Promise<void> {
     }
     if (file.mimeType === DOC) {
       const document = await json(
-        `https://docs.googleapis.com/v1/documents/${file.id}?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS`,
+        `https://docs.googleapis.com/v1/documents/${file.id}` +
+          `?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS&includeTabsContent=true`,
       );
       const inline = await json(
-        `https://docs.googleapis.com/v1/documents/${file.id}?suggestionsViewMode=SUGGESTIONS_INLINE`,
+        `https://docs.googleapis.com/v1/documents/${file.id}` +
+          `?suggestionsViewMode=SUGGESTIONS_INLINE&includeTabsContent=true`,
       );
       const comments = await listComments(file.id);
       requests += 3;
