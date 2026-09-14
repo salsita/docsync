@@ -16,15 +16,22 @@ import { createFakeCredentialProvider } from '../auth/index.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import type { FetchedFile } from '../source.js';
+import type { DocsDocument } from './api.js';
 import { suggestionThreads } from './comments.js';
 import { createFakeDrive, type FakeDrive } from './fake-api.mock.js';
 import { markdownToRequests } from './from-markdown.js';
 import { fetchRoot } from './index.js';
 import { pushRoot } from './push.js';
+import { flattenTabs } from './tabs.js';
 import { footnoteRequests } from './write.js';
 
 const FOLDER_ID = 'folder-client';
 const BRIEF_ID = 'doc-brief';
+/** The one tab of a fake Doc, which is the whole Doc (ticket 37). */
+function onlyTab(document: DocsDocument): DocsDocument {
+  return flattenTabs(document)[0]?.doc ?? {};
+}
+
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const PATH = 'client/Brief.md';
 
@@ -295,7 +302,7 @@ describe('the discovery rewrite, suggested', () => {
     const { replies } = await api.batchUpdate(BRIEF_ID, plan.requests);
     await api.batchUpdate(
       BRIEF_ID,
-      footnoteRequests(plan.footnotes, replies, 0, await api.getDocument(BRIEF_ID)),
+      footnoteRequests(plan.footnotes, replies, 0, onlyTab(await api.getDocument(BRIEF_ID))),
     );
 
     const first = await fetched(api);
@@ -317,7 +324,7 @@ describe('the discovery rewrite, suggested', () => {
       { api },
     );
 
-    const inline = await api.getDocument(BRIEF_ID, 'inline');
+    const inline = onlyTab(await api.getDocument(BRIEF_ID, 'inline'));
     const threads = suggestionThreads(inline, api.markdown(BRIEF_ID));
     const ids = new Set(threads.map((thread) => thread.id));
 

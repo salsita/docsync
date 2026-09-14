@@ -9,13 +9,15 @@
 import type {
   BatchUpdateResult,
   DocsDocument,
+  DocsWriteReply,
   DocsWriteRequest,
   DriveFile,
   FileMetadata,
   GDriveApi,
   MoveOptions,
+  Tab,
 } from './api.js';
-import { createDocsModel, type DocsModel } from './docs-model.mock.js';
+import { createDocsModel, type DocsModel, type ViewMode } from './docs-model.mock.js';
 import { documentToMarkdown } from './to-markdown.js';
 
 /** One file in the fake Drive. */
@@ -28,17 +30,31 @@ export interface FakeFile {
   bytes?: Uint8Array;
 }
 
+/** One tab of a fake Doc: its own body, its title, and where it is nested. */
+export interface FakeTab {
+  id: string;
+  title: string;
+  parentId?: string;
+  model: DocsModel;
+}
+
 export interface FakeDrive extends GDriveApi {
   /** Every file, by id, including the ones a push made. */
   files: Map<string, FakeFile>;
+  /** The tabs of one Doc, in order, for a test that asserts on them. */
+  tabs(id: string): FakeTab[];
   /** Bytes by URI, for the images a document already holds. */
   hosted: Map<string, Uint8Array>;
   /** The shares that exist right now, as `<fileId>:<permissionId>`. */
   permissions: Set<string>;
   /** Every operation, in order: `createFile Notes`, `trash doc1`, … */
   calls: string[];
-  /** One document's body as Markdown, for asserting what a push wrote. */
-  markdown(id: string): string;
+  /**
+   * One document's body as Markdown, for asserting what a push wrote. A Doc
+   * with several tabs is asked one tab at a time (ticket 37); with none named,
+   * it is the first tab, which is the whole Doc when there is only one.
+   */
+  markdown(id: string, tabId?: string): string;
 }
 
 const DOCUMENT = 'application/vnd.google-apps.document';
@@ -46,7 +62,10 @@ const DOCUMENT = 'application/vnd.google-apps.document';
 /** A Drive holding the files given, with an empty document behind each Doc. */
 export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDrive {
   const files = new Map<string, FakeFile>();
-  const documents = new Map<string, DocsModel>();
+  // A Doc is its tabs (MANUAL §6, ticket 37): one of them for a Doc as most
+  // Docs are, and the model of a body behind each.
+  const documents = new Map<string, FakeTab[]>();
+  let nextTab = 0;
   const hosted = new Map<string, Uint8Array>();
   const permissions = new Set<string>();
   const calls: string[] = [];
@@ -62,7 +81,74 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       ...(one.bytes === undefined ? {} : { bytes: one.bytes }),
     };
     files.set(file.id, file);
-    if (file.mimeType === DOCUMENT) documents.set(file.id, createDocsModel(file.id, file.name));
+    if (file.mimeType === DOCUMENT) documents.set(file.id, [firstTab(file.id, file.name)]);
+  }
+
+  /** The tab every Doc has: `t.0`, which is what a one-tab Doc's id is. */
+  function firstTab(id: string, name: string): FakeTab {
+    return { id: 't.0', title: name, model: createDocsModel(id, name) };
+  }
+
+  /** The tabs of a Doc, or a loud failure: nothing else is a Doc. */
+  function tabsOf(id: string): FakeTab[] {
+    const found = documents.get(id);
+    if (found === undefined) throw new Error(`no document ${id}`);
+    return found;
+  }
+
+  /** One tab, by the id a request named, or the first one when it named none. */
+  function tabFor(id: string, tabId: string | undefined): FakeTab {
+    const tabs = tabsOf(id);
+    // The API's own rule: no `tabId` means the first tab (MANUAL §7).
+    const found = tabId === undefined ? tabs[0] : tabs.find((tab) => tab.id === tabId);
+    if (found === undefined) throw new Error(`no tab ${tabId ?? '(first)'} in ${id}`);
+    return found;
+  }
+
+  /** The tab a request is addressed to: any `tabId` inside it, at any depth. */
+  function tabIdOf(value: unknown): string | undefined {
+    if (Array.isArray(value)) {
+      for (const one of value) {
+        const found = tabIdOf(one);
+        if (found !== undefined) return found;
+      }
+      return undefined;
+    }
+    if (typeof value !== 'object' || value === null) return undefined;
+    const record = value as Record<string, unknown>;
+    if (typeof record.tabId === 'string') return record.tabId;
+    for (const one of Object.values(record)) {
+      const found = tabIdOf(one);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  /** The reply's tab tree: a parent, then the tabs nested in it. */
+  function tabTree(id: string, mode: ViewMode, parentId?: string): Tab[] {
+    return tabsOf(id)
+      .filter((tab) => tab.parentId === parentId)
+      .map((tab, index): Tab => {
+        const document = tab.model.document(mode);
+        return {
+          tabProperties: {
+            tabId: tab.id,
+            title: tab.title,
+            index,
+            nestingLevel: parentId === undefined ? 0 : 1,
+            ...(parentId === undefined ? {} : { parentTabId: parentId }),
+          },
+          documentTab: {
+            ...(document.body === undefined ? {} : { body: document.body }),
+            ...(document.lists === undefined ? {} : { lists: document.lists }),
+            ...(document.footnotes === undefined ? {} : { footnotes: document.footnotes }),
+            ...(document.inlineObjects === undefined
+              ? {}
+              : { inlineObjects: document.inlineObjects }),
+          },
+          childTabs: tabTree(id, mode, tab.id),
+        };
+      });
   }
 
   function metadata(file: FakeFile): DriveFile {
@@ -85,7 +171,7 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       ...(bytes === undefined ? {} : { bytes }),
     };
     files.set(file.id, file);
-    if (file.mimeType === DOCUMENT) documents.set(file.id, createDocsModel(file.id, file.name));
+    if (file.mimeType === DOCUMENT) documents.set(file.id, [firstTab(file.id, file.name)]);
     calls.push(`create ${file.name}`);
     return metadata(file);
   }
@@ -116,12 +202,14 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       return { bytes, contentType: 'image/png' };
     },
 
-    markdown(id) {
-      const model = documents.get(id);
-      if (model === undefined) throw new Error(`no document ${id}`);
+    tabs(id) {
+      return tabsOf(id);
+    },
+
+    markdown(id, tabId) {
       // The body as everyone but a reviewer sees it: what a suggestion proposes
       // is not in it (MANUAL §6).
-      return documentToMarkdown(model.document('preview'));
+      return documentToMarkdown(tabFor(id, tabId).model.document('preview'));
     },
 
     async listFolder(id) {
@@ -136,11 +224,11 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
     },
 
     async getDocument(id, mode = 'preview'): Promise<DocsDocument> {
-      const model = documents.get(id);
-      if (model === undefined) throw new Error(`no document ${id}`);
+      // As the real API answers with `includeTabsContent=true` (ticket 37):
+      // the contents are under `tabs` and there is no top-level body at all.
       // Inline is the view a push and a comment sidecar read: the pending
       // suggestions are on the runs they touch (MANUAL §6, §7).
-      return model.document(mode);
+      return { documentId: id, title: get(id).name, tabs: tabTree(id, mode) };
     },
 
     async comments() {
@@ -157,11 +245,54 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
     },
 
     async batchUpdate(documentId, requests, options = {}): Promise<BatchUpdateResult> {
-      const model = documents.get(documentId);
-      if (model === undefined) throw new Error(`no document ${documentId}`);
+      const tabs = tabsOf(documentId);
       const suggesting = options.suggest === true;
       calls.push(`batchUpdate ${documentId}${suggesting ? ' suggest' : ''}`);
-      const replies = model.apply(requests as DocsWriteRequest[], { suggest: suggesting });
+
+      const replies: DocsWriteReply[] = [];
+      for (const request of requests as DocsWriteRequest[]) {
+        const [name] = Object.keys(request);
+        // The three tab requests are the document's own, not a body's.
+        if (name === 'addDocumentTab') {
+          const properties = (request.addDocumentTab as { tabProperties?: Record<string, string> })
+            ?.tabProperties;
+          nextTab += 1;
+          const id = `t.new${nextTab}`;
+          const title = properties?.title ?? 'Untitled';
+          tabs.push({
+            id,
+            title,
+            ...(properties?.parentTabId === undefined ? {} : { parentId: properties.parentTabId }),
+            model: createDocsModel(documentId, title),
+          });
+          calls.push(`addTab ${documentId} ${title}`);
+          replies.push({ addDocumentTab: { tabProperties: { tabId: id, title } } });
+          continue;
+        }
+        if (name === 'updateDocumentTabProperties') {
+          const properties = (
+            request.updateDocumentTabProperties as { tabProperties?: Record<string, string> }
+          )?.tabProperties;
+          const tab = tabFor(documentId, properties?.tabId);
+          tab.title = properties?.title ?? tab.title;
+          calls.push(`renameTab ${documentId} ${tab.id} ${tab.title}`);
+          replies.push({});
+          continue;
+        }
+        if (name === 'deleteTab') {
+          const tabId = (request.deleteTab as { tabId?: string })?.tabId;
+          const at = tabs.findIndex((tab) => tab.id === tabId);
+          if (at >= 0) tabs.splice(at, 1);
+          calls.push(`deleteTab ${documentId} ${tabId ?? ''}`);
+          replies.push({});
+          continue;
+        }
+        // Everything else is addressed to one tab's body, by the `tabId` the
+        // request carries — and to the first tab when it carries none.
+        replies.push(
+          ...tabFor(documentId, tabIdOf(request)).model.apply([request], { suggest: suggesting }),
+        );
+      }
       const ids = replies.map((reply) => reply.suggestionId ?? '').filter((id) => id !== '');
       return { replies, suggestionIds: [...new Set(ids)] };
     },

@@ -22,9 +22,11 @@ import type { Root } from '../manifest/types.js';
 import { parseMarkdown, stringifyMarkdown } from '../markdown.js';
 import { type FileChange, PushError, type PushReport } from '../push-types.js';
 import type { Progress, ProgressOptions } from '../source.js';
+import { type SourceRef, splitGDocsRef } from '../source-ref.js';
 import {
   commentUpdateFailed,
   DEFAULT_UPLOAD_MIME,
+  type DocsDocument,
   FOLDER_MIME,
   type GDriveApi,
   PREVIEW_HINT,
@@ -33,6 +35,7 @@ import { objectRangeOf, stageImages, withSharedImages } from './assets.js';
 import { gdriveApi } from './index.js';
 import { type PatchPlan, planPatch } from './patch.js';
 import { readLive } from './ranges.js';
+import { type DocTab, flattenTabs } from './tabs.js';
 import { type BodyResult, createGDriveWriter, type GDriveWriter } from './write.js';
 
 export interface PushOptions extends ProgressOptions {
@@ -97,14 +100,81 @@ async function pushWith(
   // (MANUAL §12 phase 2). It is never uploaded to Drive as a file of its own:
   // Docs copies the bytes into the document, and the Drive copy is temporary.
   const assetChanges = all.filter((change) => isAssetPath(change.path));
-  const changes = all.filter((change) => !isAssetPath(change.path));
-  refuseOrphanedLinks(assetChanges, changes, index);
+  const everything = all.filter((change) => !isAssetPath(change.path));
+  refuseOrphanedLinks(assetChanges, everything, index);
 
   // What the last fetch left behind, for this root's source only.
   const known = new Map<string, IndexEntry>();
   for (const entry of index.values()) {
     if (entry.src.source === 'gdocs') known.set(entry.path, entry);
   }
+
+  /**
+   * The directories that are a Doc (MANUAL §6, ticket 37), by the Doc's id.
+   *
+   * The index says so — a tabbed Doc has an entry for its directory — and so
+   * does this push, when after its own renames a file directly in a directory
+   * resolves to a Doc: that is `git mv X.md X/A.md`, the transition from one
+   * tab to many made in the checkout.
+   */
+  const tabDirs = new Map<string, string>();
+  for (const entry of known.values()) {
+    if (entry.type === 'gdoc' && entry.path.endsWith('/')) tabDirs.set(entry.path, entry.src.id);
+  }
+  for (const change of everything) {
+    const ref = refOf(change, known);
+    if (ref === undefined) continue;
+    const { docId, tabId } = splitGDocsRef(ref);
+    if (tabId !== undefined) {
+      tabDirs.set(directoryOf(change.path), docId);
+      continue;
+    }
+    // `git mv X.md X/A.md`: a Doc that was one file, moved into a directory
+    // nothing else is in. A move into a folder that holds other documents is
+    // what it has always been — a move between Drive folders (MANUAL §8).
+    if (
+      change.kind !== 'renamed' ||
+      change.previousPath === undefined ||
+      known.get(change.previousPath)?.type !== 'gdoc' ||
+      directoryOf(change.previousPath) === directoryOf(change.path)
+    ) {
+      continue;
+    }
+    const directory = directoryOf(change.path);
+    const shared = [...known.values()].some(
+      (entry) => entry.path.startsWith(directory) && splitGDocsRef(entry.src).docId !== docId,
+    );
+    if (!shared) tabDirs.set(directory, docId);
+  }
+
+  /** The Doc's directory a path is inside, the longest one when tabs nest. */
+  const tabDirOf = (path: string | undefined): string | undefined => {
+    if (path === undefined) return undefined;
+    let longest: string | undefined;
+    for (const directory of tabDirs.keys()) {
+      if (!path.startsWith(directory)) continue;
+      if (longest === undefined || directory.length > longest.length) longest = directory;
+    }
+    return longest;
+  };
+
+  /** The Doc a path belongs to as a tab file, or as the directory itself. */
+  const tabDocOf = (path: string | undefined): string | undefined => {
+    const directory = tabDirOf(path);
+    return directory === undefined ? undefined : tabDirs.get(directory);
+  };
+
+  // A tab file and the directory it sits in are the Doc, not a file of the
+  // Drive folder: they go through their own pass below, which never creates a
+  // folder and never renames the Drive file for a tab.
+  const tabChanges = everything.filter(
+    (change) =>
+      change.path.endsWith('/') ||
+      (change.previousPath ?? '').endsWith('/') ||
+      tabDocOf(change.path) !== undefined ||
+      tabDocOf(change.previousPath) !== undefined,
+  );
+  const changes = everything.filter((change) => !tabChanges.includes(change));
 
   // A Sheet, Slides or Drawing is a rendering of something the dialect cannot
   // carry back, so a change to its content is refused by name (MANUAL §7).
@@ -150,14 +220,136 @@ async function pushWith(
     return parent;
   }
 
+  // One line per document, before its requests go out (MANUAL §7).
+  const total = everything.length;
+  let done = 0;
+
+  /**
+   * Pass zero: the tabs of a Doc with several of them, and the directory that
+   * *is* that Doc (MANUAL §6, §7, ticket 37).
+   *
+   * Nothing here touches the Drive folder tree: a tab is inside the Doc, so a
+   * new tab file is `addDocumentTab` and not a new Doc, a retitle is
+   * `updateDocumentTabProperties` and not a Drive rename, and the directory
+   * itself is the Doc — renamed, moved or trashed as the Doc.
+   */
+  for (const change of tabChanges) {
+    progress(`${++done}/${total} ${change.path}`);
+    const previous = known.get(change.previousPath ?? change.path);
+    const docId =
+      tabDocOf(change.path) ??
+      tabDocOf(change.previousPath) ??
+      (previous === undefined ? undefined : splitGDocsRef(previous.src).docId);
+    // A directory nothing resolves to was never at the source (MANUAL §8).
+    if (docId === undefined) continue;
+
+    if (change.path.endsWith('/') || (change.previousPath ?? '').endsWith('/')) {
+      await pushDirectory(change, docId);
+      continue;
+    }
+
+    const document = parseDocument(change.text ?? '');
+    const ref = refOf(change, known);
+    const wanted = document.frontmatter?.title ?? stem(nameOf(change.path));
+
+    if (ref === undefined) {
+      // A new `.md` with frontmatter and no id inside a tabbed Doc's directory
+      // is a new tab; the id arrives with the post-push fetch (ticket 37).
+      if (change.text === undefined) {
+        throw new PushError(
+          'a Google Doc holds tabs, not files; only a .md file with frontmatter is a tab of it',
+          change.path,
+        );
+      }
+      const made = await writer.addTab(docId, wanted, parentTabOf(change.path));
+      await writer.writeTab(docId, made, document.body);
+      report.push({ path: change.path, title: wanted, action: 'created' });
+      continue;
+    }
+
+    const tabId = splitGDocsRef(ref).tabId;
+    const live = await api.getDocument(docId, 'inline');
+    const tab = tabId === undefined ? flattenTabs(live)[0] : tabOfId(live, tabId);
+    if (tab === undefined) {
+      throw new PushError(
+        `the Google Doc has no tab ${tabId ?? ''} any more; fetch, merge and push again`,
+        change.path,
+      );
+    }
+
+    // A changed `title:`, or a renamed file, retitles the tab. The filename
+    // follows on the next fetch, as a Doc's does (MANUAL §6).
+    let renamed = false;
+    if (tab.id !== undefined && tab.title !== wanted) {
+      await writer.renameTab(docId, tab.id, wanted);
+      renamed = true;
+    }
+    if (change.text === undefined) {
+      report.push({ path: change.path, title: wanted, action: renamed ? 'renamed' : 'updated' });
+      continue;
+    }
+
+    const suggest = root.suggest === true;
+    const patched = await patchDocument(
+      api,
+      writer,
+      docId,
+      change,
+      document.body,
+      known,
+      // A tab's images are staged beside the Doc, which lives in the folder the
+      // Doc's directory sits in — never in a folder named after the directory.
+      await folderFor(trimSlash(tabDirOf(change.path) ?? directoryOf(change.path))),
+      progress,
+      suggest,
+      { document: live, id: tab.id },
+    );
+    if (patched.uploaded > 0) uploaded.set(change.path, patched.uploaded);
+    if (patched.skipped.length > 0) skippedFiles.set(change.path, patched.skipped);
+    report.push({
+      path: change.path,
+      title: wanted,
+      action: suggest ? 'suggested' : 'updated',
+      ...(suggest ? { suggested: patched.suggested } : {}),
+      blocks: patched.plan.counts,
+      ...(patched.plan.suggestions.length === 0 ? {} : { suggestions: patched.plan.suggestions }),
+      ...(patched.uploaded === 0 ? {} : { uploaded: patched.uploaded }),
+      ...(patched.skipped.length === 0 ? {} : { skippedFiles: patched.skipped }),
+    });
+  }
+
+  /**
+   * A tabbed Doc's directory: it is the Doc (ticket 37). Renaming it retitles
+   * the Doc, moving it moves the Doc between Drive folders, and deleting the
+   * whole of it — every tab file gone — trashes the Doc (MANUAL §8).
+   */
+  async function pushDirectory(change: FileChange, docId: string): Promise<void> {
+    const title = stem(nameOf(trimSlash(change.path)));
+    if (change.kind === 'deleted') {
+      await writer.trash(docId);
+      report.push({ path: change.path, title, action: 'trashed' });
+      return;
+    }
+    if (change.kind !== 'renamed' || change.previousPath === undefined) return;
+    const from = await folderFor(trimSlash(change.previousPath));
+    const to = await folderFor(trimSlash(change.path));
+    if (from !== to) await writer.move(docId, to, from);
+    if (stem(nameOf(trimSlash(change.previousPath))) !== title) await writer.rename(docId, title);
+    report.push({ path: change.path, title, action: 'renamed' });
+  }
+
+  /** The tab whose directory a new tab file sits in, for `parentTabId`. */
+  function parentTabOf(path: string): string | undefined {
+    const directory = directoryOf(path);
+    if (tabDirs.has(directory)) return undefined;
+    const parent = known.get(`${trimSlash(directory)}.md`);
+    return parent === undefined ? undefined : splitGDocsRef(parent.src).tabId;
+  }
+
   // Pass one: everything new, in path order so that a folder is made before
   // the files under it need it.
   const added = changes.filter((change) => change.kind === 'added');
   const created = new Map<string, string>();
-  // One line per document, before its requests go out (MANUAL §7). Creations
-  // come first here, so they are numbered first.
-  const total = changes.length;
-  let done = 0;
   for (const change of [...added].sort((a, b) => a.path.localeCompare(b.path))) {
     progress(`${++done}/${total} ${change.path}`);
     const parent = await folderFor(change.path);
@@ -270,13 +462,18 @@ async function pushWith(
     const document = known.get(documentPath);
     if (document === undefined) continue;
 
-    const live = await api.getDocument(document.src.id, 'inline');
-    const at = objectRangeOf(live, entry.src.id);
+    // The object lives in one tab, and so do the indices that address it
+    // (ticket 37): the Doc is read, and the tab the document file names is the
+    // one the two requests below are sent to.
+    const { docId, tabId } = splitGDocsRef(document.src);
+    const live = await api.getDocument(docId, 'inline');
+    const tab = tabId === undefined ? flattenTabs(live)[0] : tabOfId(live, tabId);
+    const at = objectRangeOf(tab?.doc ?? live, entry.src.id);
     if (at === undefined) continue;
 
     const staged = await stageImages(api, [change.path], new Map([[change.path, change.bytes]]), {
       documentPath,
-      parentId: await folderFor(documentPath),
+      parentId: await folderFor(trimSlash(tabDirOf(documentPath) ?? directoryOf(documentPath))),
     });
     for (const one of staged.skipped) {
       skippedFiles.set(documentPath, [...(skippedFiles.get(documentPath) ?? []), one]);
@@ -284,12 +481,17 @@ async function pushWith(
     if (staged.images.length === 0) continue;
     for (const one of staged.images) progress(`upload ${one.path}`);
 
+    const inTab = tab?.id === undefined ? {} : { tabId: tab.id };
     const outcome = await withSharedImages(api, staged.images, () =>
-      api.batchUpdate(document.src.id, [
-        { deleteContentRange: { range: { startIndex: at.start, endIndex: at.end } } },
+      api.batchUpdate(docId, [
+        {
+          deleteContentRange: {
+            range: { startIndex: at.start, endIndex: at.end, ...inTab },
+          },
+        },
         {
           insertInlineImage: {
-            location: { index: at.start },
+            location: { index: at.start, ...inTab },
             uri: staged.images[0]?.uri ?? '',
           },
         },
@@ -351,6 +553,10 @@ async function patchDocument(
   parentId: string,
   progress: Progress,
   suggest = false,
+  // The tab this patch is addressed to, when the caller has already read the
+  // document to find it (ticket 37). Absent for a Doc that is one file, whose
+  // one tab is read here.
+  tab?: { document: DocsDocument; id: string | undefined },
 ): Promise<{
   plan: PatchPlan;
   uploaded: number;
@@ -373,10 +579,15 @@ async function patchDocument(
       links.set(entry.src.id, entry.path);
     }
   }
-  const live = readLive(await api.getDocument(id, 'inline'), {
-    assets: links,
-    from: change.path,
-  });
+  // The document as one tab, which is what the dialect describes and what
+  // every request addresses (MANUAL §6, ticket 37). A Doc of one tab still has
+  // a tab id, and the push names it: a request without one lands in the first
+  // tab, which is only the right tab by accident.
+  const document = tab?.document ?? (await api.getDocument(id, 'inline'));
+  const tabs = flattenTabs(document);
+  const chosen = tab === undefined ? tabs[0] : tabs.find((one) => one.id === tab.id);
+  const tabId = chosen?.id;
+  const live = readLive(chosen?.doc ?? document, { assets: links, from: change.path });
   const base = parseDocument(change.previousText).body;
   // Both sides go through the one pipeline before they are compared, so that a
   // spelling the dialect accepts either way is not read as someone else's edit.
@@ -405,7 +616,7 @@ async function patchDocument(
   const plan = planPatch(live, ops, { path: change.path, images, suggest });
   if (staged.images.length === 0) {
     const written = await write(
-      () => writer.patchBody(id, plan, { suggest }),
+      () => writer.patchBody(id, plan, { suggest, ...(tabId === undefined ? {} : { tabId }) }),
       change.path,
       suggest,
     );
@@ -414,7 +625,11 @@ async function patchDocument(
 
   // The share exists for exactly one batch, and the copies go with it.
   const outcome = await withSharedImages(api, staged.images, () =>
-    write(() => writer.patchBody(id, plan, { suggest }), change.path, suggest),
+    write(
+      () => writer.patchBody(id, plan, { suggest, ...(tabId === undefined ? {} : { tabId }) }),
+      change.path,
+      suggest,
+    ),
   );
   refuseIfLeftBehind(outcome, change.path);
   return {
@@ -507,6 +722,33 @@ async function shouldRename(
 function isDocument(change: FileChange, known: IndexEntry | undefined): boolean {
   if (known !== undefined) return known.type === 'gdoc';
   return change.text !== undefined;
+}
+
+/**
+ * What a change is about, as a source ref: the frontmatter's id, or what the
+ * index says the path is. For a tab file that is `gdocs:<docId>#<tabId>`.
+ */
+function refOf(change: FileChange, known: ReadonlyMap<string, IndexEntry>): SourceRef | undefined {
+  const frontmatter =
+    change.text === undefined ? undefined : parseDocument(change.text).frontmatter?.id;
+  if (frontmatter?.source === 'gdocs') return frontmatter;
+  const entry = known.get(change.previousPath ?? change.path);
+  return entry?.src.source === 'gdocs' ? entry.src : undefined;
+}
+
+/** One tab of a document by its id, or undefined when the Doc has no such tab. */
+function tabOfId(document: DocsDocument, tabId: string): DocTab | undefined {
+  return flattenTabs(document).find((tab) => tab.id === tabId);
+}
+
+/** The directory a path sits in, trailing slash and all. */
+function directoryOf(path: string): string {
+  return path.slice(0, path.lastIndexOf('/') + 1);
+}
+
+/** A directory path without its trailing slash, so it names a thing. */
+function trimSlash(path: string): string {
+  return path.endsWith('/') ? path.slice(0, -1) : path;
 }
 
 /** The last component of a path, which is the file's name in Drive. */

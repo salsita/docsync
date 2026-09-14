@@ -10,10 +10,12 @@ import { createFakeCredentialProvider } from '../auth/index.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import type { FileChange } from '../push-types.js';
+import type { DocsDocument } from './api.js';
 import { MAX_IMAGE_BYTES } from './assets.js';
 import { createFakeDrive, type FakeDrive } from './fake-api.mock.js';
 import { markdownToRequests } from './from-markdown.js';
 import { pushRoot } from './push.js';
+import { flattenTabs } from './tabs.js';
 import { footnoteRequests } from './write.js';
 
 const ROOT_ID = 'folder-root';
@@ -92,14 +94,20 @@ function file(id: string | undefined, title: string, body: string): string {
   return `---\n${frontmatter}title: ${title}\n---\n\n${body}`;
 }
 
+/**
+ * One document of the fake Drive as the one tab it is (ticket 37): the reply
+ * carries the contents under `tabs`, as the real API does, and every Doc these
+ * tests push to has exactly one tab.
+ */
+async function onlyTab(api: FakeDrive, id: string): Promise<DocsDocument> {
+  return flattenTabs(await api.getDocument(id))[0]?.doc ?? {};
+}
+
 /** A document holding exactly what the Markdown says, as a fetch would find. */
 async function seed(api: FakeDrive, id: string, markdown: string): Promise<void> {
   const plan = markdownToRequests(markdown);
   const { replies } = await api.batchUpdate(id, plan.requests);
-  await api.batchUpdate(
-    id,
-    footnoteRequests(plan.footnotes, replies, 0, await api.getDocument(id)),
-  );
+  await api.batchUpdate(id, footnoteRequests(plan.footnotes, replies, 0, await onlyTab(api, id)));
   api.calls.length = 0;
 }
 
@@ -228,7 +236,8 @@ describe('a modified document', () => {
       ...drive0,
       async getDocument(id, mode) {
         const doc = await drive0.getDocument(id, mode);
-        const run = doc.body?.content?.[1]?.paragraph?.elements?.[0]?.textRun;
+        const body = doc.tabs?.[0]?.documentTab?.body;
+        const run = body?.content?.[1]?.paragraph?.elements?.[0]?.textRun;
         if (run !== undefined) run.suggestedDeletionIds = ['suggest.1'];
         return doc;
       },
@@ -499,7 +508,7 @@ describe('attachments (MANUAL §12 phase 2)', () => {
     expect(staged?.trashed).toBe(true);
     expect(report[0]?.uploaded).toBe(1);
 
-    const doc = await api.getDocument(ELEMENTS_ID);
+    const doc = await onlyTab(api, ELEMENTS_ID);
     const uri = Object.values(doc.inlineObjects ?? {})[0]?.inlineObjectProperties?.embeddedObject
       ?.imageProperties as { contentUri?: string } | undefined;
     expect(uri?.contentUri).toBe(`https://drive.google.com/uc?export=view&id=${staged?.id}`);
@@ -596,7 +605,7 @@ describe('attachments (MANUAL §12 phase 2)', () => {
 
     expect(report[0]?.skippedFiles?.[0]?.path).toBe(ASSET);
     expect(api.calls.filter((one) => one.startsWith('share'))).toEqual([]);
-    expect((await api.getDocument(ELEMENTS_ID)).inlineObjects).toBeUndefined();
+    expect((await onlyTab(api, ELEMENTS_ID)).inlineObjects).toBeUndefined();
   });
 
   it('replaces the object when only the bytes changed', async () => {
@@ -625,7 +634,7 @@ describe('attachments (MANUAL §12 phase 2)', () => {
       `unshare ${staged?.id}`,
       `trash ${staged?.id}`,
     ]);
-    const objects = Object.keys((await api.getDocument(ELEMENTS_ID)).inlineObjects ?? {});
+    const objects = Object.keys((await onlyTab(api, ELEMENTS_ID)).inlineObjects ?? {});
     expect(objects).toEqual(['kix.img1', 'kix.img2']);
     expect(report).toEqual([{ path: PATH, title: 'Elements.md', action: 'updated', uploaded: 1 }]);
   });
