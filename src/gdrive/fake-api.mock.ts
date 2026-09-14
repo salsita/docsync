@@ -28,6 +28,11 @@ export interface FakeFile {
   parents: string[];
   trashed?: boolean;
   bytes?: Uint8Array;
+  /**
+   * What Drive reports as the file's last-edit time. Empty unless a test sets
+   * one, which is how a fetch is made to see a document move (MANUAL §7).
+   */
+  modifiedTime?: string;
 }
 
 /** One tab of a fake Doc: its own body, its title, and where it is nested. */
@@ -79,6 +84,7 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       mimeType: one.mimeType ?? DOCUMENT,
       parents: one.parents ?? [],
       ...(one.bytes === undefined ? {} : { bytes: one.bytes }),
+      ...(one.modifiedTime === undefined ? {} : { modifiedTime: one.modifiedTime }),
     };
     files.set(file.id, file);
     if (file.mimeType === DOCUMENT) documents.set(file.id, [firstTab(file.id, file.name)]);
@@ -152,7 +158,12 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
   }
 
   function metadata(file: FakeFile): DriveFile {
-    return { id: file.id, name: file.name, mimeType: file.mimeType, modifiedTime: '' };
+    return {
+      id: file.id,
+      name: file.name,
+      mimeType: file.mimeType,
+      modifiedTime: file.modifiedTime ?? '',
+    };
   }
 
   function get(id: string): FakeFile {

@@ -125,6 +125,7 @@ const blobs: Record<string, string> = {
   'Files/Notes/One.md': `---\nid: gdocs:${TABBED}#t.0\ntitle: One\n---\n\nOne.\n`,
   'Files/Notes/Two.md': `---\nid: gdocs:${TABBED}#t.1\ntitle: Two\n---\n\nTwo.\n`,
   'Files/Out.md': `---\nid: gdocs:${TABBED}#t.0\ntitle: One\n---\n\nOne.\n`,
+  'Client/Tabbed/Three.md': FRONT,
 };
 const read = async (path: string): Promise<Uint8Array> => {
   const text = blobs[path];
@@ -735,6 +736,15 @@ describe('a Google Doc of several tabs (MANUAL §6, §8, ticket 37)', () => {
     expect(await plan(A('Files/Tabbed/Three.md'))).toEqual([
       { root: DRIVE, changes: [{ kind: 'added', path: 'Files/Tabbed/Three.md', text: FRONT }] },
     ]);
+  });
+
+  it('refuses a new tab under a suggest root, as it refuses any add', async () => {
+    // A tab file is a document, and a suggest root takes edits to documents
+    // that are already there and nothing else (MANUAL §4, §7 step 3).
+    expect(await refusal(A('Client/Tabbed/Three.md'))).toBe(
+      'Client/Tabbed/Three.md is under a suggest root (Client/); only edits to existing ' +
+        'documents can be suggested. Restore it with git checkout -- Client/Tabbed/Three.md',
+    );
   });
 
   it('carries an edit to one tab file as an edit to that file', async () => {
