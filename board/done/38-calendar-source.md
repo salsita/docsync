@@ -63,3 +63,40 @@ https://calendar.google.com/calendar/u/0/r/eventedit/MGdjZTN2a3Z1dDZjajAyN2ZiODZ
 followed by `docsync pull` (after `docsync auth google`) checks out one
 directory per past call that has notes, each holding the Gemini notes as a
 directory of tabs, and a second `docsync pull` reports nothing changed.
+
+## Outcome
+
+Landed 2026-09-15 in five agent commits (`dd06fab` … `575591c`), a review
+fix and the wording commit. `pnpm check` green, 1754 tests (+108).
+
+- The adapter in `src/calendar/`: `events.get`, `events.instances` paged
+  with `timeMax` now, cancelled instances dropped; one directory per past
+  call with an attachment, named from the start in the event's own offset;
+  the `WalkedFile` list handed to the Drive adapter's conversion, exported
+  as `convertWalk` with `driveMemory`, so tabs, assets, comments and
+  sidecars are the same code. The Google HTTP retry moved to
+  `src/google-http.ts`, shared by Drive and Calendar; `GoogleApiError`
+  carries status and detail.
+- `calendar` in `Source`; auth maps it to the Google credential
+  (`credentialSourceOf`), `docsync auth calendar` is refused; the scope
+  `calendar.events.readonly` added; a 403 for scope becomes "run `docsync
+  auth google` again".
+- Read-only everywhere via `isReadOnlyRoot`: the planner, `status`, the
+  manifest (`readonly:` refused on a calendar root), `add --readonly`
+  refused; `resolve` prints `calendar event`.
+- Deviations: the calendar id is dropped by `describe` (which has the
+  identity), not the parser; the instance-suffix cut is in the shared
+  literal parser; a single non-recurring event is not bounded by now;
+  `describe` counts an instance whose only attachment is a recording;
+  ignore patterns are not applied; a 404 on an attachment's file is
+  reported as skipped `gone` rather than failing the fetch.
+- Review fix: the agent had every `files.get` failure read as gone, which
+  would have turned an expired token into a deletion of every attachment;
+  only a 404 is gone now, anything else fails the fetch, with two tests.
+- Done-when: not yet run. It needs the owner's `docsync auth google` first,
+  since the stored token predates the calendar scope; the add and pull in
+  ramnex follow.
+- Follow-ups: a trashed attachment file is still checked out (the field
+  mask carries no `trashed`); `status` on a calendar root costs one
+  `files.get` per attachment; two calls deriving to the same directory name
+  get a suffix that is not id-stable; ignore patterns on calendar roots.
