@@ -17,6 +17,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import type { CredentialProvider } from '../auth/index.js';
 import { sidecarPathOf } from '../comments/format.js';
 import { parseDocument, serializeDocument } from '../frontmatter.js';
+import { type DocTab, tabNames, tabPaths } from '../gdrive/tabs.js';
 import type { DocumentIndex, Editor, IndexEntry } from '../index-file.js';
 import { isUnderRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
@@ -48,6 +49,13 @@ export interface FakeObject {
   parent?: string;
   /** A page's or Doc's Markdown body, canonical. */
   body?: string;
+  /**
+   * A Google Doc's tabs (MANUAL §6, ticket 37). With more than one, the Doc is
+   * a directory holding one `.md` per tab instead of a file of its own, and
+   * `body` is not used. The naming and the paths come from the adapter's own
+   * `tabs.ts`, so this is a store with tabs in it and not a second layout.
+   */
+  tabs?: { id: string; title: string; body: string }[];
   /** A file's or export's bytes, base64. */
   bytes?: string;
   lastEditedTime: string;
@@ -246,6 +254,8 @@ export function createFakeSource(store: FakeStore): Source {
     let done = 0;
 
     const files: FetchedFile[] = [];
+    /** A tabbed Doc's directory entry, which has no file of its own. */
+    const directories: IndexEntry[] = [];
     for (const one of laid) {
       const [path, object] = one;
       const sourceChanged = moved(one);
@@ -255,6 +265,50 @@ export function createFakeSource(store: FakeStore): Source {
       }
       const ref: SourceRef = { source: object.source, id: object.id };
       const bytes = object.bytes === undefined ? undefined : Buffer.from(object.bytes, 'base64');
+
+      // A Doc of several tabs is a directory of one file per tab (ticket 37).
+      if ((object.tabs ?? []).length > 1) {
+        const tabs: DocTab[] = (object.tabs ?? []).map((tab) => ({
+          id: tab.id,
+          title: tab.title,
+          nestingLevel: 0,
+          hasChildren: false,
+          doc: {},
+        }));
+        const places = tabPaths(tabs, tabNames(tabs), stem(path));
+        for (const tab of object.tabs ?? []) {
+          const at = places.get(tab.id) ?? path;
+          const tabRef: SourceRef = { source: object.source, id: `${object.id}#${tab.id}` };
+          files.push({
+            path: at,
+            entry: {
+              path: at,
+              src: tabRef,
+              type: 'gdoc',
+              lastEditedTime: object.lastEditedTime,
+            },
+            changed,
+            ...(all ? { sourceChanged } : {}),
+            ...(object.editor === undefined ? {} : { editor: object.editor }),
+            ...(changed
+              ? {
+                  body: tab.body,
+                  text: serializeDocument(
+                    { id: tabRef, title: tab.title, url: sourceUrl(tabRef, DOCUMENT_MIME) },
+                    tab.body,
+                  ),
+                }
+              : {}),
+          });
+        }
+        directories.push({
+          path: `${stem(path)}/`,
+          src: ref,
+          type: 'gdoc',
+          lastEditedTime: object.lastEditedTime,
+        });
+        continue;
+      }
       const entry: IndexEntry = {
         path,
         src: ref,
@@ -297,7 +351,10 @@ export function createFakeSource(store: FakeStore): Source {
     }
     return {
       files,
-      entries: files.flatMap((file) => (file.entry === undefined ? [] : [file.entry])),
+      entries: [
+        ...files.flatMap((file) => (file.entry === undefined ? [] : [file.entry])),
+        ...directories,
+      ],
       skipped: [],
     };
   }

@@ -617,6 +617,57 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.git(co, 'rev-parse', 'HEAD^')).toBe(w.git(co, 'rev-parse', 'origin/main'));
       expect(w.git(co, 'rev-list', '--merges', '--count', 'HEAD')).toBe('0');
     });
+
+    it('19. a Doc that gains a tab becomes a directory, and deleting one tab is refused', () => {
+      const w = world();
+      const co = w.clone();
+      expect(w.files(co)).toContain('Files/Plan.md');
+
+      // The Doc gains a second tab, as a Gemini notes Doc always has
+      // (MANUAL §6, ticket 37).
+      const state = w.store.load();
+      editObject(state, PLAN, {
+        tabs: [
+          { id: 't.0', title: 'Quick notes', body: 'The plan.\n' },
+          { id: 't.1', title: 'Transcript', body: 'Every word of it.\n' },
+        ],
+      });
+      w.store.save(state);
+
+      const pull = w.tryGit(co, 'pull');
+      expect(pull.status, pull.stderr).toBe(0);
+      expect(w.files(co)).toContain('Files/Plan/Quick notes.md');
+      expect(w.files(co)).toContain('Files/Plan/Transcript.md');
+      expect(w.files(co)).not.toContain('Files/Plan.md');
+      // Each tab file is a document of its own, by id, and the directory is
+      // the Doc.
+      expect(w.index(co).get('Files/Plan/Transcript.md')).toMatchObject({
+        type: 'gdoc',
+        src: { source: 'gdocs', id: `${PLAN}#t.1` },
+      });
+      expect(w.index(co).get('Files/Plan/')).toMatchObject({
+        type: 'gdoc',
+        src: { source: 'gdocs', id: PLAN },
+      });
+      // The old file's content came across, so git pairs the two paths.
+      expect(w.read(co, 'Files/Plan/Quick notes.md')).toContain('The plan.\n');
+      const renames = w
+        .git(co, 'diff-tree', '-M', '-r', '--name-status', 'HEAD^', 'HEAD')
+        .split('\n')
+        .filter((line) => line.startsWith('R'));
+      expect(renames.map((line) => line.split('\t').slice(1))).toEqual([
+        ['Files/Plan.md', 'Files/Plan/Quick notes.md'],
+      ]);
+
+      // And a tab is not a file you may delete: `deleteTab` has no trash (§8).
+      rmSync(join(co, 'Files/Plan/Transcript.md'));
+      w.commit(co, 'drop a tab');
+      const push = w.tryGit(co, 'push');
+      expect(push.status).not.toBe(0);
+      expect(push.stderr).toContain(
+        'Files/Plan/Transcript.md is a tab of Files/Plan/; deleting a tab is permanent',
+      );
+    });
   },
   60_000,
 );
