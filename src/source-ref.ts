@@ -5,21 +5,22 @@
  * *spellings* they accept — both agree on what a valid id is, and
  * `parseSourceRefOrUrl` accepts a strict superset of `parseSourceRef`:
  *
- * - `parseSourceRef(text)` takes the literal `notion:<id>` / `gdocs:<id>` form
- *   only, and answers `undefined` for anything else. This is the door used from
- *   inside a manifest (`src:`) and an ignore list, where an entry that is not a
+ * - `parseSourceRef(text)` takes the literal `notion:<id>` / `gdocs:<id>` /
+ *   `calendar:<eventId>` form only, and answers `undefined` for anything else.
+ *   This is the door used from inside a manifest (`src:`) and an ignore list, where an entry that is not a
  *   ref is a perfectly good gitignore pattern rather than a mistake, so there
  *   is no message to report. `isSourceRef` is the boolean version.
- * - `parseSourceRefOrUrl(text)` additionally takes the Notion, Google Docs and
- *   Drive URLs people paste (MANUAL §13: "URLs are accepted everywhere a
- *   source ref is"), and answers a `SourceRefError` instead of `undefined`, so
+ * - `parseSourceRefOrUrl(text)` additionally takes the Notion, Google Docs,
+ *   Drive and Calendar URLs people paste (MANUAL §13: "URLs are accepted
+ *   everywhere a source ref is"), and answers a `SourceRefError` instead of `undefined`, so
  *   the CLI can say what it expected. Use this one for anything a human typed.
  *
  * Canonical ids: a Notion id is 32 lowercase hex digits without dashes, and a
- * Google id is verbatim, since Drive ids are opaque. One Google form carries a
- * second id inside the first: `gdocs:<docId>#<tabId>` is one tab of a Google
- * Doc (MANUAL §6, ticket 37), which `splitGDocsRef` takes apart and nothing
- * else has to. `formatSourceRef` prints
+ * Google id is verbatim, since Drive ids are opaque. Two forms carry a second
+ * id inside the first: `gdocs:<docId>#<tabId>` is one tab of a Google Doc
+ * (MANUAL §6, ticket 37), and `calendar:<eventId>@<calendarId>` one event on
+ * somebody's calendar (ticket 38). `splitGDocsRef` and `splitCalendarRef` take
+ * them apart, and nothing else has to. `formatSourceRef` prints
  * the canonical form, which is always a literal ref and never contains a
  * slash — which is what lets an ignore list mix refs with globs.
  *
@@ -156,8 +157,8 @@ function googleFromUrl(input: string, url: URL): SourceRef | SourceRefError {
 }
 
 /**
- * Parses the literal `notion:<id>` / `gdocs:<id>` form, ignoring surrounding
- * whitespace. Returns undefined for anything else, URLs included; use
+ * Parses the literal `notion:<id>` / `gdocs:<id>` / `calendar:<eventId>` form,
+ * ignoring surrounding whitespace. Returns undefined for anything else, URLs included; use
  * `parseSourceRefOrUrl` when the text came from a person.
  */
 export function parseSourceRef(text: string): SourceRef | undefined {
@@ -166,8 +167,8 @@ export function parseSourceRef(text: string): SourceRef | undefined {
 }
 
 /**
- * Parses a literal ref or a Notion / Google Docs / Drive URL into a canonical
- * ref, or explains why the text is neither.
+ * Parses a literal ref or a Notion / Google Docs / Drive / Calendar URL into a
+ * canonical ref, or explains why the text is neither.
  */
 export function parseSourceRefOrUrl(text: string): SourceRef | SourceRefError {
   const literal = parseLiteral(text);

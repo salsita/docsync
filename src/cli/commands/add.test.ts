@@ -42,6 +42,18 @@ describe('parseSpec', () => {
     expect(spec.alias).toBe('process');
   });
 
+  it('resolves the Calendar URL of the Done-when, alias and all (ticket 38)', () => {
+    const spec = parseSpec(
+      'https://calendar.google.com/calendar/u/0/r/eventedit/' +
+        'MGdjZTN2a3Z1dDZjajAyN2ZiODZxcnRjMmEgamlyaXN0QHNhbHNpdGFzb2Z0LmNvbQ=calls/',
+    );
+    expect(spec.ref).toEqual({
+      source: 'calendar',
+      id: '0gce3vkvut6cj027fb86qrtc2a@jirist@salsitasoft.com',
+    });
+    expect(spec.alias).toBe('calls/');
+  });
+
   it('refuses an empty alias and a non-ref', () => {
     expect(() => parseSpec(`notion:${NID}=`)).toThrow(/needs a path/);
     expect(() => parseSpec('my-docs')).toThrow(/Not a source ref/);
