@@ -36,7 +36,11 @@ export function grantHint(source: Source): string {
       'sidecar beside each page will be empty.',
     ].join('\n');
   }
-  return 'Google will ask for access to Drive and Docs. Approve both; docsync needs them to read and update your documents.';
+  return (
+    'Google will ask for access to Drive, Docs and your calendar. Approve all ' +
+    'three; docsync needs them to read and update your documents, and to find ' +
+    'the files attached to a meeting.'
+  );
 }
 
 async function signInToNotion(source: Source, deps: AuthDeps): Promise<Credential> {
