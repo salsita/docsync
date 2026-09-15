@@ -713,6 +713,103 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
     ]);
   }
 
+  /** A tab of a synthetic document, with a paragraph of its own. */
+  function tab(
+    tabId: string,
+    title: string,
+    text: string,
+    index: number,
+    children: DocsDocument['tabs'] = undefined,
+  ) {
+    return {
+      tabProperties: { tabId, title, index },
+      documentTab: {
+        body: {
+          content: [
+            {
+              startIndex: 1,
+              endIndex: text.length + 2,
+              paragraph: { elements: [{ textRun: { content: `${text}\n` } }] },
+            },
+          ],
+        },
+      },
+      ...(children === undefined ? {} : { childTabs: children }),
+    };
+  }
+
+  it('gives a tab with children a file and a directory beside it', async () => {
+    const nested: DocsDocument = {
+      documentId: TABBED,
+      title: 'Tabbed',
+      tabs: [
+        tab('t.0', 'Full notes', 'The notes.', 0, [
+          {
+            tabProperties: { tabId: 't.0a', title: 'Appendix', index: 0, parentTabId: 't.0' },
+            documentTab: {
+              body: {
+                content: [
+                  {
+                    startIndex: 1,
+                    endIndex: 12,
+                    paragraph: { elements: [{ textRun: { content: 'Appended.\n' } }] },
+                  },
+                ],
+              },
+            },
+          },
+        ]),
+        tab('t.1', 'Transcript', 'Every word.', 1),
+      ],
+    };
+
+    const result = await fetchRoot(root, provider, new Map(), serving(nested));
+
+    // The Notion layout of MANUAL §6: a tab with children is a file *and* a
+    // directory of the same stem beside it.
+    expect(pathsOf(result.files)).toEqual([
+      'drive/Tabbed/Full notes.md',
+      'drive/Tabbed/Full notes/Appendix.md',
+      'drive/Tabbed/Transcript.md',
+    ]);
+    expect(
+      result.files.find((file) => file.path === 'drive/Tabbed/Full notes/Appendix.md')?.entry?.src,
+    ).toEqual({ source: 'gdocs', id: `${TABBED}#t.0a` });
+  });
+
+  it('writes one sidecar per tab, and puts a thread where its quote is', async () => {
+    const commented: Root = { ...root, comments: true };
+    const thread = (id: string, quoted: string) => ({
+      id,
+      createdTime: '2026-09-03T07:55:00Z',
+      author: { displayName: 'Jane Client' },
+      content: 'A word about this.',
+      quotedFileContent: { mimeType: 'text/html', value: quoted },
+    });
+    const api = serving(fixtureDocument(TABBED), {
+      async comments(id: string) {
+        return id === TABBED
+          ? [thread('c1', 'second tab'), thread('c2', 'nowhere in either tab')]
+          : [];
+      },
+    });
+
+    const result = await fetchRoot(commented, provider, new Map(), {
+      ...api,
+      now: () => new Date('2026-09-03T16:31:07Z'),
+    });
+    const sidecar = (path: string) => result.files.find((file) => file.path === path)?.text ?? '';
+
+    // A Drive comment names no tab, so the thread goes to the first tab whose
+    // body holds its quote, and an unplaceable one to the first tab (§6).
+    expect(sidecar('drive/Tabbed/Second tab.comments.md')).toContain('## c1 — comment');
+    expect(sidecar('drive/Tabbed/First tab.comments.md')).toContain('## c2 — comment');
+    // Each sidecar names the tab it belongs to, not the Doc.
+    expect(sidecar('drive/Tabbed/Second tab.comments.md')).toContain(
+      `document: gdocs:${TABBED}#${SECOND_TAB}`,
+    );
+  });
+
   it('comes back to one file when the Doc comes back down to one tab', () => {
     // The reverse of the move above: the surviving tab is the Doc again, its id
     // loses the tab, and the other tab files go (ticket 37).
