@@ -16,7 +16,7 @@ import { isSidecarPath } from '../comments/format.js';
 import { parseDocument } from '../frontmatter.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
-import { rootOf as rootIn } from '../manifest/validate.js';
+import { isReadOnlyRoot, rootOf as rootIn } from '../manifest/validate.js';
 import type { FileChange } from '../source.js';
 import { formatSourceRef, splitGDocsRef } from '../source-ref.js';
 import type { DiffEntry } from './git.js';
@@ -185,7 +185,7 @@ export async function planChanges(
     const root = rootOf(directory);
     // A read-only or suggesting root refuses every one of these by itself, in
     // its own words, and says so about the path the person can restore.
-    if (root === undefined || root.readOnly === true || root.suggest === true) continue;
+    if (root === undefined || isReadOnlyRoot(root) || root.suggest === true) continue;
 
     const mine = diff.filter((one) => docOfTabFile.get(one.previousPath ?? one.path) === docId);
     const deleted = mine.filter((one) => one.status[0] === 'D');
@@ -263,7 +263,7 @@ export async function planChanges(
     for (const path of [entry.previousPath, entry.path]) {
       if (path === undefined || stopped()) continue;
       const under = rootOf(path);
-      if (under?.readOnly === true) {
+      if (under !== undefined && isReadOnlyRoot(under)) {
         refuse(
           path,
           `under read-only root ${under.path}`,

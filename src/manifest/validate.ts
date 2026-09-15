@@ -1,3 +1,4 @@
+import type { SourceRef } from '../source-ref.js';
 import type { Root } from './types.js';
 
 /** One problem with a root's path, and which root it is. */
@@ -58,6 +59,17 @@ export function rootOf<T extends { path: string }>(
   path: string,
 ): T | undefined {
   return roots.find((root) => isUnderRoot(root.path, path));
+}
+
+/**
+ * Whether nothing under this root is ever pushed (MANUAL §4, §7 step 3).
+ *
+ * `readonly: true` says so for a Drive or Notion root; a calendar root is one
+ * whether it says so or not — there is nothing meaningful to write back to a
+ * meeting's attachments, and the manifest refuses the field there (ticket 38).
+ */
+export function isReadOnlyRoot(root: { readOnly?: boolean; src: SourceRef }): boolean {
+  return root.readOnly === true || root.src.source === 'calendar';
 }
 
 /**

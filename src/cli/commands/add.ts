@@ -90,6 +90,13 @@ export async function appendRoots(
     if (options.suggest === true && spec.ref.source !== 'gdocs') {
       throw new CliError(`${spec.input}: --suggest is only for Google Drive roots`);
     }
+    // A calendar root is read-only whatever the manifest says, and the manifest
+    // refuses the field there, so the flag is a mistake worth naming (ticket 38).
+    if (options.readOnly === true && spec.ref.source === 'calendar') {
+      throw new CliError(
+        `${spec.input}: --readonly is not needed here; a calendar root is always read-only`,
+      );
+    }
     const description = await context.sources[spec.ref.source].describe(spec.ref, context.provider);
     const path = resolveAlias(spec.alias, {
       title: description.title,

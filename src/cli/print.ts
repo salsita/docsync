@@ -8,6 +8,7 @@
  */
 import type { PushPlan } from '../helper/changes.js';
 import type { FetchReport, PushReportFile } from '../helper/report.js';
+import { isReadOnlyRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
 import type { PushedDocument, SkippedObject, SourceDescription } from '../source.js';
 import { formatSourceRef } from '../source-ref.js';
@@ -247,7 +248,7 @@ export function formatStatusLine(
     `fetched ${formatTime(fetchedAt)}`,
     moved,
     ...(root.comments === true ? ['comments on'] : []),
-    ...(root.readOnly === true ? ['read-only'] : []),
+    ...(isReadOnlyRoot(root) ? ['read-only'] : []),
     ...(root.suggest === true ? ['suggest'] : []),
   ].join('  ');
 }

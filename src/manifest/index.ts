@@ -12,6 +12,7 @@ export type { Kind, Manifest, ManifestError, ParseResult, Root } from './types.j
 export {
   isDirectoryPath,
   isInsideRepository,
+  isReadOnlyRoot,
   isUnderRoot,
   rootOf,
   territoryOf,

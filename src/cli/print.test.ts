@@ -285,6 +285,17 @@ describe('formatStatusLine', () => {
     );
   });
 
+  it('says `read-only` for a calendar root, which never says so itself (ticket 38)', () => {
+    const calls: Root = {
+      ...root,
+      src: { source: 'calendar', id: '0gce3vkvut6cj027fb86qrtc2a' },
+      path: 'calls/',
+    };
+    expect(formatStatusLine(calls, '2026-09-03T10:12:00Z', 0)).toBe(
+      'calendar:0gce…  calls/  fetched 2026-09-03 10:12  up to date  read-only',
+    );
+  });
+
   it('says `suggest` for a root whose pushes land as suggestions (MANUAL §4)', () => {
     const drive: Root = { ...root, src: { source: 'gdocs', id: '1AbC' }, path: 'Client/' };
     expect(

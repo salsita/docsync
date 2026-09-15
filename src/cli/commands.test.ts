@@ -28,6 +28,8 @@ const LOGO = fakeId('gdocs', 3);
 const ROADMAP = fakeId('gdocs', 4);
 const INPUTS = fakeId('gdocs', 5);
 const BRIEF = fakeId('gdocs', 6);
+const CALLS = fakeId('calendar', 1);
+const CALL_NOTES = fakeId('calendar', 2);
 const ADA = { id: 'ada', name: 'Ada Lovelace', email: 'ada@example.com' };
 
 function seed(): FakeState {
@@ -94,6 +96,17 @@ function seed(): FakeState {
     title: 'Brief',
     parent: INPUTS,
     body: 'What they want.\n',
+    editor: ADA,
+  });
+  // A recurring call and the notes one of its instances left behind (ticket 38).
+  addObject(state, { id: CALLS, source: 'calendar', kind: 'folder', title: 'Contracts review' });
+  addObject(state, {
+    id: CALL_NOTES,
+    source: 'calendar',
+    kind: 'doc',
+    title: '2026-09-01 09-00 Contracts review',
+    parent: CALLS,
+    body: 'What was said.\n',
     editor: ADA,
   });
   return state;
@@ -338,6 +351,42 @@ describe.skipIf(process.platform === 'win32')(
       const line = shown.out.split('\n').find((one) => one.includes('Contracts/')) ?? '';
       expect(line.endsWith('comments on  suggest')).toBe(true);
       expect(shown.out.split('\n').filter((one) => one.includes('suggest'))).toHaveLength(1);
+    });
+
+    it('add of a calendar event pulls the calls, read-only (ticket 38)', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      // `=calls` names the directory itself; `=calls/` would put the series'
+      // own directory inside it, as it does for a Drive folder (MANUAL §5).
+      const added = await w.run(co, 'add', `calendar:${CALLS}=calls`);
+
+      expect(added.code).toBe(0);
+      expect(w.read(co, '.docsync.yaml')).toContain(`src: calendar:${CALLS}`);
+      expect(w.files(co)).toContain('calls/2026-09-01 09-00 Contracts review.md');
+
+      // A calendar root is read-only with nothing in the manifest to say so.
+      const shown = await w.run(co, 'status');
+      const line = shown.out.split('\n').find((one) => one.includes('calls/')) ?? '';
+      expect(line.endsWith('read-only')).toBe(true);
+
+      w.write(co, 'calls/2026-09-01 09-00 Contracts review.md', 'Mine now.\n');
+      w.git(co, 'commit', '--quiet', '-a', '-m', 'Edit the notes');
+      const refused = await w.run(co, 'push');
+
+      expect(refused.code).not.toBe(0);
+      expect(refused.all).toContain('is under a read-only root (calls/)');
+    });
+
+    it('refuses --readonly on a calendar root, which is one already', async () => {
+      const w = world();
+      const co = await checkout(w, `notion:${SPECS}`);
+
+      const run = await w.run(co, 'add', '--readonly', `calendar:${CALLS}=calls`);
+
+      expect(run.code).not.toBe(0);
+      expect(run.all).toContain('a calendar root is always read-only');
+      expect(w.read(co, '.docsync.yaml')).not.toContain(CALLS);
     });
 
     it('refuses --suggest on a Notion root, which has no suggestions', async () => {

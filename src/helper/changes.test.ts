@@ -30,7 +30,13 @@ const CLIENT: Root = {
   comments: true,
   suggest: true,
 };
-const ROOTS = [NOTION, DRIVE, LEAF, INPUTS, CLIENT];
+/** A recurring call: read-only by nature, with no `readonly` to say so (ticket 38). */
+const CALLS: Root = {
+  src: { source: 'calendar', id: '0gce3vkvut6cj027fb86qrtc2a' },
+  path: 'Calls/',
+  ignore: [],
+};
+const ROOTS = [NOTION, DRIVE, LEAF, INPUTS, CLIENT, CALLS];
 
 const entry = (
   path: string,
@@ -471,6 +477,14 @@ describe('planChanges', () => {
           message: message('Inputs/Brief.md'),
         },
       ]);
+    });
+
+    it('refuses a change under a calendar root, which says no `readonly` (ticket 38)', async () => {
+      const path = 'Calls/2026-09-01 09-00 Review/Notes.md';
+      expect(await refusal(M(path))).toBe(
+        `${path} is under a read-only root (Calls/); nothing under it is pushed. ` +
+          `Restore it with git checkout -- ${path}`,
+      );
     });
 
     it('refuses it whatever else the push holds, and plans the rest for the preview', async () => {

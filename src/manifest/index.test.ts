@@ -9,6 +9,7 @@ describe('the manifest module', () => {
       'isDirectoryPath',
       'isIgnored',
       'isInsideRepository',
+      'isReadOnlyRoot',
       'isUnderRoot',
       'parseManifest',
       'resolveAlias',

@@ -136,9 +136,10 @@ export function createFileStore(path: string): FakeStore {
 
 /** A well-formed id for either source, from a small number. */
 export function fakeId(source: SourceName, n: number): string {
-  return source === 'notion'
-    ? n.toString(16).padStart(32, '0')
-    : `1Fake${n.toString().padStart(20, '0')}`;
+  if (source === 'notion') return n.toString(16).padStart(32, '0');
+  // A calendar event id is base32hex, so it spells the fake in a-v and digits.
+  if (source === 'calendar') return `0fakecalendarevent${n.toString().padStart(8, '0')}`;
+  return `1Fake${n.toString().padStart(20, '0')}`;
 }
 
 /** Adds an object to a state in place, filling in the time. */

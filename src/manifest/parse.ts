@@ -165,6 +165,15 @@ function parseRoot(node: Node, report: Report): Root | undefined {
     if (typeof raw !== 'boolean') {
       report(readOnlyNode as Node, '"readonly" must be true or false');
       failed = true;
+    } else if (src?.source === 'calendar') {
+      // A calendar root is read-only whatever it says, so the field would only
+      // ever be noise — or, spelled `false`, a promise docsync cannot keep
+      // (MANUAL §4, ticket 38).
+      report(
+        readOnlyNode as Node,
+        '"readonly" is not a field a calendar root takes; a calendar root is always read-only',
+      );
+      failed = true;
     } else {
       readOnly = raw;
     }
