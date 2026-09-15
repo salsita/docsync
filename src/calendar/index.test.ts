@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/provider.js';
 import { createFakeDrive, type FakeDrive } from '../gdrive/fake-api.mock.js';
 import { createGDriveWriter } from '../gdrive/write.js';
+import { GoogleApiError } from '../google-http.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { parseMarkdown } from '../markdown.js';
@@ -374,6 +375,33 @@ describe('pushRoot', () => {
       ),
     ).rejects.toThrow(
       `${SECOND}/Brief.pdf is under a read-only root (calls/); nothing under it is pushed.`,
+    );
+  });
+});
+
+describe('an attachment whose file cannot be read', () => {
+  /** The fake Drive with one file answering the given error instead. */
+  function failing(error: Error) {
+    return {
+      ...drive,
+      async getFile(id: string) {
+        if (id === PDF) throw error;
+        return drive.getFile(id);
+      },
+    };
+  }
+
+  it('is skipped as gone when Drive says 404', async () => {
+    const api = failing(new GoogleApiError(404, 'files/file-brief', 'File not found'));
+    const result = await fetchRoot(root, provider, new Map(), options({ api }));
+    expect(result.skipped.map((one) => [one.id, one.reason])).toContainEqual([PDF, 'gone']);
+    expect(result.files.some((one) => one.path === `${SECOND}/Brief.pdf`)).toBe(false);
+  });
+
+  it('fails the fetch on any other error, so nothing turns into a deletion', async () => {
+    const api = failing(new GoogleApiError(401, 'files/file-brief', 'Invalid Credentials'));
+    await expect(fetchRoot(root, provider, new Map(), options({ api }))).rejects.toThrow(
+      'Google API 401',
     );
   });
 });

@@ -25,6 +25,7 @@ import {
   type WalkedFile,
   walkedFile,
 } from '../gdrive/walk.js';
+import { GoogleApiError } from '../google-http.js';
 import type { DocumentIndex, IndexEntry } from '../index-file.js';
 import { assignNames, fileNameFor, isUnderRoot } from '../manifest/index.js';
 import type { Root } from '../manifest/types.js';
@@ -229,7 +230,13 @@ async function walkEvent(
     const found: { id: string; file: Awaited<ReturnType<GDriveApi['getFile']>> }[] = [];
     for (const attachment of attachments) {
       const id = attachment.fileId ?? '';
-      const file = await drive.getFile(id).catch(() => undefined);
+      const file = await drive.getFile(id).catch((error: unknown) => {
+        // Only a file that is not there is "gone": an expired token or a
+        // network failure must fail the fetch, or every attachment would turn
+        // into a deletion in the checkout.
+        if (error instanceof GoogleApiError && error.status === 404) return undefined;
+        throw error;
+      });
       if (file === undefined) {
         // The file behind the attachment is gone for good. A deletion in the
         // checkout, said out loud rather than failing the whole fetch.
