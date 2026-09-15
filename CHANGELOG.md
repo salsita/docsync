@@ -18,7 +18,9 @@ version, commits, tags and pushes.
   with one Markdown file per tab, each with its own id, sidecar and assets;
   a Doc with one tab is a file as before. A push writes into the right tab,
   creates a tab from a new file in the directory and retitles one; deleting
-  a single tab file is refused. Until now only the first tab was pulled.
+  a single tab file is refused. Until now only the first tab was pulled,
+  and a checkout made before this release still holds only that until a
+  `docsync pull --all` reads the Doc again.
 
 ### Changed
 
