@@ -17,8 +17,9 @@ Nothing touches a source document until you push.
 
 | Term           | Meaning                                                                                                                     |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| **Source**     | A document store: `notion` or `gdocs`.                                                                                      |
-| **Source ref** | An address of one object in a source: `notion:<page-id>` or `gdocs:<file-or-folder-id>`. Canonical forms in §13. |
+| **Source**     | A document store: `notion`, `gdocs` or `calendar`.                                                                          |
+| **Source ref** | An address of one object in a source: `notion:<page-id>`, `gdocs:<file-or-folder-id>` or `calendar:<event-id>`. Canonical forms in §13. |
+| **Calendar root** | One Google Calendar event, usually a recurring meeting. What it checks out is not the event but the Drive files attached to its past instances, the notes Gemini takes and the transcripts Meet writes, one directory per call (§6). Always read-only. |
 | **Root**       | One source ref checked out under one local path. A checkout is a set of roots.                                              |
 | **Manifest**   | A YAML file listing the roots. It _is_ the remote: the repo's git remote URL points at it.                                  |
 | **Helper**     | `git-remote-docsync`, the program git runs on fetch and push. You rarely call it directly.                                  |
@@ -52,7 +53,7 @@ bring one per source.
 
 | Source | Sign in | What you need |
 |---|---|---|
-| Google | `docsync auth gdocs` (`google` is accepted too) | An OAuth client of type *Desktop app* in Google Cloud Console, with the Drive API and the Docs API enabled. |
+| Google | `docsync auth gdocs` (`google` is accepted too) | An OAuth client of type *Desktop app* in Google Cloud Console, with the Drive API, the Docs API and the Calendar API enabled. |
 | Notion | `docsync auth notion` | A *public* integration in Notion's integration settings, with `http://localhost:27183/callback` and `http://localhost:27184/callback` as redirect URIs. |
 
 `docsync auth <source>` looks for the client in `~/.docsync/oauth-apps.yaml`.
@@ -81,7 +82,13 @@ Save, close, and the browser flow starts. Before opening the browser the
 terminal says what to grant. For Notion you pick pages in Notion's own
 dialog: grant the teamspaces you work in, since everything under a granted
 page is included, and you can change the selection later under Notion's
-Settings → Connections. For Google, approve the Drive and Docs scopes.
+Settings → Connections. For Google, approve the Drive, Docs and calendar
+scopes; the calendar scope is read-only (`calendar.events.readonly`) and is
+what lets a calendar root find the files attached to a meeting. There is no
+`docsync auth calendar`: a calendar root signs in as Google and shares the
+one token. A sign-in made before calendar support carries no calendar scope,
+so a fetch of a calendar root fails with "The Google sign-in predates
+calendar support; run `docsync auth google` again".
 Nothing needs to be shared with an integration by hand.
 The resulting tokens are stored in the OS keychain (macOS Keychain, Windows
 Credential Manager, Secret Service on Linux). The apps file is written with
@@ -169,6 +176,8 @@ roots:
       - "gdocs:9XyZ…"
   - src: gdocs:7QrS…
     path: notes/roadmap.md
+  - src: calendar:0gce3vkvut6cj027fb86qrtc2a
+    path: calls/
 ```
 
 Fields per root:
@@ -179,13 +188,20 @@ Fields per root:
 | `path`   | yes      | Local path, relative to the repo root. See path rules below. |
 | `ignore` | no       | List of patterns. Matching documents are not checked out.    |
 | `comments` | no     | `true` to pull comment threads and suggestions into sidecars (§6). Default `false`. |
-| `readonly` | no     | `true` to refuse any push that touches a file under this root. Default `false`. Fetch is unchanged. |
+| `readonly` | no     | `true` to refuse any push that touches a file under this root. Default `false`. Fetch is unchanged. Not a field a calendar root takes: it is read-only already. |
 | `suggest`  | no     | `true` to push every edit under this root as suggestions the client reviews in Docs (§7). Google Drive only, and only with `comments: true`. Default `false`. |
 
 A read-only root is pulled for context — a client's inputs, a signed
 contract — and never written to: a push that adds, modifies, deletes or
 renames any file under it, document, asset or sidecar alike, is refused (§7
 step 3). `docsync add --readonly` sets it.
+
+A **calendar root** is one event: `calendar:<event-id>` for an event on
+your own calendar, `calendar:<event-id>@<calendar-id>` for one on somebody
+else's. It is read-only whatever the manifest says, so `readonly:` is
+refused there, and `suggest:` is refused as it is on Notion. `comments: true`
+works as it does on Drive, since what a calendar root holds are Drive files.
+Ignore patterns are not applied to a calendar root.
 
 A suggest root belongs to someone else. A push does not write over its
 documents: an edit to a Google Doc already there is sent as suggestions,
@@ -294,7 +310,16 @@ fetch would overwrite it; then nothing is merged, the command says why, and
 
 The `=<path>` alias is optional. A trailing slash means "under this
 directory, named by the source title". No trailing slash means "exactly this
-name".
+name". A calendar event is a container, like a Drive folder: with no alias
+it becomes `<event title>/`.
+
+`init`, `add` and `resolve` also take a Google Calendar URL. The segment
+after `eventedit/`, or the `eid` parameter, is the event id and the calendar
+id in base64, which is the only place the Calendar UI shows them:
+`docsync add https://calendar.google.com/calendar/u/0/r/eventedit/<eid>=calls/`.
+The calendar is dropped from the ref when it is the one you are signed in
+as, and kept when it is not. A URL or a ref that names one occurrence
+(`<event-id>_<start>`) names the series it belongs to.
 
 A root is added over an empty path. If anything is already in the checkout
 where it would land, a file or a directory, and for a Notion page the
@@ -385,7 +410,9 @@ See Credentials.
 ### `docsync resolve <src>`
 
 Prints what a source ref is: type, title, child count, last editor, last edit
-time. Useful before `add`.
+time. Useful before `add`. A calendar event resolves as type `calendar
+event`, with the number of past calls that carry an attachment as its child
+count.
 
 ---
 
@@ -401,6 +428,8 @@ time. Useful before `add`.
 | Other Drive file (PDF, image, `.docx`, …) | `<title>` with its own extension, byte-for-byte                    |
 | Google Sheet / Slides / Drawing           | `<title>.xlsx` / `.pptx` / `.svg`, exported, read-only             |
 | Drive folder                              | `<title>/` containing its files and sub-folders, recursively       |
+| Google Calendar event                     | `<title>/` containing one directory per past call                  |
+| One call of that event                    | `<YYYY-MM-DD HH-MM> <call title>/` containing the files attached to it |
 | Notion page, no children                  | `<title>.md`                                                       |
 | Notion page with child pages              | `<title>.md` **and** `<title>/` beside it, containing the children |
 | Files hosted inside a page or Doc         | `<title>.assets/` beside `<title>.md`, one file each, linked from the body |
@@ -436,6 +465,19 @@ becomes the first tab's file inside the new directory, with its sidecar and
 its assets, so git's rename detection pairs the old path with the new one and
 `git log --follow` crosses the move; when a Doc comes back down to one tab,
 the file comes back.
+
+A calendar root is one directory per past instance of the event that has at
+least one file to pull. The time is the instance's start in the event's own
+time zone; an all-day call has no time part (`2026-09-02 Offsite/`). Inside
+it the attachments are laid out exactly as they would be under a Drive root:
+a Google Doc is `<title>.md`, or a directory of tab files when it has
+several; anything else is its own file. Video and audio attachments, Meet
+recordings, are not checked out, and the fetch reports them as skipped. A
+call that left nothing behind makes no directory, and a call still to come
+is not listed. The files keep their Drive identity, `id: gdocs:<file-id>` in
+the frontmatter and in the index, so nothing in the checkout names the
+calendar; the call's directory has no index entry of its own, since its name
+is derived, and git follows a retitled series as a rename.
 
 ### Identity
 
@@ -760,6 +802,11 @@ For each root, the helper lists documents at the source and compares last-edit
 metadata with what it recorded last time. Only changed documents are downloaded.
 For a binary file on Drive the checksum is compared too, since its modified
 time can move without the content moving.
+On a calendar root the listing is one read of the event, one page of
+instances per 250 past calls, and one `files.get` per attachment; what
+changed is then decided exactly as it is on Drive. A new call, a new
+attachment on an old one, and an attachment removed from an event are an
+addition or a deletion in the checkout.
 As it runs, the helper reports progress on stderr: one line naming each root
 it is listing, one line per document it downloads, numbered against the
 total on Google Drive, where the walk has already counted them, and numbered
@@ -837,6 +884,8 @@ Git sends the commits between `origin/main` and your branch. The helper:
    modified, deleted or renamed file under a root with `readonly: true` is
    refused first: "`<path>` is under a read-only root (`<root path>`);
    nothing under it is pushed. Restore it with `git checkout -- <path>`".
+   A root whose `src` is a `calendar:` ref is read-only in this sense
+   whether or not it says so.
    Under a root with `suggest: true` only an edit to a document that is
    already there can be pushed; anything added, deleted or renamed, and a new
    revision of a binary, is refused: "`<path>` is under a suggest root
@@ -1172,9 +1221,14 @@ docsync auth    <source> [--logout]
 docsync --version
 ```
 
-Source refs: `notion:<id>`, `gdocs:<id>`. A Notion id is 32 lowercase hex
+Source refs: `notion:<id>`, `gdocs:<id>`, `calendar:<eventId>` or
+`calendar:<eventId>@<calendarId>`. A Notion id is 32 lowercase hex
 characters without dashes; dashed and uppercase forms are accepted on input
-and normalised. A Google id is stored verbatim. Wherever a command takes a
-source ref, it also takes a Notion, Google Docs or Drive URL, `http` or
-`https`, and normalises it. Manifests and ignore lists hold canonical refs
-only, never URLs.
+and normalised. A Google id is stored verbatim. A Calendar event id is
+base32hex, lowercase a–v and the digits; the calendar after the `@` is a
+calendar address, left out when it is your own, and one occurrence of a
+series (`<eventId>_<start>`) is normalised to the series. Wherever a command
+takes a source ref, it also takes a Notion, Google Docs, Drive or Google
+Calendar URL, `http` or `https`, and normalises it. Manifests and ignore
+lists hold canonical refs only, never URLs. `docsync auth <source>` takes
+`gdocs` (or `google`) and `notion`; a calendar signs in as Google.

@@ -58,6 +58,9 @@ file is refused, delete the tab in Docs.
 - **Files under a read-only root** — a root marked `readonly: true` in
   `.docsync.yaml`. It is pulled for context and never pushed to; a push that
   adds, changes, deletes or renames anything under it is refused.
+- **Files under a calendar root** — a root whose `src` is a `calendar:` ref.
+  It holds the files a meeting left behind, pulled for context and never
+  pushed to, exactly as a read-only root is.
 - **The skill files** in `.agents/`, `.claude/` and `.cursor/` — docsync
   overwrites them on every command. `.docsync.yaml`, `.prettierrc`,
   `.editorconfig` and `.gitattributes` are the checkout's, not yours either.

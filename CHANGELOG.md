@@ -14,6 +14,11 @@ version, commits, tags and pushes.
 
 ### Added
 
+- A Google Calendar event as a source. `docsync add calendar:<eventId>`, or
+  a Calendar URL, checks out the Drive files attached to the event's past
+  instances, the Gemini notes and Meet transcripts, one directory per call,
+  read-only. The Google sign-in gains the read-only calendar scope, so run
+  `docsync auth google` once more before adding one.
 - Google Docs tabs. A Doc with several tabs is checked out as a directory
   with one Markdown file per tab, each with its own id, sidecar and assets;
   a Doc with one tab is a file as before. A push writes into the right tab,
