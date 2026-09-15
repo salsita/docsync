@@ -265,7 +265,16 @@ export function formatResolved(resolved: SourceDescription): string {
 
   return columns([
     ['ref', formatSourceRef(resolved.ref)],
-    ['type', resolved.kind === 'container' ? 'folder' : 'document'],
+    // A calendar root is a container, but calling it a folder would be a lie:
+    // what it holds is the calls of one event (ticket 38).
+    [
+      'type',
+      resolved.ref.source === 'calendar'
+        ? 'calendar event'
+        : resolved.kind === 'container'
+          ? 'folder'
+          : 'document',
+    ],
     ['title', resolved.title],
     ['children', String(resolved.childCount)],
     ...(who === undefined ? [] : [['editor', who]]),
