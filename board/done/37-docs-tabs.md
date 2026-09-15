@@ -72,3 +72,43 @@ model carries the tests; the live check is the Done-when.
 notes.md`, `Full notes.md` (with its image under `Full notes.assets/`) and
 `Transcript.md`, git shows the first as a rename of the old file, and an
 edit to `Full notes.md` pushed as a suggestion lands in that tab.
+
+## Outcome
+
+Landed 2026-09-15 in thirteen agent commits (`447e583` … `d0a72aa`) plus the
+wording commit. `pnpm check` green, 1646 tests (+95). The agent stalled twice
+mid-ticket, both times the owner's laptop asleep; resumed from the tree.
+
+- Read: `includeTabsContent=true` on every get; `src/gdrive/tabs.ts` flattens
+  a reply into ordered tabs and hands each one out as a `DocsDocument` of its
+  own, so the converter, comments, assets and patch code read one tab
+  unchanged. A reply without `tabs` (every older fixture) is one tab.
+- Layout, identity, index, comments and push as the ticket decided. The
+  directory entry in the index (`path: <title>/`, `src: gdocs:<docId>`) is
+  what lets the walk, which only lists, know which Docs are directories.
+- Deviations: tab expansion lives in `index.ts`, not the walk; a Doc that
+  becomes tabbed takes its old filename as the directory name, uniquified
+  against directories this fetch writes, so a same-named empty Drive folder
+  only gets its suffix on the following fetch; `git mv X.md Sub/X.md` stays a
+  folder move, and is read as the one-to-many transition only when nothing
+  else lives under the new directory; a renamed tab file retitles the tab; a
+  non-Markdown file added inside a Doc's directory is refused; deleting a
+  tabbed Doc whose tabs have sidecars is refused by the sidecar rule, as any
+  document with a sidecar is.
+- Tests: `src/gdrive/transition.test.ts` runs the real adapter over the fake
+  Drive through `fetchCommit` into a real repository and asks git for the
+  rename in both directions; the CLI e2e pulls a fake Doc that gains a tab;
+  the owner's "Tabbed" fixture is recorded, and the snapshot test converts
+  each tab.
+- Live: `scripts/gdocs-tabs-smoke.ts` made its own Doc in the fixture
+  folder, added, filled, nested and retitled tabs, verified and trashed it.
+  Done-when in ramnex: `docsync pull --all` turned the Gemini notes file into
+  the directory, git paired it with `Quick notes.md` as a 98% rename,
+  `--follow` crosses it, the image is under `Full notes.assets/`. The
+  suggestion push into "Full notes" is left to the owner.
+- Surprise: a Doc already checked out as one file is carried over unchanged
+  until it is read again, so existing checkouts need one `pull --all` after
+  upgrading. Noted in the changelog.
+- Follow-ups: `gdocs:<docId>#<tabId>` in a manifest or ignore list parses
+  but is not refused; tab order and nesting are never written; `deleteTab`
+  is typed and faked but unused.
