@@ -38,6 +38,10 @@ the `.comments.md` sidecar, and stays that way until they accept. That is
 not a lost edit. Only edits to documents already there can be pushed under
 such a root; creating, deleting and renaming are refused.
 
+**A Google Doc with several tabs is a directory** holding one `.md` per tab.
+A new `.md` with frontmatter in it becomes a new tab on push; deleting a tab
+file is refused, delete the tab in Docs.
+
 ## Do not touch
 
 - **Frontmatter.** `id` is the document's identity — never change or copy it.

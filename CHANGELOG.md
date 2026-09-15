@@ -12,6 +12,14 @@ version, commits, tags and pushes.
 
 ## [Unreleased]
 
+### Added
+
+- Google Docs tabs. A Doc with several tabs is checked out as a directory
+  with one Markdown file per tab, each with its own id, sidecar and assets;
+  a Doc with one tab is a file as before. A push writes into the right tab,
+  creates a tab from a new file in the directory and retitles one; deleting
+  a single tab file is refused. Until now only the first tab was pulled.
+
 ### Changed
 
 - CI is green on Windows: the git runner spells the checkout's paths the

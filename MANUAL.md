@@ -396,6 +396,8 @@ time. Useful before `add`.
 | Source object                             | On disk                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------ |
 | Google Doc                                | `<title>.md`                                                       |
+| Google Doc with several tabs              | `<title>/` containing one `<tab title>.md` per tab                 |
+| Doc tab with child tabs                   | `<tab title>.md` **and** `<tab title>/` beside it, containing the children |
 | Other Drive file (PDF, image, `.docx`, …) | `<title>` with its own extension, byte-for-byte                    |
 | Google Sheet / Slides / Drawing           | `<title>.xlsx` / `.pptx` / `.svg`, exported, read-only             |
 | Drive folder                              | `<title>/` containing its files and sub-folders, recursively       |
@@ -423,6 +425,18 @@ suffixes are stable across fetches because the mapping is by id: a document
 keeps the name it had for as long as its title still derives to it, so
 `Notes (2).md` stays put even after `Notes.md` is gone.
 
+A Google Doc can hold several tabs, each a full document body of its own. A
+Doc with exactly one tab is a file, as above. A Doc with more than one is a
+directory named after the Doc, holding one Markdown file per tab, named from
+the tab's title by the same rules; a tab with child tabs is a file and a
+sibling directory of the same stem, as a Notion page with children is. The
+directory's name collides with a Drive folder of the same title as two files
+would, and takes the same numeric suffix. When a Doc gains a tab, its file
+becomes the first tab's file inside the new directory, with its sidecar and
+its assets, so git's rename detection pairs the old path with the new one and
+`git log --follow` crosses the move; when a Doc comes back down to one tab,
+the file comes back.
+
 ### Identity
 
 **Markdown documents** carry YAML frontmatter that docsync owns:
@@ -446,6 +460,15 @@ url: https://www.notion.so/2f3a9c…
   `id`: written on every fetch and never read back, so changing or deleting it
   is not an error, not a rename and nothing to push. A new file needs none;
   the fetch after the push adds it.
+- A tab of a Google Doc is a document like any other: `id:
+  gdocs:<docId>#<tabId>`, `title` the tab's own title, and a `url` that opens
+  on that tab, `https://docs.google.com/document/d/<docId>/edit?tab=<tabId>`.
+  A `gdocs:` ref in the manifest or an ignore list always names the whole
+  Doc; adding a URL with `?tab=` adds the whole Doc.
+- A new `.md` file with frontmatter inside a tabbed Doc's directory is a new
+  **tab** of that Doc, created on push; `title` is the tab's title and the
+  file's place decides its parent tab. A file that is not Markdown there is
+  refused: a Google Doc holds tabs, not files.
 - A new `.md` file inside a root is a new document **when it starts with
   frontmatter**. The minimum is the two fences with nothing between them;
   `title` is optional and defaults to the filename without the extension:
@@ -648,6 +671,11 @@ one. Turning the option off removes the sidecars on the next fetch. It is **read
 removes one is refused before any source is touched, with the `git checkout`
 command that restores it. Replying, resolving, accepting and rejecting stay
 in the source's own UI (§12). The body file never carries a comment.
+
+On a Doc with several tabs the sidecar is per tab file. A Drive comment
+names no tab, so a thread goes to the first tab, in tab order, whose body
+holds the text it quotes, and a thread whose text is nowhere goes to the
+first tab's sidecar; a suggestion is in the tab that carries it.
 
 The sidecar is Markdown, one `##` heading per thread, in the order the
 anchors appear in the body. A thread is what the source calls one: a Drive
@@ -896,6 +924,11 @@ what to do with each:
   change on Google Docs and a delete-and-create on Notion, which cannot
   change a block's type.
 
+- Every location and range a push sends to Google Docs names its tab,
+  single-tab Docs included, since a request without one is applied to the
+  first tab. Tab order and nesting are not pushed: the files' order in the
+  directory is the tab order at the source.
+
 What is lost, per source:
 
 - **Notion:** formatting on the characters you rewrote; the id and comments
@@ -976,6 +1009,8 @@ edits to different paragraphs merge cleanly. Binary files conflict as a whole.
 | Added an ignore pattern           | Nothing.                                                                          |
 | Deleted a tracked file and pushed | The document is moved to trash. Recoverable from the source UI for about 30 days. |
 | Deleted a file with no id         | Nothing. It was never at the source.                                              |
+| Deleted one tab file of a Doc     | Refused. Deleting a tab is permanent, so docsync does not do it; delete the tab in Docs. |
+| Deleted a whole Doc directory     | The Doc is moved to trash, as deleting its file would.                            |
 
 There is no flag to confirm deletions. The review before you push is the gate.
 `docsync push` lists every trashed document in its output.
@@ -1074,6 +1109,7 @@ Everything in this manual not marked **later**. Limitations of phase 1:
 - Notion databases are not synced. Pages inside a database are not synced either.
 - Sheets, Slides and Drawings are exported read-only.
 - Google Docs revisions are collapsed into one commit per fetch.
+- The order and nesting of a Google Doc's tabs are read, never written.
 - One branch (`main`) per remote. Other local branches are fine; the helper only
   serves `main`.
 
