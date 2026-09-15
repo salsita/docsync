@@ -101,4 +101,10 @@ describe('the docsync command line', () => {
     expect((await cli('auth', 'google', '--logout')).out).toBe('Signed out of gdocs.\n');
     expect((await cli('auth', 'dropbox')).err).toContain('dropbox is not a source');
   });
+
+  it('has no sign-in of its own for a calendar: Google covers it (ticket 38)', async () => {
+    const run = await cli('auth', 'calendar');
+
+    expect(run.err).toContain('calendar is not a source. Expected one of: gdocs, notion');
+  });
 });

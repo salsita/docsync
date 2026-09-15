@@ -26,8 +26,12 @@
  * Pure, no I/O.
  */
 
-/** A document store. */
-export type Source = 'notion' | 'gdocs';
+/**
+ * A document store. `calendar` is Google Calendar, whose objects are events
+ * rather than documents: what it checks out are the Drive files attached to
+ * them (MANUAL §1, ticket 38). Its credential is the Google one.
+ */
+export type Source = 'notion' | 'gdocs' | 'calendar';
 
 /** One object in one source. */
 export interface SourceRef {
@@ -59,12 +63,38 @@ const GOOGLE_TAB_ID = /^t\.[A-Za-z0-9_-]+$/;
 
 const GOOGLE_TAB_SHAPE = 'A Google Docs tab id starts with "t.".';
 
+/**
+ * A Calendar event id (ticket 38). Google's own rule: base32hex, which is the
+ * lowercase letters a-v and the digits, five characters or more. That alphabet
+ * holds no `@`, which is what lets `calendar:<eventId>@<calendarId>` split at
+ * the first one even though a calendar id is an address with an `@` of its own.
+ */
+const EVENT_ID = /^[a-v0-9]{5,1024}$/;
+
+/**
+ * One occurrence of a recurring event: the series id, an underscore, and the
+ * instance's start (`_20260901T070000Z`). The underscore is outside base32hex,
+ * so it can only be this (ticket 38).
+ */
+const INSTANCE_SUFFIX = /_[A-Za-z0-9]*$/;
+
+const EVENT_ID_SHAPE =
+  'A Calendar event id is base32hex: lowercase a-v and digits, at least 5 characters.';
+const CALENDAR_SHAPE = 'A calendar id after the "@" must not be empty.';
+const CALENDAR_URL_SHAPE =
+  'A Calendar URL must carry an "eid", which is the event and the calendar in base64.';
+
+/** The primary calendar, which is what a ref that names no calendar means. */
+export const PRIMARY_CALENDAR = 'primary';
+
 // The id inside a Notion URL path: a dashed UUID or a bare 32-hex run, in
 // either case bounded so a longer hex run is not silently truncated.
 const NOTION_ID_IN_PATH =
   /(?<![0-9a-f])(?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9a-f]{32})(?![0-9a-f])/gi;
 
-const EXPECTED = 'Expected notion:<id>, gdocs:<id>, or a Notion / Google Docs / Drive URL.';
+const EXPECTED =
+  'Expected notion:<id>, gdocs:<id>, calendar:<eventId>, ' +
+  'or a Notion / Google Docs / Drive / Calendar URL.';
 const NOTION_ID_SHAPE = 'A Notion id is 32 hex characters, dashed or not.';
 const GOOGLE_ID_SHAPE = 'A Google id is at least 20 characters of A-Z a-z 0-9 _ and -.';
 const NOTION_URL_SHAPE = 'A Notion URL must carry a 32-hex page id in its path.';
@@ -154,7 +184,49 @@ export function parseSourceRefOrUrl(text: string): SourceRef | SourceRefError {
   const host = url.hostname.toLowerCase();
   if (isNotionHost(host)) return notionFromUrl(text, url);
   if (host === 'docs.google.com' || host === 'drive.google.com') return googleFromUrl(text, url);
+  if (host === 'calendar.google.com') return calendarFromUrl(text, url);
   return fail(text, EXPECTED);
+}
+
+/**
+ * A Calendar URL (ticket 38). The event id is nowhere in the page; the one
+ * place the UI shows it is the `eid`, which is unpadded base64url of
+ * `<eventId> <calendarId>` and appears either as the segment after
+ * `eventedit/` or as the `eid` query parameter.
+ */
+function calendarFromUrl(input: string, url: URL): SourceRef | SourceRefError {
+  const parts = url.pathname.split('/').filter((segment) => segment !== '');
+  const at = parts.indexOf('eventedit');
+  const token = at >= 0 ? parts[at + 1] : (url.searchParams.get('eid') ?? undefined);
+  if (token === undefined || token === '') return fail(input, CALENDAR_URL_SHAPE);
+
+  let decoded: string;
+  try {
+    // Unpadded is what Calendar writes; the padding is added back rather than
+    // required, since some clients hand out the padded spelling.
+    decoded = atob(token.replaceAll('-', '+').replaceAll('_', '/'));
+  } catch {
+    return fail(input, CALENDAR_URL_SHAPE);
+  }
+
+  const space = decoded.indexOf(' ');
+  if (space === -1) return fail(input, CALENDAR_URL_SHAPE);
+  const eventId = decoded.slice(0, space);
+  const calendarId = decoded.slice(space + 1);
+  if (calendarId === '') return fail(input, CALENDAR_URL_SHAPE);
+  const series = seriesOf(eventId);
+  if (!EVENT_ID.test(series)) return fail(input, CALENDAR_URL_SHAPE);
+  return { source: 'calendar', id: calendarRefId(series, calendarId) };
+}
+
+/** The series an event id belongs to: an instance id cut at its start time. */
+function seriesOf(eventId: string): string {
+  return eventId.replace(INSTANCE_SUFFIX, '');
+}
+
+/** The canonical id of a calendar ref: the primary calendar is left unsaid. */
+function calendarRefId(eventId: string, calendarId: string): string {
+  return calendarId === PRIMARY_CALENDAR ? eventId : `${eventId}@${calendarId}`;
 }
 
 /**
@@ -183,6 +255,16 @@ function parseLiteral(text: string): SourceRef | SourceRefError | undefined {
     return GOOGLE_TAB_ID.test(tabId)
       ? { source: 'gdocs', id: `${docId}#${tabId}` }
       : fail(text, GOOGLE_TAB_SHAPE);
+  }
+  if (source === 'calendar') {
+    // Split at the *first* `@`: what follows is a calendar id, which is an
+    // address and holds one of its own (ticket 38).
+    const at = id.indexOf('@');
+    const eventId = seriesOf(at === -1 ? id : id.slice(0, at));
+    const calendarId = at === -1 ? PRIMARY_CALENDAR : id.slice(at + 1);
+    if (!EVENT_ID.test(eventId)) return fail(text, EVENT_ID_SHAPE);
+    if (calendarId === '') return fail(text, CALENDAR_SHAPE);
+    return { source: 'calendar', id: calendarRefId(eventId, calendarId) };
   }
   return undefined;
 }
@@ -229,6 +311,16 @@ const GOOGLE_FOLDER = 'application/vnd.google-apps.folder';
  */
 export function sourceUrl(ref: SourceRef, mimeType?: string): string {
   if (ref.source === 'notion') return `https://www.notion.so/${ref.id}`;
+  if (ref.source === 'calendar') {
+    const { eventId, calendarId } = splitCalendarRef(ref);
+    // Calendar reads the pair back out of the token, so the calendar is spelled
+    // out even when the ref left it unsaid (ticket 38).
+    const token = btoa(`${eventId} ${calendarId}`)
+      .replaceAll('+', '-')
+      .replaceAll('/', '_')
+      .replaceAll('=', '');
+    return `https://calendar.google.com/calendar/event?eid=${token}`;
+  }
   if (mimeType === GOOGLE_FOLDER) return `https://drive.google.com/drive/folders/${ref.id}`;
   const { docId, tabId } = splitGDocsRef(ref);
   // Only a Google Doc has tabs, so a tab ref is one whatever Drive said the
@@ -260,6 +352,35 @@ export function splitGDocsRef(ref: SourceRef): GDocsTarget {
   const at = ref.id.indexOf('#');
   if (at === -1) return { docId: ref.id };
   return { docId: ref.id.slice(0, at), tabId: ref.id.slice(at + 1) };
+}
+
+/** A `calendar:` ref taken apart: the event, and the calendar it lives on. */
+export interface CalendarTarget {
+  /** The series: an instance id (`<eventId>_<start>`) is cut down to it. */
+  eventId: string;
+  /** `primary` when the ref names no calendar, which is what the API takes. */
+  calendarId: string;
+}
+
+/**
+ * Splits a `calendar:` ref into the event and the calendar (ticket 38).
+ *
+ * The id is one token everywhere it is stored, and this is the one place that
+ * takes it apart, so that nothing else has to know that the separator is the
+ * first `@`, that what follows it is an address, or that an instance id names
+ * the series it belongs to.
+ */
+export function splitCalendarRef(ref: SourceRef): CalendarTarget {
+  const at = ref.id.indexOf('@');
+  return {
+    eventId: seriesOf(at === -1 ? ref.id : ref.id.slice(0, at)),
+    calendarId: at === -1 ? PRIMARY_CALENDAR : ref.id.slice(at + 1),
+  };
+}
+
+/** The canonical ref of one event on one calendar, as a manifest holds it. */
+export function calendarRef(eventId: string, calendarId: string): SourceRef {
+  return { source: 'calendar', id: calendarRefId(seriesOf(eventId), calendarId) };
 }
 
 /** The Doc a ref names, tab or no tab: what a manifest and an ignore list mean. */

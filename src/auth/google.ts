@@ -25,6 +25,9 @@ export const GOOGLE_SCOPES = [
   'email',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/documents',
+  // A calendar root checks out the Drive files attached to an event, so reading
+  // events is all it needs and all it asks for (MANUAL §2, ticket 38).
+  'https://www.googleapis.com/auth/calendar.events.readonly',
 ].join(' ');
 
 /** A discovered, authenticated client for the user's own OAuth app. */

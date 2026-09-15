@@ -40,7 +40,9 @@ describe('googleAuthorizationUrl', () => {
 
     expect(url.pathname).toBe('/o/oauth2/v2/auth');
     expect(url.searchParams.get('scope')).toBe(
-      'openid email https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents',
+      'openid email https://www.googleapis.com/auth/drive ' +
+        'https://www.googleapis.com/auth/documents ' +
+        'https://www.googleapis.com/auth/calendar.events.readonly',
     );
     expect(url.searchParams.get('access_type')).toBe('offline');
     expect(url.searchParams.get('prompt')).toBe('consent');

@@ -7,6 +7,7 @@ import type { Source } from '../source-ref.js';
 import { loadOAuthApp } from './apps-file.js';
 import { NotSignedInError } from './errors.js';
 import { googleConfiguration, refreshGoogleToken } from './google.js';
+import { credentialSourceOf } from './sources.js';
 import { createKeychainStore } from './store.js';
 import type { AuthDeps, Credential, CredentialProvider, Identity } from './types.js';
 
@@ -21,7 +22,10 @@ export function createCredentialProvider(deps: AuthDeps = {}): CredentialProvide
   const store = deps.store ?? createKeychainStore();
   const now = deps.now ?? Date.now;
 
-  async function current(source: Source): Promise<Credential> {
+  async function current(asked: Source): Promise<Credential> {
+    // A calendar is signed in to as Google (ticket 38); from here down there is
+    // no such thing as a calendar credential.
+    const source = credentialSourceOf(asked);
     const stored = await store.read(source);
     if (!stored) throw new NotSignedInError(source);
     // No expiry means a token that does not expire — every Notion token.
@@ -67,7 +71,10 @@ export function createFakeCredentialProvider(
   const credentials = new Map<Source, Credential>(
     Object.entries(seed).map(([source, credential]) => [source as Source, credential]),
   );
-  const of = (source: Source): Credential => {
+  const of = (asked: Source): Credential => {
+    // As the real provider: a calendar is served by the Google credential, so a
+    // test seeds `gdocs` alone (ticket 38).
+    const source = credentialSourceOf(asked);
     const found = credentials.get(source);
     if (!found) throw new NotSignedInError(source);
     return found;

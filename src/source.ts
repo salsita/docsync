@@ -13,6 +13,12 @@
  * have bytes instead).
  */
 import type { CredentialProvider } from './auth/index.js';
+import {
+  changedSince as calendarChangedSince,
+  describe as describeCalendar,
+  fetchRoot as fetchCalendarRoot,
+  pushRoot as pushCalendarRoot,
+} from './calendar/index.js';
 import type { BlockCounts } from './diff/blocks.js';
 import {
   describe as describeDrive,
@@ -278,6 +284,14 @@ export const sources: SourceRegistry = {
     pushRoot: pushDriveRoot,
     describe: describeDrive,
     changedSince: driveChangedSince,
+  },
+  // A calendar checks out the Drive files attached to an event, through the
+  // Drive adapter's own conversion, and is read-only (ticket 38).
+  calendar: {
+    fetchRoot: fetchCalendarRoot,
+    pushRoot: pushCalendarRoot,
+    describe: describeCalendar,
+    changedSince: calendarChangedSince,
   },
 };
 

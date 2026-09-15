@@ -527,5 +527,5 @@ export function createFakeSource(store: FakeStore): Source {
 /** Both source names served by one fake, over one store. */
 export function createFakeRegistry(store: FakeStore): SourceRegistry {
   const fake = createFakeSource(store);
-  return { notion: fake, gdocs: fake };
+  return { notion: fake, gdocs: fake, calendar: fake };
 }

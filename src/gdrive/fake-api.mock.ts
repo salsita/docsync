@@ -11,6 +11,7 @@ import type {
   DocsDocument,
   DocsWriteReply,
   DocsWriteRequest,
+  DriveComment,
   DriveFile,
   FileMetadata,
   GDriveApi,
@@ -50,6 +51,8 @@ export interface FakeDrive extends GDriveApi {
   tabs(id: string): FakeTab[];
   /** Bytes by URI, for the images a document already holds. */
   hosted: Map<string, Uint8Array>;
+  /** Comment threads by file id, for a test of a root with `comments: true`. */
+  threads: Map<string, DriveComment[]>;
   /** The shares that exist right now, as `<fileId>:<permissionId>`. */
   permissions: Set<string>;
   /** Every operation, in order: `createFile Notes`, `trash doc1`, … */
@@ -72,6 +75,7 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
   const documents = new Map<string, FakeTab[]>();
   let nextTab = 0;
   const hosted = new Map<string, Uint8Array>();
+  const threads = new Map<string, DriveComment[]>();
   const permissions = new Set<string>();
   const calls: string[] = [];
   let nextPermission = 0;
@@ -191,6 +195,7 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
     files,
     calls,
     hosted,
+    threads,
     permissions,
 
     async createPermission(id, permission) {
@@ -242,9 +247,9 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       return { documentId: id, title: get(id).name, tabs: tabTree(id, mode) };
     },
 
-    async comments() {
-      // The fake Drive holds no comments; a push never reads one.
-      return [];
+    async comments(id) {
+      // A push never reads one, so this is empty unless a test seeded it.
+      return threads.get(id) ?? [];
     },
 
     async download(id) {

@@ -11,6 +11,7 @@ import {
   createFakeCredentialProvider,
   REFRESH_MARGIN_MS,
 } from './provider.js';
+import { authSourceNames, credentialSourceOf } from './sources.js';
 import { createMemoryStore } from './store.js';
 import type { Credential } from './types.js';
 
@@ -184,5 +185,29 @@ describe('createFakeCredentialProvider', () => {
     const provider = createFakeCredentialProvider({ gdocs: google({ expiresAt: 1 }) });
 
     expect(await provider.accessToken('gdocs')).toBe('ya29.old');
+  });
+
+  it('serves a calendar from the Google credential (ticket 38)', async () => {
+    const provider = createFakeCredentialProvider({ gdocs: google() });
+
+    expect(await provider.accessToken('calendar')).toBe('ya29.old');
+    expect(await provider.identity('calendar')).toEqual({ email: 'jiri@example.test' });
+  });
+});
+
+describe('credentialSourceOf', () => {
+  it('maps a calendar to the Google credential, and leaves the others alone', () => {
+    // There is no `docsync auth calendar`: one token, one consent screen, and
+    // the Google sign-in covers both (MANUAL §2, ticket 38).
+    expect(credentialSourceOf('calendar')).toBe('gdocs');
+    expect(credentialSourceOf('gdocs')).toBe('gdocs');
+    expect(credentialSourceOf('notion')).toBe('notion');
+    expect(authSourceNames).toEqual(['gdocs', 'notion']);
+  });
+
+  it('asks for the Google sign-in when a calendar has no credential', async () => {
+    const provider = createCredentialProvider({ store: createMemoryStore() });
+
+    await expect(provider.accessToken('calendar')).rejects.toThrow('docsync auth gdocs');
   });
 });

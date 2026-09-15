@@ -61,8 +61,12 @@ export interface SkippedObject {
   title: string;
   /** The path it would have taken, so a report can name it. */
   path: string;
-  /** `unsupported`: a Google type with no export. `ignored`: the ignore list. */
-  reason: 'unsupported' | 'ignored';
+  /**
+   * `unsupported`: a Google type with no export. `ignored`: the ignore list.
+   * `recording` and `gone` are the calendar adapter's, for a Meet recording and
+   * for an attachment whose file is no longer in Drive (ticket 38).
+   */
+  reason: 'unsupported' | 'ignored' | 'recording' | 'gone';
 }
 
 export interface WalkResult {
@@ -173,8 +177,12 @@ export async function walkRoot(
   return { files, skipped };
 }
 
-/** What one Drive file becomes, or undefined when it becomes nothing. */
-function kindOf(mimeType: string): DriveKind | undefined {
+/**
+ * What one Drive file becomes, or undefined when it becomes nothing. Exported
+ * for the calendar adapter, which walks attachments rather than folders but
+ * decides what each one is by the same rule (ticket 38).
+ */
+export function kindOf(mimeType: string): DriveKind | undefined {
   if (mimeType === DOCUMENT_MIME) return 'doc';
   if (EXPORTS[mimeType] !== undefined) return 'export';
   // Every other Google-native type — forms, sites, maps, shortcuts, scripts —
@@ -183,13 +191,14 @@ function kindOf(mimeType: string): DriveKind | undefined {
 }
 
 /** The extension the file takes on disk. A binary carries its own. */
-function extensionFor(file: DriveFile, kind: DriveKind | undefined): string {
+export function extensionFor(file: DriveFile, kind: DriveKind | undefined): string {
   if (kind === 'doc') return '.md';
   if (kind === 'export') return EXPORTS[file.mimeType]?.ext ?? '';
   return '';
 }
 
-function walkedFile(file: DriveFile, kind: DriveKind, path: string): WalkedFile {
+/** One Drive file as the walk describes it: what it is, and where it lands. */
+export function walkedFile(file: DriveFile, kind: DriveKind, path: string): WalkedFile {
   const exported = EXPORTS[file.mimeType];
   return {
     id: file.id,

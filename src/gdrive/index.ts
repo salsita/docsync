@@ -82,27 +82,7 @@ export async function fetchRoot(
   options: FetchOptions = {},
 ): Promise<FetchResult> {
   const api = options.api ?? (await gdriveApi(provider, options.fetch));
-
-  // What the index remembers about Drive files anywhere in the checkout: their
-  // paths, which keep names stable, and what they looked like last time.
-  // Files only: an asset has no listing of its own and moves with the document
-  // that holds it (MANUAL §12 phase 2).
-  const known = [...previous.values()].filter(
-    (one) => one.src.source === 'gdocs' && one.type !== 'asset',
-  );
-  // The walk knows nothing about tabs: what it names is the Doc, which the
-  // index holds either as a file (`Notes.md`) or, for a Doc with several tabs,
-  // as the directory the tab files sit in (`Notes/`, ticket 37).
-  const docs = known.filter((one) => splitGDocsRef(one.src).tabId === undefined);
-  const directories = new Map<string, string>();
-  for (const one of docs) if (one.path.endsWith('/')) directories.set(one.src.id, one.path);
-  const paths = new Map(
-    docs.map((one): [string, string] => [
-      one.src.id,
-      one.path.endsWith('/') ? one.path.slice(0, -1) : one.path,
-    ]),
-  );
-  const before = new Map(docs.map((one): [string, IndexEntry] => [one.src.id, one]));
+  const { paths, directories } = driveMemory(previous);
 
   // What it is doing, while it does it (MANUAL §7). The walk is one listing
   // per folder and downloads nothing, so it is announced as a whole.
@@ -110,6 +90,62 @@ export async function fetchRoot(
   progress(`listing ${root.path}`);
 
   const walked = await walkRoot(api, root, paths, new Set(directories.keys()));
+  return convertWalk(walked, api, root, previous, options);
+}
+
+/**
+ * What the index remembers about the Drive files of a checkout (ticket 37).
+ *
+ * Their paths, which keep filenames stable across fetches, the directories the
+ * tabbed Docs among them were checked out as, and the entries themselves, which
+ * are what "changed" is measured against. Files only: an asset has no listing of
+ * its own and moves with the document that holds it (MANUAL §12 phase 2), and a
+ * tab file moves with its Doc — what the walk names is the Doc, which the index
+ * holds either as a file (`Notes.md`) or as a directory (`Notes/`).
+ */
+export function driveMemory(previous: ReadonlyMap<string, IndexEntry>): {
+  paths: Map<string, string>;
+  directories: Map<string, string>;
+  before: Map<string, IndexEntry>;
+} {
+  const docs = [...previous.values()].filter(
+    (one) =>
+      one.src.source === 'gdocs' &&
+      one.type !== 'asset' &&
+      splitGDocsRef(one.src).tabId === undefined,
+  );
+  const directories = new Map<string, string>();
+  for (const one of docs) if (one.path.endsWith('/')) directories.set(one.src.id, one.path);
+  return {
+    paths: new Map(
+      docs.map((one): [string, string] => [
+        one.src.id,
+        one.path.endsWith('/') ? one.path.slice(0, -1) : one.path,
+      ]),
+    ),
+    directories,
+    before: new Map(docs.map((one): [string, IndexEntry] => [one.src.id, one])),
+  };
+}
+
+/**
+ * The files one walk becomes: the whole read half of a Drive fetch, minus the
+ * walk itself.
+ *
+ * Exported for the calendar adapter (ticket 38), which builds its own
+ * `WalkedFile` list — an event's attachments rather than a folder's children —
+ * and needs tabs, assets, comments and sidecars to come out exactly as a Drive
+ * root's do. Nothing here knows where the list came from.
+ */
+export async function convertWalk(
+  walked: { files: WalkedFile[]; skipped: SkippedObject[] },
+  api: GDriveApi,
+  root: Root,
+  previous: ReadonlyMap<string, IndexEntry> = new Map(),
+  options: FetchOptions = {},
+): Promise<FetchResult> {
+  const { directories, before } = driveMemory(previous);
+  const progress = options.progress ?? noop;
   const files: FetchedFile[] = [];
   const fetched = stamp(options.now?.() ?? new Date());
   const comments = root.comments === true;

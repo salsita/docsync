@@ -7,15 +7,21 @@
  * before the browser opens.
  */
 import { NotSignedInError } from '../../auth/errors.js';
+import { authSourceNames } from '../../auth/sources.js';
 import type { Identity } from '../../auth/types.js';
-import { type SourceName, sourceNames } from '../../source.js';
+import type { SourceName } from '../../source.js';
 import { CliError, type Context, say } from '../context.js';
 
-/** The source names `docsync auth` takes, `google` included (MANUAL §2). */
+/**
+ * The source names `docsync auth` takes, `google` included (MANUAL §2).
+ *
+ * Only the sources that own a credential: a calendar is signed in to as Google,
+ * so `docsync auth calendar` is not a command (ticket 38).
+ */
 export function parseSourceName(text: string): SourceName {
   const name = text.toLowerCase() === 'google' ? 'gdocs' : text.toLowerCase();
-  if (!(sourceNames as string[]).includes(name)) {
-    throw new CliError(`${text} is not a source. Expected one of: ${sourceNames.join(', ')}`);
+  if (!(authSourceNames as string[]).includes(name)) {
+    throw new CliError(`${text} is not a source. Expected one of: ${authSourceNames.join(', ')}`);
   }
   return name as SourceName;
 }

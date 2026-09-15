@@ -14,6 +14,8 @@
  * out.
  */
 
+import { createGoogleHttp, type GoogleHttpOptions } from '../google-http.js';
+
 export const DRIVE_ENDPOINT = 'https://www.googleapis.com/drive/v3';
 export const DOCS_ENDPOINT = 'https://docs.googleapis.com/v1';
 /** Uploads have their own host; the metadata endpoints will not take bytes. */
@@ -27,12 +29,6 @@ export const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 /** What a binary with no mime type of its own is uploaded as. */
 export const DEFAULT_UPLOAD_MIME = 'application/octet-stream';
-
-/** How many times a throttled or failed request is retried. */
-const MAX_RETRIES = 3;
-
-/** Backoff used when Google does not say how long to wait. */
-const RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 /**
  * The `files.list` field mask (ticket 07 decisions): identity, the change
@@ -396,47 +392,16 @@ export interface GDriveApi {
   deletePermission(id: string, permissionId: string): Promise<void>;
 }
 
-export interface GDriveApiOptions {
-  /** Injected in tests. Default: the global `fetch`. */
-  fetch?: typeof fetch;
-  /** Injected so the retry tests do not wait. Default: real time. */
-  sleep?: (ms: number) => Promise<void>;
-}
-
-const realSleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+export type GDriveApiOptions = GoogleHttpOptions;
 
 /**
  * The API a real fetch talks to. `accessToken` is a token that is good now;
  * `CredentialProvider` renews it, and nothing here knows how.
  */
 export function createGDriveApi(accessToken: string, options: GDriveApiOptions = {}): GDriveApi {
-  const fetchImpl = options.fetch ?? fetch;
-  const sleep = options.sleep ?? realSleep;
-
-  /** One request, retried for as long as the policy allows. */
-  async function call(url: string, init: RequestInit = {}): Promise<Response> {
-    for (let attempt = 0; ; attempt += 1) {
-      const response = await fetchImpl(url, {
-        ...init,
-        headers: { authorization: `Bearer ${accessToken}`, ...(init.headers ?? {}) },
-      });
-      if (response.ok) return response;
-      if (attempt >= MAX_RETRIES || !isRetryable(response.status))
-        throw await failure(url, response);
-      await sleep(retryAfterMs(response) ?? RETRY_DELAYS_MS[attempt] ?? 4000);
-    }
-  }
-
-  async function json<T>(url: string, init?: RequestInit): Promise<T> {
-    return (await (await call(url, init)).json()) as T;
-  }
-
-  async function bytes(url: string): Promise<Uint8Array> {
-    return new Uint8Array(await (await call(url)).arrayBuffer());
-  }
+  // Bearer token, retries and the error text are the same for every Google
+  // API, and the calendar adapter signs its requests the same way (ticket 38).
+  const { call, json, bytes } = createGoogleHttp(accessToken, options);
 
   /** A request whose body is JSON, which is every write but an upload. */
   function withJson(method: string, body: unknown): RequestInit {
@@ -635,30 +600,4 @@ function multipart(
   body.set(content, head.length);
   body.set(tail, head.length + content.length);
   return { body, contentType: `multipart/related; boundary=${UPLOAD_BOUNDARY}` };
-}
-
-/** Throttling and Google's own failures are worth another try; nothing else. */
-function isRetryable(status: number): boolean {
-  return status === 429 || status >= 500;
-}
-
-/** `Retry-After` in milliseconds, when the response carries a readable one. */
-function retryAfterMs(response: Response): number | undefined {
-  const value = response.headers.get('retry-after');
-  if (value === null) return undefined;
-  const seconds = Number(value);
-  return Number.isFinite(seconds) ? seconds * 1000 : undefined;
-}
-
-/** The error a failed request becomes: the status, the URL and Google's message. */
-async function failure(url: string, response: Response): Promise<Error> {
-  let detail = '';
-  try {
-    const body = (await response.json()) as { error?: { message?: string } };
-    detail = body.error?.message ?? '';
-  } catch {
-    // A non-JSON body (an HTML error page, or bytes) says nothing more than the
-    // status already does.
-  }
-  return new Error(`Google API ${response.status} on ${url}${detail === '' ? '' : `: ${detail}`}`);
 }
