@@ -77,3 +77,42 @@ way round.
 `pnpm check` green; the smoke script passes on the real API; the four
 layouts of the report, rebuilt in the fake, produce the expected
 suggestions and nothing else.
+
+## Outcome
+
+Landed 2026-09-16 in six agent commits (`afc39ac` … `62faf27`), a review
+fix and the wording commit. `pnpm check` green, 1812 tests (+19). Smoke
+script green on the real API: their words untouched, both proposals side by
+side, the new paragraph after the empty paragraph, the suggested item and
+the list; the Doc trashed.
+
+- Root causes. Fault 1: `edit()` rewrote any block that carried a pending
+  suggestion, a rule from ticket 17. Faults 2 and 3: "base block n is live
+  block n" was assumed; a paragraph that begins with a placeholder comment
+  re-parses as an HTML block that `flattenBlocks` drops, so from there on
+  every range was k blocks early. The empty and suggested paragraphs in the
+  report were not the cause. Fault 4: appending a last list item split the
+  previous item's newline, two suggestions and a paragraph boundary.
+- Fix: `alignBlocks` in `ranges.ts` matches the two block lists (LCS on
+  type and Markdown, equal-length runs between anchors, recursively);
+  `Origin.insertions` records other authors' suggested-insertion ranges;
+  every delete and restyle is cut around them (`outside`); whole-stretch
+  writes over them are refused by name (`refuseIfSuggested`); no more
+  whole-block rewrite; a suggested appended item goes in whole with its own
+  bullet.
+- Review fix: an edit or deletion of a base block the alignment could not
+  place was skipped in silence; it is refused by name now, a kept block
+  needs nothing (three tests).
+- Live probe: a suggested delete over another author's suggested insertion
+  is accepted by the API and their words are gone with nothing to reject,
+  which is fault 1's damage. The API does not stack a second deletion id
+  on a run already suggested deleted; the word is struck once. Docs
+  sometimes folds an adjacent new suggestion into the existing id.
+- Deviations: the author in the refusal is usually `someone`, since a push
+  read does not ask for the discussions; the message puts the path last in
+  house style; the invariant test asserts type and text per block.
+- Follow-ups: a list item appended at the very end of the body still splits
+  in suggesting mode; the push read could ask `commentsViewMode` to name
+  the author; `restyle()` still ranges over a paragraph holding a foreign
+  insertion (no text change, unverified live); ticket 42 for the soft
+  line break round-trip defect found while probing.
