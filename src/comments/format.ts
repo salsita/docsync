@@ -47,6 +47,12 @@ export interface Thread {
   /** The nearest heading above the anchor. Absent when there is none. */
   heading?: string;
   /**
+   * What the source says the thread is, in one line, printed under the heading:
+   * a suggestion's `summaryText`, "Replace: “one” with “three”" (MANUAL §6,
+   * ticket 40). Absent when the source did not say.
+   */
+  summary?: string;
+  /**
    * A suggestion's blocks as they stand, one entry per block: the first and the
    * last block it touches and everything between them (ticket 34).
    */
@@ -57,7 +63,12 @@ export interface Thread {
    * makes those blocks print as context.
    */
   after?: readonly string[];
-  /** The comments of the thread, in creation order. A suggestion has none. */
+  /**
+   * What was written in the thread, in creation order. A suggestion has its
+   * own discussion — the replies under its card in Docs — and the head post is
+   * not one of them, since it is the suggestion itself and carries no text
+   * (MANUAL §6, ticket 40).
+   */
   entries: Entry[];
 }
 
@@ -178,6 +189,9 @@ export function sortThreads(threads: readonly Thread[]): Thread[] {
 function section(thread: Thread): string[] {
   const lines = [`## ${thread.id} — ${thread.kind}`, ''];
 
+  // What the card in Docs is called, before anything is quoted or diffed: a
+  // reader scanning the file sees what the suggestion does (MANUAL §6).
+  if (thread.summary !== undefined && thread.summary !== '') lines.push(thread.summary, '');
   if (thread.quote !== undefined) lines.push(quoted(marked(thread)), '');
   lines.push(whereIn(thread), '');
 

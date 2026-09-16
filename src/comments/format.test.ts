@@ -133,6 +133,48 @@ describe('formatSidecar', () => {
     );
   });
 
+  it('puts a suggestion’s summary on a line under the heading (ticket 40)', () => {
+    const summarised: Thread = {
+      ...suggestion,
+      summary: 'Replace: “this text” with “the paragraph”',
+    };
+
+    expect(formatSidecar({ document, fetched, threads: [summarised] })).toContain(
+      [
+        '## suggest.r73ve12ed25a — suggestion',
+        '',
+        'Replace: “this text” with “the paragraph”',
+        '',
+        'in: Heading six',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('prints the discussion under a suggestion’s diff (ticket 40)', () => {
+    const discussed: Thread = {
+      ...suggestion,
+      summary: 'Replace: “this text” with “the paragraph”',
+      entries: [
+        { author: 'Jane Client', time: '2026-09-14T08:51:14.902Z', text: 'The price lock stays.' },
+        { author: 'Jiří Staniševský', time: '2026-09-14T09:02:00.000Z', text: 'Agreed.' },
+      ],
+    };
+
+    expect(formatSidecar({ document, fetched, threads: [discussed] })).toContain(
+      [
+        '```',
+        '',
+        '**Jane Client** · 2026-09-14 08:51',
+        'The price lock stays.',
+        '',
+        '**Jiří Staniševský** · 2026-09-14 09:02',
+        'Agreed.',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('renders a suggestion over blocks as a line per block on each side', () => {
     const across: Thread = {
       ...suggestion,
