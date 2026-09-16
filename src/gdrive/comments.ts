@@ -12,13 +12,17 @@
  * Pure: recorded JSON and a body in, threads out. No requests, no clock.
  */
 import type { Entry, Thread } from '../comments/format.js';
-import { type Anchor, locate, placeOf } from '../comments/locate.js';
+import { type Anchor, locate, occurrencesBefore, placeOf } from '../comments/locate.js';
 import type {
+  CommentAnchor,
+  CommentPost,
+  CommentThread,
   DocsDocument,
   DriveComment,
   DriveCommentAuthor,
   Paragraph,
   StructuralElement,
+  SuggestionThread,
   TextRun,
 } from './api.js';
 
@@ -276,6 +280,167 @@ export function threadsOf(
   return [...commentThreads(comments, body), ...suggestionThreads(doc, body)];
 }
 
+/* ------------------------------------------- the Docs API's own discussions */
+
+/**
+ * What one read with `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED` adds
+ * (MANUAL §6, ticket 40).
+ *
+ * A `DocsDocument` is one of these; the fields are absent when the read did not
+ * ask for them, and absent when the document has none — which is why every
+ * caller falls back per field rather than on a flag.
+ */
+export interface Discussions {
+  comments?: readonly CommentThread[];
+  suggestions?: readonly SuggestionThread[];
+}
+
+/** A discussion's posts as sidecar entries: the ones that say something. */
+function postsOf(posts: readonly (CommentPost | undefined)[]): Entry[] {
+  return posts
+    .filter((post): post is CommentPost => post !== undefined)
+    .filter((post) => post.deleted !== true && (post.content ?? '').trim() !== '')
+    .map((post) => ({
+      author:
+        post.author?.displayName === undefined || post.author.displayName === ''
+          ? 'Someone'
+          : post.author.displayName,
+      time: post.createTime ?? '',
+      text: decodeEntities((post.content ?? '').trim()),
+    }))
+    .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+}
+
+/**
+ * One tab's text as the Markdown body has it, with the live indices kept
+ * (MANUAL §6, ticket 40).
+ *
+ * A comment anchor's ranges are indices into the tab as the API answers it,
+ * suggested insertions and all; the body on disk is the same text *without*
+ * them (ticket 16). So the inserted runs are left out here and the runs that
+ * remain carry where they start in the document and where they land in this
+ * string, which is what turns a range into a piece of the body.
+ */
+interface TabText {
+  text: string;
+  runs: { start: number; at: number; text: string }[];
+}
+
+function tabTextOf(doc: DocsDocument): TabText {
+  const runs: TabText['runs'] = [];
+  let text = '';
+  for (const paragraph of paragraphsOf(doc.body?.content)) {
+    for (const element of paragraph.elements ?? []) {
+      const run = element.textRun;
+      if (run === undefined || (run.suggestedInsertionIds ?? []).length > 0) continue;
+      const content = run.content ?? '';
+      runs.push({ start: element.startIndex ?? 0, at: text.length, text: content });
+      text += content;
+    }
+  }
+  return { text, runs };
+}
+
+/** The text an anchor's ranges cover, and where it starts in the tab's text. */
+function anchoredText(
+  tab: TabText,
+  anchor: CommentAnchor,
+): { quote: string; at: number } | undefined {
+  const ranges = [...(anchor.ranges ?? [])].sort(
+    (a, b) => (a.startIndex ?? 0) - (b.startIndex ?? 0),
+  );
+  let quote = '';
+  let at: number | undefined;
+  for (const range of ranges) {
+    const from = range.startIndex ?? 0;
+    const to = range.endIndex ?? from;
+    for (const run of tab.runs) {
+      const end = run.start + run.text.length;
+      if (end <= from || run.start >= to) continue;
+      const start = Math.max(from, run.start);
+      if (at === undefined) at = run.at + (start - run.start);
+      quote += run.text.slice(start - run.start, Math.min(to, end) - run.start);
+    }
+  }
+  // A selection entirely inside text a suggestion proposes is on nothing the
+  // body holds, and the quote search is what such a thread falls back to.
+  return at === undefined || quote.trim() === '' ? undefined : { quote, at };
+}
+
+/** Where one anchored thread sits: which tab, and where in that tab's body. */
+function byAnchor(
+  anchorId: string | undefined,
+  tabs: readonly TabBody[],
+  texts: readonly TabText[],
+): { at: number; place: ReturnType<typeof placeOf> } | undefined {
+  if (anchorId === undefined || anchorId === '') return undefined;
+  const at = tabs.findIndex((tab) => tab.doc.commentAnchors?.[anchorId] !== undefined);
+  const anchor = tabs[at]?.doc.commentAnchors?.[anchorId];
+  const text = texts[at];
+  if (anchor === undefined || text === undefined) return undefined;
+  const found = anchoredText(text, anchor);
+  if (found === undefined) return undefined;
+  // The ranges are exact and the body is the same text in another spelling, so
+  // what carries the exactness across is which occurrence of it this is.
+  const skip = occurrencesBefore(text.text, found.quote, found.at);
+  const located = locate(tabs[at]?.body ?? '', found.quote, { skip });
+  return located === undefined ? undefined : { at, place: placeOf(located) };
+}
+
+/** Where a thread goes when no anchor placed it: the first tab holding its quote. */
+function byQuote(
+  quoted: string,
+  tabs: readonly TabBody[],
+): { at: number; place: ReturnType<typeof placeOf> | { quote?: string } } {
+  if (quoted === '') return { at: 0, place: {} };
+  for (const [at, tab] of tabs.entries()) {
+    const found = locate(tab.body, quoted);
+    if (found !== undefined) return { at, place: placeOf(found) };
+  }
+  // Nowhere in any tab: the bare text is quoted and the thread sorts to the end
+  // of the first tab's sidecar (MANUAL §6).
+  return { at: 0, place: { quote: quoted } };
+}
+
+/** One comment thread of the Docs reply, placed in the tab its anchor names. */
+function docsCommentThreads(
+  threads: readonly CommentThread[],
+  tabs: readonly TabBody[],
+  texts: readonly TabText[],
+): Thread[][] {
+  const out: Thread[][] = tabs.map(() => []);
+  for (const comment of threads) {
+    // `status` is what says a thread is open; a resolved one is not in the
+    // sidecar at all, and neither is one nobody said anything in (MANUAL §6).
+    if ((comment.status ?? 'OPEN') !== 'OPEN') continue;
+    const entries = postsOf([comment.headPost, ...(comment.replies ?? [])]);
+    if (entries.length === 0) continue;
+
+    const quoted = decodeEntities(comment.plainTextQuote ?? '').trim();
+    const found = byAnchor(comment.anchorId, tabs, texts) ?? byQuote(quoted, tabs);
+    out[found.at]?.push({
+      id: comment.commentId ?? '',
+      kind: 'comment',
+      created: comment.headPost?.createTime ?? '',
+      ...found.place,
+      entries,
+    });
+  }
+  return out;
+}
+
+/** A suggestion thread with what the Docs API says about its discussion. */
+function discussed(thread: Thread, discussion: SuggestionThread | undefined): Thread {
+  if (discussion === undefined) return thread;
+  const summary = decodeEntities((discussion.summaryText ?? '').trim());
+  const entries = postsOf([discussion.headPost, ...(discussion.replies ?? [])]);
+  return {
+    ...thread,
+    ...(summary === '' ? {} : { summary }),
+    ...(entries.length === 0 ? {} : { entries }),
+  };
+}
+
 /** One tab of a Doc, as a sidecar is built for it (MANUAL §6, ticket 37). */
 export interface TabBody {
   doc: DocsDocument;
@@ -283,17 +448,49 @@ export interface TabBody {
 }
 
 /**
- * The threads of a Doc, split across its tabs (MANUAL §6, ticket 37).
+ * The threads of a Doc, split across its tabs (MANUAL §6, tickets 37 and 40).
  *
- * Drive holds a comment against the *file*: the thread carries the text it is
- * attached to and an opaque anchor that names no tab. So a thread goes to the
- * first tab, in tab order, whose body holds its quote — docsync already places
- * a thread by its quoted text — and a thread that is placed nowhere goes to the
- * first tab's sidecar, where it is the unanchored thread it always was.
+ * With the preview's `comments[]` in hand, a thread is placed by its anchor:
+ * the tab whose `commentAnchors` holds the id, and inside it the exact
+ * characters the ranges cover — which is what tells two identical sentences
+ * apart where the quoted text alone cannot. A thread whose anchor is gone,
+ * because the text it was on has been deleted since, falls back to the search
+ * by quote, and so does every thread when the preview is not there: Drive holds
+ * a comment against the *file*, with an opaque anchor that names no tab, so the
+ * thread goes to the first tab, in tab order, whose body holds its quote, and a
+ * thread placed nowhere goes to the first tab's sidecar.
  *
  * Suggestions need no such rule: each one is in the tab whose body carries it.
+ * What the preview adds to them is their discussion and their summary line.
  */
 export function placeThreads(
+  tabs: readonly TabBody[],
+  comments: readonly DriveComment[],
+  discussions: Discussions = {},
+): Thread[][] {
+  const texts = tabs.map((tab) => tabTextOf(tab.doc));
+
+  // One source for both, when there is one: `comments[]` is the same thread
+  // under the same id Drive answers, so the headings and the index do not move.
+  const placed =
+    discussions.comments === undefined
+      ? driveCommentThreads(tabs, comments)
+      : docsCommentThreads(discussions.comments, tabs, texts);
+
+  const byId = new Map(
+    (discussions.suggestions ?? []).map((one): [string, SuggestionThread] => [
+      one.suggestionId ?? '',
+      one,
+    ]),
+  );
+  return tabs.map((tab, at) => [
+    ...(placed[at] ?? []),
+    ...suggestionThreads(tab.doc, tab.body).map((thread) => discussed(thread, byId.get(thread.id))),
+  ]);
+}
+
+/** The Drive threads of a Doc, placed per tab by the text each one quotes. */
+function driveCommentThreads(
   tabs: readonly TabBody[],
   comments: readonly DriveComment[],
 ): Thread[][] {
@@ -303,5 +500,5 @@ export function placeThreads(
     const at = quoted === '' ? 0 : tabs.findIndex((tab) => locate(tab.body, quoted) !== undefined);
     mine[at === -1 ? 0 : at]?.push(comment);
   }
-  return tabs.map((tab, at) => threadsOf(tab.doc, mine[at] ?? [], tab.body));
+  return tabs.map((tab, at) => commentThreads(mine[at] ?? [], tab.body));
 }

@@ -287,6 +287,32 @@ function match(
   return { ...bounds, anchor: mark === undefined ? anchor : { ...anchor, mark } };
 }
 
+/**
+ * How many times `quoted` occurs in `text` before the character at `at`
+ * (MANUAL §6, ticket 40).
+ *
+ * This is the `skip` an exact anchor turns into: the source says which
+ * characters of its own body the comment is on, and the body on disk is the
+ * same text in another spelling, so the count of earlier occurrences survives
+ * the conversion where an index does not. Whitespace is collapsed on both
+ * sides, exactly as a search collapses it.
+ */
+export function occurrencesBefore(text: string, quoted: string, at: number): number {
+  const needle = collapse(quoted).text.trim();
+  if (needle === '') return 0;
+  const whole = collapse(text);
+  const limit = collapsedIndex(whole.at, at);
+  let count = 0;
+  for (
+    let found = whole.text.indexOf(needle);
+    found >= 0 && found < limit;
+    found = whole.text.indexOf(needle, found + needle.length)
+  ) {
+    count += 1;
+  }
+  return count;
+}
+
 /** How many times `needle` occurs in `text`, counted without overlapping. */
 function countOf(text: string, needle: string): number {
   let count = 0;

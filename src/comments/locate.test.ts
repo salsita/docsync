@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { headingsOf, locate } from './locate.js';
+import { headingsOf, locate, occurrencesBefore } from './locate.js';
 
 const body = [
   'Intro before any heading.',
@@ -192,5 +192,27 @@ describe('locate over a run of blocks', () => {
     expect(locate(two, 'The start of the next.', { spans: false })?.quote).toBe(
       'The start of the next.',
     );
+  });
+});
+
+describe('occurrencesBefore (ticket 40)', () => {
+  const text = 'A pin here.\nAnd a pin there.\nOne more pin.\n';
+
+  it('counts the occurrences that start before a position', () => {
+    expect(occurrencesBefore(text, 'pin', text.indexOf('pin'))).toBe(0);
+    expect(occurrencesBefore(text, 'pin', text.indexOf('pin', 5))).toBe(1);
+    expect(occurrencesBefore(text, 'pin', text.lastIndexOf('pin'))).toBe(2);
+  });
+
+  it('collapses whitespace on both sides, as a search does', () => {
+    // The body writes a paragraph on one line; the source may have wrapped it.
+    const wrapped = 'a  pin\nhere and a pin here';
+
+    expect(occurrencesBefore(wrapped, 'pin here', wrapped.lastIndexOf('pin'))).toBe(1);
+    expect(occurrencesBefore(wrapped, 'pin here', 0)).toBe(0);
+  });
+
+  it('counts nothing for an empty quote', () => {
+    expect(occurrencesBefore(text, '   ', 40)).toBe(0);
   });
 });

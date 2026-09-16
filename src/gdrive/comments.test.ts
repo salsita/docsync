@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DocsDocument } from './api.js';
+import type { CommentAnchor, CommentThread, DocsDocument } from './api.js';
 import {
   commentThreads,
   type DriveComment,
@@ -368,5 +368,283 @@ describe('placeThreads (MANUAL §6, ticket 37)', () => {
     expect(placeThreads(one, fixtureComments(ELEMENTS))[0]).toEqual(
       threadsOf(fixtureInlineDocument(ELEMENTS), fixtureComments(ELEMENTS), body),
     );
+  });
+});
+
+/**
+ * The Docs API answers the discussions the Drive comments API has no idea
+ * about, and exact anchors with them (MANUAL §6, ticket 40).
+ */
+describe('threads from the Docs reply (ticket 40)', () => {
+  /** A tab body of whole paragraphs, with the indices the API counts in. */
+  function tabDocument(
+    paragraphs: readonly string[],
+    anchors: Record<string, CommentAnchor> = {},
+  ): DocsDocument {
+    let index = 1;
+    const content = paragraphs.map((text) => {
+      const start = index;
+      const run = `${text}\n`;
+      index += run.length;
+      return {
+        startIndex: start,
+        endIndex: index,
+        paragraph: {
+          elements: [{ startIndex: start, endIndex: index, textRun: { content: run } }],
+        },
+      };
+    });
+    return {
+      documentId: 'doc1',
+      body: { content },
+      ...(Object.keys(anchors).length === 0 ? {} : { commentAnchors: anchors }),
+    };
+  }
+
+  /** The anchor covering the `nth` occurrence of `text` in those paragraphs. */
+  function anchorOn(
+    id: string,
+    paragraphs: readonly string[],
+    text: string,
+    nth = 0,
+  ): CommentAnchor {
+    let index = 1;
+    let seen = 0;
+    for (const paragraph of paragraphs) {
+      for (let at = paragraph.indexOf(text); at >= 0; at = paragraph.indexOf(text, at + 1)) {
+        if (seen === nth) {
+          return {
+            anchorId: id,
+            ranges: [{ startIndex: index + at, endIndex: index + at + text.length }],
+          };
+        }
+        seen += 1;
+      }
+      index += paragraph.length + 1;
+    }
+    throw new Error(`no occurrence ${nth} of ${text}`);
+  }
+
+  /** One thread of the Docs reply, in the shape a recorded reply has. */
+  function docsComment(over: Partial<CommentThread> = {}): CommentThread {
+    return {
+      commentId: 'AAACHGuq504',
+      status: 'OPEN',
+      headPost: {
+        postId: 'p1',
+        content: 'Is three right?',
+        contentHtml: '<p>Is three right?</p>',
+        author: { displayName: 'Jane Client', user: 'users/1' },
+        createTime: '2026-09-14T08:51:14.902Z',
+        updateTime: '2026-09-14T08:51:14.902Z',
+        commentAction: 'NO_COMMENT_ACTION_CHANGE',
+      },
+      replies: [],
+      ...over,
+    };
+  }
+
+  const rate = 'The rate is three hundred.';
+  const first = ['Intro.', rate, 'Filler.'];
+  const second = ['A heading of sorts.', rate, rate];
+  const tabs = [
+    { doc: tabDocument(first), body: documentToMarkdown(tabDocument(first)) },
+    { doc: tabDocument(second), body: documentToMarkdown(tabDocument(second)) },
+  ];
+
+  /** The same two tabs, with the anchor of `kix.a` where the test puts it. */
+  function anchored(tab: 0 | 1, nth: number): typeof tabs {
+    const paragraphs = tab === 0 ? first : second;
+    const anchor = anchorOn('kix.a', paragraphs, rate, nth);
+    const doc = tabDocument(paragraphs, { 'kix.a': anchor });
+    return tabs.map((one, at) => (at === tab ? { ...one, doc } : one)) as typeof tabs;
+  }
+
+  it('reads a thread, its status, its quote and its posts', () => {
+    const placed = placeThreads(tabs, [], {
+      comments: [
+        docsComment({
+          plainTextQuote: rate,
+          replies: [
+            {
+              postId: 'p2',
+              content: 'Three it is.',
+              author: { displayName: 'Jiří Staniševský', user: 'users/2' },
+              createTime: '2026-09-14T09:02:00.000Z',
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(placed[0]?.[0]).toMatchObject({
+      id: 'AAACHGuq504',
+      kind: 'comment',
+      created: '2026-09-14T08:51:14.902Z',
+      quote: rate,
+      entries: [
+        { author: 'Jane Client', time: '2026-09-14T08:51:14.902Z', text: 'Is three right?' },
+        { author: 'Jiří Staniševský', time: '2026-09-14T09:02:00.000Z', text: 'Three it is.' },
+      ],
+    });
+  });
+
+  it('is the same thread the Drive comments API gave (MANUAL §6)', () => {
+    // `comments[].commentId` is the id Drive answers, so a sidecar written from
+    // the Docs reply keeps the headings and the order it already had.
+    const one = [{ doc: fixtureInlineDocument(ELEMENTS), body }];
+    const drive = fixtureComments(ELEMENTS).filter((thread) => thread.resolved !== true);
+    const docs: CommentThread[] = drive.map((thread) => ({
+      commentId: thread.id ?? '',
+      status: 'OPEN',
+      plainTextQuote: thread.quotedFileContent?.value ?? '',
+      headPost: {
+        content: thread.content ?? '',
+        author: { displayName: thread.author?.displayName ?? '' },
+        createTime: thread.createdTime ?? '',
+      },
+      replies: (thread.replies ?? [])
+        .filter((reply) => (reply.content ?? '') !== '')
+        .map((reply) => ({
+          content: reply.content ?? '',
+          author: { displayName: reply.author?.displayName ?? '' },
+          createTime: reply.createdTime ?? '',
+        })),
+    }));
+
+    expect(placeThreads(one, [], { comments: docs })[0]).toEqual(
+      placeThreads(one, fixtureComments(ELEMENTS))[0],
+    );
+  });
+
+  it('leaves a resolved thread and an empty one out', () => {
+    const placed = placeThreads(tabs, [], {
+      comments: [
+        docsComment({ commentId: 'closed', status: 'RESOLVED', plainTextQuote: rate }),
+        docsComment({
+          commentId: 'silent',
+          plainTextQuote: rate,
+          headPost: { postId: 'p', createTime: '2026-09-14T08:00:00Z' },
+        }),
+      ],
+    });
+
+    expect(placed.flat()).toEqual([]);
+  });
+
+  it('places an anchored thread in the tab its anchor sits in', () => {
+    // The quote alone would put it in the first tab, which is where the first
+    // copy of that sentence is; the anchor says otherwise (MANUAL §6).
+    const placed = placeThreads(anchored(1, 0), [], {
+      comments: [docsComment({ anchorId: 'kix.a', plainTextQuote: rate })],
+    });
+
+    expect(placed[0]).toEqual([]);
+    expect(placed[1]?.[0]?.offset).toBe(tabs[1]?.body.indexOf(rate));
+  });
+
+  it('places it at the occurrence the ranges cover, not at the first one', () => {
+    const placed = placeThreads(anchored(1, 1), [], {
+      comments: [docsComment({ anchorId: 'kix.a', plainTextQuote: rate })],
+    });
+
+    // Two identical paragraphs, and the anchor is on the second of them.
+    expect(placed[1]?.[0]?.offset).toBe(tabs[1]?.body.lastIndexOf(rate));
+  });
+
+  it('marks exactly the words the ranges cover', () => {
+    const anchor = anchorOn('kix.a', first, 'three hundred');
+    const doc = tabDocument(first, { 'kix.a': anchor });
+    const placed = placeThreads([{ doc, body: tabs[0]?.body ?? '' }], [], {
+      comments: [docsComment({ anchorId: 'kix.a', plainTextQuote: 'three hundred' })],
+    });
+    const thread = placed[0]?.[0];
+    const [start, end] = thread?.mark ?? [0, 0];
+
+    expect(thread?.quote?.slice(start, end)).toBe('three hundred');
+  });
+
+  it('falls back to the quote when the thread has no anchor', () => {
+    // The text the comment was on has been deleted since, so the tab has no
+    // `commentAnchors` entry for it (MANUAL §6).
+    const placed = placeThreads(anchored(1, 0), [], {
+      comments: [docsComment({ anchorId: 'kix.gone', plainTextQuote: rate })],
+    });
+
+    expect(placed[0]?.[0]?.offset).toBe(tabs[0]?.body.indexOf(rate));
+    expect(placed[1]).toEqual([]);
+  });
+
+  it('falls back to the quote when the anchored text is not in the body', () => {
+    // The anchor is on text a suggestion proposes, which the body does not hold.
+    const doc = tabDocument(first, {
+      'kix.a': { anchorId: 'kix.a', ranges: [{ startIndex: 9000, endIndex: 9010 }] },
+    });
+    const placed = placeThreads([{ doc, body: tabs[0]?.body ?? '' }], [], {
+      comments: [docsComment({ anchorId: 'kix.a', plainTextQuote: rate })],
+    });
+
+    expect(placed[0]?.[0]?.offset).toBe(tabs[0]?.body.indexOf(rate));
+  });
+
+  it('gives a suggestion its summary line and its discussion', () => {
+    const doc = paragraph([
+      { content: 'The rate is ' },
+      { content: 'one', del: ['suggest.frjnz76h4q08'] },
+      { content: 'three', ins: ['suggest.frjnz76h4q08'] },
+      { content: ' hundred.' },
+    ]);
+    const placed = placeThreads([{ doc, body: 'The rate is one hundred.' }], [], {
+      suggestions: [
+        {
+          suggestionId: 'suggest.frjnz76h4q08',
+          status: 'OPEN',
+          summaryText: 'Replace: “one” with “three”',
+          summaryHtml: '<p>Replace: “one” with “three”</p>',
+          // The head post is the suggestion itself and carries no text.
+          headPost: {
+            postId: 'h',
+            author: { displayName: 'Nazarii Makhovyk' },
+            createTime: '2026-09-14T08:51:14.902Z',
+            suggestionAction: 'NO_SUGGESTION_ACTION_CHANGE',
+          },
+          replies: [
+            {
+              postId: 'r1',
+              content: 'The price lock stays.',
+              author: { displayName: 'Jane Client' },
+              createTime: '2026-09-14T09:00:00.000Z',
+            },
+            {
+              postId: 'r2',
+              content: 'Agreed.',
+              author: { displayName: 'Jiří Staniševský' },
+              createTime: '2026-09-14T09:05:00.000Z',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(placed[0]?.[0]).toMatchObject({
+      id: 'suggest.frjnz76h4q08',
+      kind: 'suggestion',
+      summary: 'Replace: “one” with “three”',
+      before: ['The rate is one hundred.'],
+      after: ['The rate is three hundred.'],
+      entries: [
+        { author: 'Jane Client', time: '2026-09-14T09:00:00.000Z', text: 'The price lock stays.' },
+        { author: 'Jiří Staniševský', time: '2026-09-14T09:05:00.000Z', text: 'Agreed.' },
+      ],
+    });
+  });
+
+  it('leaves a suggestion the reply says nothing about as it was', () => {
+    const doc = paragraph([{ content: 'One.' }, { content: ' Added.', ins: ['suggest.s1'] }]);
+    const plain = placeThreads([{ doc, body: 'One.' }], []);
+
+    expect(placeThreads([{ doc, body: 'One.' }], [], { suggestions: [] })).toEqual(plain);
+    expect(plain[0]?.[0]?.summary).toBeUndefined();
+    expect(plain[0]?.[0]?.entries).toEqual([]);
   });
 });
