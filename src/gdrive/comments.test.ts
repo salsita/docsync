@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { sortThreads } from '../comments/format.js';
 import type { CommentAnchor, CommentThread, DocsDocument } from './api.js';
 import {
   commentThreads,
@@ -8,10 +9,13 @@ import {
   threadsOf,
 } from './comments.js';
 import { fixtureComments, fixtureInlineDocument } from './fixtures.mock.js';
+import { flattenTabs } from './tabs.js';
 import { documentToMarkdown } from './to-markdown.js';
 
 const ELEMENTS = '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4';
-const body = documentToMarkdown(fixtureInlineDocument(ELEMENTS));
+/** The Elements Doc's one tab, which is the whole Doc (ticket 37). */
+const elements = (): DocsDocument => flattenTabs(fixtureInlineDocument(ELEMENTS))[0]?.doc ?? {};
+const body = documentToMarkdown(elements());
 
 /** One run of a paragraph, spelled as the suggestions view answers it. */
 interface Run {
@@ -146,7 +150,7 @@ describe('commentThreads', () => {
 
 describe('suggestionThreads', () => {
   it('reads the two suggestions of the Elements document, in document order', () => {
-    const threads = suggestionThreads(fixtureInlineDocument(ELEMENTS), body);
+    const threads = suggestionThreads(elements(), body);
 
     expect(threads.map((thread) => thread.id)).toEqual([
       'suggest.4kz5rsdhutcs',
@@ -363,10 +367,10 @@ describe('placeThreads (MANUAL §6, ticket 37)', () => {
   });
 
   it('is the threads of the one document when there is one tab', () => {
-    const one = [{ doc: fixtureInlineDocument(ELEMENTS), body }];
+    const one = [{ doc: elements(), body }];
 
     expect(placeThreads(one, fixtureComments(ELEMENTS))[0]).toEqual(
-      threadsOf(fixtureInlineDocument(ELEMENTS), fixtureComments(ELEMENTS), body),
+      threadsOf(elements(), fixtureComments(ELEMENTS), body),
     );
   });
 });
@@ -489,10 +493,26 @@ describe('threads from the Docs reply (ticket 40)', () => {
     });
   });
 
+  it('places the recorded Doc’s own threads exactly where Drive’s go', () => {
+    // The Elements recording carries both: Drive's `comments.list` and the
+    // preview's `comments[]` with the tab's `commentAnchors`. Same ids, same
+    // anchors, same marks — which is what keeps existing sidecars put.
+    const reply = fixtureInlineDocument(ELEMENTS);
+    const one = [{ doc: elements(), body }];
+
+    expect(reply.comments?.length).toBeGreaterThan(0);
+    expect(Object.keys(elements().commentAnchors ?? {}).length).toBeGreaterThan(0);
+    // The two APIs list the threads in their own orders; the sidecar's order is
+    // the body's, which is what `sortThreads` answers (MANUAL §6).
+    expect(sortThreads(placeThreads(one, [], { comments: reply.comments })[0] ?? [])).toEqual(
+      sortThreads(placeThreads(one, fixtureComments(ELEMENTS))[0] ?? []),
+    );
+  });
+
   it('is the same thread the Drive comments API gave (MANUAL §6)', () => {
     // `comments[].commentId` is the id Drive answers, so a sidecar written from
     // the Docs reply keeps the headings and the order it already had.
-    const one = [{ doc: fixtureInlineDocument(ELEMENTS), body }];
+    const one = [{ doc: elements(), body }];
     const drive = fixtureComments(ELEMENTS).filter((thread) => thread.resolved !== true);
     const docs: CommentThread[] = drive.map((thread) => ({
       commentId: thread.id ?? '',
@@ -512,8 +532,8 @@ describe('threads from the Docs reply (ticket 40)', () => {
         })),
     }));
 
-    expect(placeThreads(one, [], { comments: docs })[0]).toEqual(
-      placeThreads(one, fixtureComments(ELEMENTS))[0],
+    expect(sortThreads(placeThreads(one, [], { comments: docs })[0] ?? [])).toEqual(
+      sortThreads(placeThreads(one, fixtureComments(ELEMENTS))[0] ?? []),
     );
   });
 

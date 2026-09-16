@@ -29,6 +29,8 @@ Makes the page break.
 
 ## suggest.4kz5rsdhutcs — suggestion
 
+Delete: “us”
+
 in: Heading six
 
 \`\`\`diff
@@ -37,6 +39,9 @@ in: Heading six
 \`\`\`
 
 ## suggest.r73ve12ed25a — suggestion
+
+Replace: “this” with “the”
+Replace: “text” with “paragraph”
 
 in: Heading six
 

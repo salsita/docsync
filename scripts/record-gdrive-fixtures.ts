@@ -14,8 +14,9 @@
  * anything in Drive.
  *
  * Per Google Doc it records the document twice — without suggestions, which is
- * what a fetch reads, and with them inline, which is what a push and the
- * comment sidecar read (ticket 16, ticket 17) — and the open comment threads.
+ * what a fetch reads, and with them inline and the discussions included, which
+ * is what a push and the comment sidecar read (tickets 16, 17 and 40) — and
+ * the open comment threads as Drive answers them.
  * The inline copy is written only when it differs from the plain one, so a
  * document with no pending suggestion costs no second fixture.
  *
@@ -165,9 +166,18 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
  * `GET` of a URI the Docs API itself handed us, and nothing else.
  */
 async function recordImages(docId: string, document: unknown): Promise<void> {
-  const objects = (document as { inlineObjects?: Record<string, Record<string, never>> })
-    .inlineObjects;
-  for (const [objectId, object] of Object.entries(objects ?? {})) {
+  // With `includeTabsContent=true` the inline objects are per tab and there is
+  // no top-level `inlineObjects` at all (ticket 37); both shapes are read, so
+  // a recording made before the flag still yields its images.
+  const reply = document as {
+    inlineObjects?: Record<string, Record<string, never>>;
+    tabs?: { documentTab?: { inlineObjects?: Record<string, Record<string, never>> } }[];
+  };
+  const objects = {
+    ...reply.inlineObjects,
+    ...Object.assign({}, ...(reply.tabs ?? []).map((tab) => tab.documentTab?.inlineObjects ?? {})),
+  } as Record<string, Record<string, never>>;
+  for (const [objectId, object] of Object.entries(objects)) {
     const embedded = (
       object as {
         inlineObjectProperties?: { embeddedObject?: { imageProperties?: { contentUri?: string } } };
@@ -175,6 +185,13 @@ async function recordImages(docId: string, document: unknown): Promise<void> {
     ).inlineObjectProperties?.embeddedObject;
     const uri = embedded?.imageProperties?.contentUri;
     if (uri === undefined) continue;
+    if (assets.some((one) => one.uri === uri)) continue;
+    const known = assets.find((one) => one.object === objectId);
+    if (known !== undefined) {
+      // The same image under a second signed URI; the bytes are already saved.
+      assets.push({ ...known, uri });
+      continue;
+    }
     const response = await get(uri);
     const bytes = new Uint8Array(await response.arrayBuffer());
     const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
@@ -200,19 +217,33 @@ async function record(folderId: string, path: string): Promise<void> {
         `https://docs.googleapis.com/v1/documents/${file.id}` +
           `?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS&includeTabsContent=true`,
       );
+      // With the discussions, which is how the sidecar read asks (ticket 40):
+      // the reply gains `comments[]`, `suggestions[]` and, per tab,
+      // `commentAnchors`. A Developer Preview parameter; a project outside the
+      // preview cannot record this and the fixtures stay as they are.
       const inline = await json(
         `https://docs.googleapis.com/v1/documents/${file.id}` +
-          `?suggestionsViewMode=SUGGESTIONS_INLINE&includeTabsContent=true`,
+          `?suggestionsViewMode=SUGGESTIONS_INLINE&includeTabsContent=true` +
+          `&commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED`,
       );
       const comments = await listComments(file.id);
       requests += 3;
       docs.push(file.id);
       await write(`doc-${file.id}`, document);
+      // From both replies: a `contentUri` is signed and differs between two
+      // reads of the same document, and the recorded URI is the key the
+      // fixture API is asked with — so each read's own URI is recorded, and
+      // the bytes behind them are the same image saved once.
       await recordImages(file.id, document);
+      await recordImages(file.id, inline);
       // Every response echoes the view it was asked for, which is the one
       // difference a document with no pending suggestion has.
       const same = (value: unknown): string =>
-        JSON.stringify({ ...(value as object), suggestionsViewMode: undefined });
+        JSON.stringify({
+          ...(value as object),
+          suggestionsViewMode: undefined,
+          commentsViewMode: undefined,
+        });
       if (same(inline) !== same(document)) {
         inlineDocs.push(file.id);
         await write(`doc-inline-${file.id}`, inline);
