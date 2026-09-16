@@ -165,7 +165,15 @@ export function countingApi(backing: GDriveApi = fixtureApi()): CountedApi {
       ...backing,
       listFolder: (id) => count('listFolder', id, backing.listFolder(id)),
       getFile: (id) => count('getFile', id, backing.getFile(id)),
-      getDocument: (id, mode) => count('getDocument', id, backing.getDocument(id, mode)),
+      // The discussions ride on a read a sidecar already makes, so the counter
+      // says which read asked for them rather than counting a request of its
+      // own (MANUAL §7, ticket 40).
+      getDocument: (id, mode, options) =>
+        count(
+          'getDocument',
+          `${id}${options?.comments === true ? '+comments' : ''}`,
+          backing.getDocument(id, mode, options),
+        ),
       comments: (id) => count('comments', id, backing.comments(id)),
       download: (id) => count('download', id, backing.download(id)),
       downloadUri: (uri) =>

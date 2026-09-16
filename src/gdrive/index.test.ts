@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createFakeCredentialProvider } from '../auth/provider.js';
+import { GoogleApiError } from '../google-http.js';
 import type { IndexEntry } from '../index-file.js';
 import type { Root } from '../manifest/types.js';
 import { splitGDocsRef } from '../source-ref.js';
-import type { DocsDocument, GDriveApi } from './api.js';
+import { COMMENTS_PREVIEW_HINT, type DocsDocument, type GDriveApi } from './api.js';
 import { countingApi, DOC_IDS, fixtureApi, fixtureDocument, ROOT_ID } from './fixtures.mock.js';
 import { changedSince, describe as describeRef, fetchRoot } from './index.js';
 import { flattenTabs } from './tabs.js';
@@ -884,6 +885,183 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
     expect(asset?.entry?.document).toBe(SECOND);
     expect(result.files.find((file) => file.path === SECOND)?.body).toContain(
       '![](Second%20tab.assets/image-1.png)',
+    );
+  });
+});
+
+/**
+ * The read that builds a sidecar asks for the discussions too, and a project
+ * outside the Developer Preview gets that read again without them
+ * (MANUAL §6, §7, ticket 40).
+ */
+describe('the discussions on the sidecar read (ticket 40)', () => {
+  const at = { now: () => new Date('2026-09-03T16:31:07Z') };
+  const on: Root = { ...root, comments: true };
+  const ELEMENTS_SUGGESTION = 'suggest.r73ve12ed25a';
+
+  /** A fixture API on which every Doc has the Elements threads, so several owe a sidecar. */
+  function everyDocCommented(backing: GDriveApi = fixtureApi()): GDriveApi {
+    return {
+      ...backing,
+      async comments() {
+        return backing.comments(ELEMENTS);
+      },
+    };
+  }
+
+  /** A fixture API that refuses `commentsViewMode`, as a project outside the preview does. */
+  function refusing(backing: GDriveApi = fixtureApi()): { api: GDriveApi; asked: boolean[] } {
+    const asked: boolean[] = [];
+    return {
+      asked,
+      api: {
+        ...backing,
+        async getDocument(id, mode, docOptions) {
+          asked.push(docOptions?.comments === true);
+          if (docOptions?.comments === true) {
+            throw new GoogleApiError(400, 'documents.get', 'Invalid value at commentsViewMode');
+          }
+          return backing.getDocument(id, mode);
+        },
+      },
+    };
+  }
+
+  /** The index a fetch of `of` leaves behind, to fetch against a second time. */
+  const indexAfter = async (of: Root): Promise<Map<string, IndexEntry>> => {
+    const first = await fetchRoot(of, provider, new Map(), { ...options, ...at });
+    return new Map(first.entries.map((one): [string, IndexEntry] => [one.path, one]));
+  };
+
+  it('asks for them on the read that owes a sidecar', async () => {
+    const previous = await indexAfter(on);
+    const counted = countingApi();
+
+    await fetchRoot(on, provider, previous, { ...options, ...at, api: counted.api });
+
+    // Nothing moved, so the Elements Doc — the one with a thread — is the only
+    // one read at all, and its read is the one that carries the parameter.
+    expect(counted.requests.filter((one) => one.startsWith('getDocument:'))).toEqual([
+      `getDocument:${ELEMENTS}+comments`,
+    ]);
+  });
+
+  it('asks for them on every body read when the bodies are being read anyway', async () => {
+    const counted = countingApi();
+
+    await fetchRoot(on, provider, new Map(), { ...options, ...at, api: counted.api });
+
+    // A first fetch reads every Doc for its body; the parameter rides along on
+    // each of them and costs nothing (MANUAL §7).
+    const reads = counted.requests.filter((one) => one.startsWith('getDocument:'));
+    expect(reads.filter((one) => one.endsWith('+comments'))).toEqual(reads);
+    expect(reads).toHaveLength(DOC_IDS.length);
+  });
+
+  it('asks for nothing of the sort on a root with comments off', async () => {
+    const counted = countingApi();
+
+    await fetchRoot(root, provider, new Map(), { ...options, ...at, api: counted.api });
+
+    expect(counted.requests.filter((one) => one.endsWith('+comments'))).toEqual([]);
+  });
+
+  it('costs no request of its own: the discussions ride on the body read', async () => {
+    const previous = new Map(
+      (await fetchRoot(on, provider, new Map(), { ...options, ...at })).entries.map(
+        (one): [string, IndexEntry] => [one.path, one],
+      ),
+    );
+    const counted = countingApi();
+
+    await fetchRoot(on, provider, previous, { ...options, ...at, api: counted.api });
+
+    // Three for the walk, one `comments.list` per Doc, and the one body read
+    // the sidecar needs — the number ticket 17 pinned (MANUAL §7).
+    expect(counted.requests).toHaveLength(3 + DOC_IDS.length + 1);
+  });
+
+  it('carries a suggestion’s summary and discussion into the sidecar', async () => {
+    const backing = fixtureApi();
+    const api: GDriveApi = {
+      ...backing,
+      async getDocument(id, mode, docOptions) {
+        const document = await backing.getDocument(id, mode);
+        if (docOptions?.comments !== true) return document;
+        return {
+          ...document,
+          suggestions: [
+            {
+              suggestionId: ELEMENTS_SUGGESTION,
+              status: 'OPEN',
+              summaryText: 'Replace: “this text” with “the paragraph”',
+              headPost: { postId: 'h', createTime: '2026-09-14T08:51:14.902Z' },
+              replies: [
+                {
+                  postId: 'r1',
+                  content: 'The price lock stays.',
+                  author: { displayName: 'Jane Client' },
+                  createTime: '2026-09-14T09:00:00.000Z',
+                },
+              ],
+            },
+          ],
+        };
+      },
+    };
+
+    const result = await fetchRoot(on, provider, new Map(), { ...options, ...at, api });
+    const sidecar = result.files.find((file) => file.path === 'drive/Elements.comments.md');
+
+    expect(sidecar?.text).toContain(
+      `## ${ELEMENTS_SUGGESTION} — suggestion\n\nReplace: “this text” with “the paragraph”\n`,
+    );
+    expect(sidecar?.text).toContain('**Jane Client** · 2026-09-14 09:00\nThe price lock stays.');
+  });
+
+  it('reads the document again without them when the preview refuses', async () => {
+    const { api, asked } = refusing();
+    const plain = await fetchRoot(on, provider, new Map(), { ...options, ...at });
+
+    const fell = await fetchRoot(on, provider, new Map(), { ...options, ...at, api });
+
+    // Asked once with, refused, asked again without, and never again — and the
+    // sidecar is the one Drive's own threads build, byte for byte (MANUAL §7).
+    expect(asked[0]).toBe(true);
+    expect(asked.filter(Boolean)).toHaveLength(1);
+    expect(fell.files.find((file) => file.path === 'drive/Elements.comments.md')?.text).toBe(
+      plain.files.find((file) => file.path === 'drive/Elements.comments.md')?.text,
+    );
+  });
+
+  it('says so on stderr once, and stops asking for the rest of the fetch', async () => {
+    const { api, asked } = refusing(everyDocCommented());
+    const lines: string[] = [];
+
+    await fetchRoot(on, provider, new Map(), {
+      ...options,
+      ...at,
+      api,
+      progress: (line) => lines.push(line),
+    });
+
+    expect(lines.filter((line) => line === COMMENTS_PREVIEW_HINT)).toHaveLength(1);
+    // Every Doc owes a sidecar here, and only the first read asked.
+    expect(asked.filter(Boolean)).toHaveLength(1);
+    expect(asked.length).toBeGreaterThan(2);
+  });
+
+  it('lets a failure that is not the refusal through', async () => {
+    const backing = fixtureApi();
+    const api: GDriveApi = {
+      ...backing,
+      async getDocument() {
+        throw new GoogleApiError(404, 'documents.get', 'not found');
+      },
+    };
+
+    await expect(fetchRoot(on, provider, new Map(), { ...options, ...at, api })).rejects.toThrow(
+      'not found',
     );
   });
 });

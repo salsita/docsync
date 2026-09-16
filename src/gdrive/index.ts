@@ -27,6 +27,8 @@ import type {
 } from '../source.js';
 import { type SourceRef, sourceUrl, splitGDocsRef, tabRef } from '../source-ref.js';
 import {
+  COMMENTS_PREVIEW_HINT,
+  commentsRefused,
   createGDriveApi,
   type DocsDocument,
   type DriveComment,
@@ -172,6 +174,9 @@ export async function convertWalk(
   // A tabbed Doc's directory has no file of its own, so its entry cannot come
   // from one (ticket 37).
   const directoryEntries: IndexEntry[] = [];
+  // Shared by every document of this root: the first refusal of the preview's
+  // `commentsViewMode` is the last time it is asked for (MANUAL §7, ticket 40).
+  const preview = { available: true };
 
   for (const file of walked.files) {
     refuseSidecar(file.path);
@@ -185,6 +190,8 @@ export async function convertWalk(
       suggest,
       directory: directories.get(file.id),
       occupied,
+      preview,
+      progress,
     });
     files.push(...made.files);
     directoryEntries.push(...made.entries);
@@ -344,6 +351,15 @@ interface DocContext {
   directory?: string;
   /** Every directory this root is writing into, so a new one takes a free name. */
   occupied: ReadonlySet<string>;
+  /**
+   * Whether the Developer Preview's `commentsViewMode` is still worth asking
+   * for (MANUAL §7, ticket 40). One refusal turns it off for the rest of the
+   * root, so a project that is not enrolled pays for one refused read and
+   * hears one line about it, not one per document.
+   */
+  preview: { available: boolean };
+  /** Where that one line goes. */
+  progress: (line: string) => void;
 }
 
 /** One walked file as the files it becomes, and the entries no file carries. */
@@ -443,7 +459,28 @@ async function toFiles(
   const open = threadList.filter((one) => one.resolved !== true && one.deleted !== true);
   if (!changed && open.length === 0 && previous?.suggested !== true) return carried();
 
-  return tabbedFiles(await api.getDocument(file.id, 'inline'), threadList);
+  return tabbedFiles(await readWithDiscussions(), threadList);
+
+  /**
+   * The read a sidecar is built from (MANUAL §6, §7, ticket 40).
+   *
+   * The discussion on a suggestion and the exact comment anchors come with the
+   * body, under the Developer Preview's `commentsViewMode`, so this costs no
+   * request the fetch was not already making. A project that is not enrolled
+   * has the parameter refused; the read is made again without it, once, and
+   * the sidecar is built from Drive's threads placed by quote, as before.
+   */
+  async function readWithDiscussions(): Promise<DocsDocument> {
+    if (!context.preview.available) return api.getDocument(file.id, 'inline');
+    try {
+      return await api.getDocument(file.id, 'inline', { comments: true });
+    } catch (error) {
+      if (!commentsRefused(error)) throw error;
+      context.preview.available = false;
+      context.progress(COMMENTS_PREVIEW_HINT);
+      return api.getDocument(file.id, 'inline');
+    }
+  }
 
   /**
    * The Doc, tab by tab.
@@ -487,6 +524,10 @@ async function toFiles(
       ? placeThreads(
           read.map((one) => ({ doc: one.tab.doc, body: one.body })),
           threadList,
+          // What the preview answered, when it did: the threads under the same
+          // ids Drive gives them, and the discussions on the suggestions
+          // (MANUAL §6, ticket 40).
+          document,
         )
       : read.map((): Thread[] => []);
 
