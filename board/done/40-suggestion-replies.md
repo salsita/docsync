@@ -65,3 +65,39 @@ must not become a fixture.
 `pnpm check` green; the smoke script passes on the real API; a scratch
 checkout (never the owner's) of the fixture Doc the smoke script leaves
 behind is not needed, the script checks the sidecar itself.
+
+## Outcome
+
+Landed 2026-09-16 in nine agent commits (`6eabfea` … `7a78022`) plus the
+wording commit. `pnpm check` green, 1793 tests (+39). Smoke script green on
+the real API: its own Doc, a suggestion, a reply under the card, the sidecar
+carrying summary, diff, reply and a comment thread; the Doc trashed.
+
+- `getDocument(id, mode, { comments: true })` asks
+  `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED`; the types `CommentThread`,
+  `SuggestionThread`, `CommentPost`, `CommentAnchor` spelled from the
+  recorded reply; a tab view carries its `commentAnchors`.
+- Placement: an anchor's ranges are turned into the text they cover and
+  which occurrence of that text it is, and `locate` gained a `skip` budget,
+  so exactness crosses into the Markdown without a position map from the
+  converter (deviation: `to-markdown.ts` untouched). Suggested insertions
+  are excluded from the tab text the anchor is read against. Unanchored
+  threads, and every thread without the preview, fall back to the quote.
+- A suggestion thread gains `summaryText` under its heading and the replies
+  as entries; the head post carries no text and is skipped.
+- Deviations: the parameter rides on every body read of a comments root,
+  not only reads that owe a sidecar (same request count); the refusal hint
+  is once per root, not per fetch; `content` is not entity-decoded, since
+  it is the plain half and only `plainTextQuote` is escaped;
+  `addCommentReply` takes `suggestionId` for a suggestion, not `commentId`.
+- Fixtures: only the Elements Doc re-recorded with discussions; the
+  recorder gained `commentsViewMode` and two fixes (inline objects under
+  tabs; signed `contentUri` differing between reads). Markdown snapshots
+  byte-identical; the sidecar snapshot gained two summary lines.
+- Live finding: a comment created through the Drive API has no anchor and
+  no `commentAnchors` entry; only the Docs UI anchors one.
+- Follow-ups: `commentsRefused` treats any 400 or 403 as the preview
+  refusal, so an unrelated 400 costs one re-read and a misleading hint; the
+  remaining `doc-*.json` fixtures are still in the pre-tabs shape; an
+  anchored quote spanning a block boundary falls back to the quote search;
+  the refusal fallback is tested on a stub only.
