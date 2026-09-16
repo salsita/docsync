@@ -118,6 +118,8 @@ interface Context {
   segmentId?: string;
   /** Suggestion ids met in the paragraph being converted. */
   pending: Set<string>;
+  /** Suggested-insertion runs met in the paragraph being converted. */
+  inserted: Insertion[];
   /** Suggestion ids met anywhere in the document. */
   suggestions: Set<string>;
 }
@@ -142,6 +144,27 @@ export interface Origin {
   atomic?: boolean;
   /** Pending suggestions inside it (MANUAL §7). */
   suggestions?: string[];
+  /**
+   * The stretches of the live document inside it that are somebody's pending
+   * **suggested insertion** (MANUAL §7).
+   *
+   * They are not in the base — the version the suggestions were made against,
+   * which is what the checkout holds — so no offset in the block's own text
+   * points at them, and a range computed from two such offsets would span them
+   * without meaning to. A push has to skip over them: their words are somebody
+   * else's proposal, not text to delete or restyle.
+   */
+  insertions?: Insertion[];
+}
+
+/** One stretch of a block that is a pending suggested insertion (MANUAL §7). */
+export interface Insertion {
+  /** The first index it covers. */
+  start: number;
+  /** One past the last. */
+  end: number;
+  /** The suggestions that propose it. */
+  ids: string[];
 }
 
 /** A node's origin, or `undefined` when it was built without provenance. */
@@ -196,6 +219,7 @@ export function convertDocument(doc: DocsDocument, options: ConvertOptions = {})
     seen: new Set(),
     provenance: options.provenance === true,
     pending: new Set(),
+    inserted: [],
     suggestions: new Set(),
     ...(options.assets === undefined ? {} : { assets: options.assets }),
     ...(options.from === undefined ? {} : { from: options.from }),
@@ -234,6 +258,13 @@ function takeSuggestions(context: Context): string[] {
   return found;
 }
 
+/** The suggested-insertion runs met since the last `takeInsertions`, in order. */
+function takeInsertions(context: Context): Insertion[] {
+  const found = context.inserted;
+  context.inserted = [];
+  return found;
+}
+
 /** A run of structural elements: a body, a footnote, or one table cell. */
 function convertContent(content: readonly StructuralElement[], context: Context): RootContent[] {
   const out: RootContent[] = [];
@@ -269,6 +300,7 @@ function convertContent(content: readonly StructuralElement[], context: Context)
             start: element?.startIndex ?? 0,
             end: element?.endIndex ?? 0,
             suggestions: takeSuggestions(context),
+            insertions: takeInsertions(context),
           },
         });
         index += 1;
@@ -351,7 +383,12 @@ function paragraph(node: Paragraph, context: Context, element: StructuralElement
     }
 
     const children = inline(part.elements, context);
-    const origin = { start: part.start, end: part.end, suggestions: takeSuggestions(context) };
+    const origin = {
+      start: part.start,
+      end: part.end,
+      suggestions: takeSuggestions(context),
+      insertions: takeInsertions(context),
+    };
     // An empty paragraph has no Markdown form (MANUAL §6).
     if (children.length === 0) continue;
 
@@ -642,7 +679,16 @@ function inlineElement(element: ParagraphElement, context: Context): PhrasingCon
     }
     // A suggested insertion is not in the version the suggestion was made
     // against, and that version is the base a push diffs from (MANUAL §7).
-    if ((run.suggestedInsertionIds ?? []).length > 0) return [];
+    // Where it sits is remembered all the same: a push has to plan around the
+    // characters it cannot see.
+    if ((run.suggestedInsertionIds ?? []).length > 0) {
+      context.inserted.push({
+        start: element.startIndex ?? 0,
+        end: element.endIndex ?? element.startIndex ?? 0,
+        ids: [...(run.suggestedInsertionIds ?? [])],
+      });
+      return [];
+    }
     return annotate(run.content ?? '', run.textStyle ?? {}, context, element.startIndex ?? 0);
   }
   if (element.footnoteReference !== undefined) return [footnote(element, context)];

@@ -388,7 +388,7 @@ describe('what the API cannot write', () => {
     expect(patch.dropped).toEqual(['horizontal rule']);
   });
 
-  it('overwrites a pending suggestion inside an edited paragraph, and names it', () => {
+  it('edits beside a pending suggested deletion, and names it', () => {
     const doc = document('A suggested paragraph.\n');
     const run = doc.body?.content?.[1]?.paragraph?.elements?.[0]?.textRun;
     if (run === undefined) throw new Error('no run');
@@ -396,10 +396,12 @@ describe('what the API cannot write', () => {
 
     const patch = plan('A suggested paragraph.\n', 'A rewritten paragraph.\n', doc);
 
+    // The suggestion is named in the report, and the paragraph is patched over
+    // the word that changed: the text somebody proposed deleting is still
+    // there, so there is nothing here that has to be written around. The
+    // paragraph used to go whole (ticket 41, MANUAL §7).
     expect(patch.suggestions).toEqual(['suggest.1']);
-    // The whole run goes and comes back as plain text, which is the only way
-    // this API has of resolving a suggestion (MANUAL §7).
-    expect(kinds(patch.requests)).toEqual(['deleteContentRange', 'insertText', 'updateTextStyle']);
+    expect(kinds(patch.requests)).toEqual(['insertText', 'deleteContentRange']);
   });
 });
 

@@ -23,7 +23,13 @@
  */
 import type { PhrasingContent, Root } from 'mdast';
 import { resolveAssetPath } from '../assets.js';
-import { type BlockCounts, type BlockOp, type DiffBlock, diffBlocks } from '../diff/blocks.js';
+import {
+  type BlockCounts,
+  type BlockOp,
+  type DiffBlock,
+  diffBlocks,
+  flattenBlocks,
+} from '../diff/blocks.js';
 import {
   DEFAULT_STYLE,
   diffInline,
@@ -42,7 +48,15 @@ import {
   type PlannedFootnote,
   segmentsToRequests,
 } from './from-markdown.js';
-import { blockRanges, type LiveDocument, type Piece, type Ranged } from './ranges.js';
+import {
+  alignBlocks,
+  blockRanges,
+  type LiveDocument,
+  type Piece,
+  type Ranged,
+  type Slot,
+} from './ranges.js';
+import type { Insertion } from './to-markdown.js';
 
 /** A soft line break inside a paragraph, which Docs stores as a vertical tab. */
 const VERTICAL_TAB = '';
@@ -82,6 +96,12 @@ export interface PatchOptions {
    * keeps every kept word, since there its formatting is what matters.
    */
   suggest?: boolean;
+  /**
+   * Who made each pending suggestion, by id, for the refusal that names them
+   * (MANUAL §7). The Docs API only says so on a read that asked for the
+   * discussions, so a suggestion nobody can name is "another author".
+   */
+  authors?: ReadonlyMap<string, string>;
 }
 
 /** Kept words fewer than this between two edits are rewritten in suggesting mode. */
@@ -267,15 +287,16 @@ export function planPatch(
     }
     if (base.inline === undefined || next.inline === undefined) return;
 
-    // A paragraph carrying a pending suggestion cannot be edited around: the
-    // API can neither accept nor reject one, so the text is written over and
-    // the suggestion resolves by being overwritten (MANUAL §7, ticket 17).
+    // A paragraph carrying a pending suggestion is edited like any other one.
+    // The edit is a **competing suggestion**: it is planned against the
+    // original text alone, around the words somebody else has proposed adding,
+    // and the ids are named in the report so the push says whose paragraph it
+    // landed beside (MANUAL §7). The paragraph used to be written over whole,
+    // the client's words with it — the first fault of ticket 41.
     if (ranged.suggestions.length > 0 && plainOf(base.inline) !== plainOf(next.inline)) {
       suggestions.push(...ranged.suggestions);
-      rewrite(ranged, next.inline, segmentId);
-      return;
     }
-    spans(ranged.pieces, base.inline, next.inline, segmentId);
+    spans(ranged.pieces, base.inline, next.inline, segmentId, ranged.insertions);
   }
 
   /** The character diff of one stretch of text, as requests. */
@@ -284,6 +305,7 @@ export function planPatch(
     base: readonly PhrasingContent[],
     next: readonly PhrasingContent[],
     segmentId?: string,
+    around: readonly Insertion[] = [],
   ): void {
     const { spans: found, styles } = diffInline(
       base,
@@ -299,7 +321,16 @@ export function planPatch(
       if (span.kind === 'delete') {
         const to = indexAt(pieces, span.base + span.text.length, true);
         if (to > at) {
-          emit(at, DELETE, [{ deleteContentRange: { range: range(at, to, segmentId) } }]);
+          // Later parts first: they are one batch, applied in order, and a
+          // deletion moves everything after it.
+          const parts = outside(at, to, around).reverse();
+          emit(
+            at,
+            DELETE,
+            parts.map((part) => ({
+              deleteContentRange: { range: range(part[0], part[1], segmentId) },
+            })),
+          );
         }
         continue;
       }
@@ -317,15 +348,17 @@ export function planPatch(
         .flatMap((key) => fieldOf(key))
         .join(',');
       if (fields === '') continue;
-      emit(at, STYLE, [
-        {
+      emit(
+        at,
+        STYLE,
+        outside(at, to, around).map((part) => ({
           updateTextStyle: {
-            range: range(at, to, segmentId),
+            range: range(part[0], part[1], segmentId),
             textStyle: textStyle({ ...DEFAULT_STYLE, ...change.style }, Object.keys(change.style)),
             fields,
           },
-        },
-      ]);
+        })),
+      );
     }
   }
 
@@ -409,15 +442,58 @@ export function planPatch(
     return path === undefined ? undefined : options.images?.get(path);
   }
 
-  /** One block's text replaced whole, its paragraph and its newline kept. */
-  function rewrite(ranged: Ranged, next: readonly PhrasingContent[], segmentId?: string): void {
-    const to = ranged.end - 1;
-    if (to > ranged.start) {
-      emit(ranged.start, DELETE, [
-        { deleteContentRange: { range: range(ranged.start, to, segmentId) } },
-      ]);
+  /* ------------------------------------------------- competing suggestions */
+
+  /**
+   * A stretch of the document with everybody else's pending suggested
+   * insertions cut out of it (MANUAL §7).
+   *
+   * Their words are not in the base, so an offset in a block's own text never
+   * points at them — but a range between two such offsets spans them all the
+   * same, and deleting or restyling that range would take somebody else's
+   * proposal with it. So the range is cut into the parts that are original
+   * text, and each part goes out on its own. Deleting a word the client has
+   * also proposed deleting is not this case: the text is still there, the API
+   * stacks the two ids on the run, and the reviewer picks one.
+   */
+  function outside(from: number, to: number, around: readonly Insertion[]): [number, number][] {
+    const gaps = around
+      .filter((one) => one.start < to && one.end > from)
+      .sort((a, b) => a.start - b.start);
+    const parts: [number, number][] = [];
+    let at = from;
+    for (const gap of gaps) {
+      if (gap.start > at) parts.push([at, gap.start]);
+      at = Math.max(at, gap.end);
     }
-    emit(ranged.start, INSERT, runRequests(inlineRuns(next), ranged.start, segmentId));
+    if (to > at) parts.push([at, to]);
+    return parts;
+  }
+
+  /**
+   * A stretch that has to go whole — a block deleted, a table rewritten —
+   * cannot be written around anybody's pending suggested insertion: taking the
+   * paragraph takes their words with it. That is the one thing this ticket says
+   * a push may never do, on either kind of push, so it is refused by name
+   * before a single request goes out (MANUAL §7).
+   */
+  function refuseIfSuggested(found: Ranged, quote: string): void {
+    const covered = all(found).flatMap((one) => one.insertions);
+    const first = covered[0];
+    if (first === undefined) return;
+    const id = first.ids[0] ?? '';
+    const author = options.authors?.get(id) ?? 'another author';
+    const verb = options.suggest === true ? 'suggested' : 'written';
+    throw new PushError(
+      `the edit at ${JSON.stringify(shorten(quote))} cannot be ${verb} beside the pending ` +
+        `suggestion ${id} by ${author}; accept or reject it in Docs first`,
+      options.path,
+    );
+  }
+
+  /** One block and everything nested under it. */
+  function all(found: Ranged): Ranged[] {
+    return [found, ...found.children.flatMap((child) => (child === undefined ? [] : all(child)))];
   }
 
   /**
@@ -500,7 +576,7 @@ export function planPatch(
    * an insert is the honest answer. Being the only pair in the hunk is the
    * signal, the same one ticket 15 settled on for a rewritten paragraph.
    */
-  function restyled(ops: readonly BlockOp[], blocks: readonly Ranged[], context: Level): BlockOp[] {
+  function restyled(ops: readonly BlockOp[], blocks: readonly Slot[], context: Level): BlockOp[] {
     if (context.table !== undefined) return [...ops];
     const out = [...ops];
     for (let at = 0; at < out.length - 1; at += 1) {
@@ -521,7 +597,7 @@ export function planPatch(
     return out;
   }
 
-  function level(ops: readonly BlockOp[], blocks: readonly Ranged[], context: Level): void {
+  function level(ops: readonly BlockOp[], blocks: readonly Slot[], context: Level): void {
     const paired = restyled(ops, blocks, context);
     let pending: DiffBlock[] = [];
     let anchor: number | undefined;
@@ -531,7 +607,7 @@ export function planPatch(
       const at = anchor ?? context.end;
       // New blocks anchored where a table starts cannot go in at that index.
       const beforeTable = blocks.some(
-        (block) => block.block.type === 'table' && block.start === at,
+        (block) => block?.block.type === 'table' && block.start === at,
       );
       // List items continue the list they land in. Beside an item of their
       // kind they go in before it and take its bullet; after the last item of
@@ -541,10 +617,22 @@ export function planPatch(
       const flat =
         kind?.startsWith('listItem:') === true &&
         pending.every((block) => block.type === kind && block.children.length === 0);
-      const next = blocks.find((block) => block.start === at);
-      const previous = [...blocks].reverse().find((block) => extent(block) === at);
+      const next = blocks.find((block) => block?.start === at);
+      const previous = [...blocks]
+        .reverse()
+        .find((block) => block !== undefined && extent(block) === at);
       const joinsNext = flat && next?.block.type === kind;
-      const joinsPrevious = flat && !joinsNext && at < context.end && previous?.block.type === kind;
+      // A split lends the item before its newline, which in suggesting mode is
+      // a suggestion of its own and an empty paragraph between the two for the
+      // reviewer to read — the fourth fault of ticket 41. There the new item
+      // goes in whole, at the start of the block that follows, with a bullet
+      // of its own.
+      const joinsPrevious =
+        flat &&
+        !joinsNext &&
+        at < context.end &&
+        previous?.block.type === kind &&
+        options.suggest !== true;
       const neighbour = joinsNext ? next : joinsPrevious ? previous : undefined;
       insert(pending, at, context, beforeTable || joinsPrevious, neighbour);
       pending = [];
@@ -588,6 +676,7 @@ export function planPatch(
 
       // A table whose shape changed is not a table that can be patched.
       if (op.op === 'update' && op.base.type === 'table' && op.base.markdown !== op.next.markdown) {
+        refuseIfSuggested(found, op.base.text);
         rewritten.push('table');
         emit(found.start, DELETE, [
           {
@@ -615,6 +704,7 @@ export function planPatch(
 
   /** One block taken out: a row of a table, or a stretch of the text. */
   function remove(found: Ranged, context: Level): void {
+    refuseIfSuggested(found, found.block.text);
     if (context.table !== undefined) {
       emit(found.start, DELETE, [
         {
@@ -649,7 +739,7 @@ export function planPatch(
   function extent(found: Ranged): number {
     let end = found.end;
     for (const child of found.children) {
-      if (child.segmentId !== found.segmentId) continue;
+      if (child === undefined || child.segmentId !== found.segmentId) continue;
       end = Math.max(end, extent(child));
     }
     return end;
@@ -659,7 +749,7 @@ export function planPatch(
   function anchorFor(
     ops: readonly BlockOp[],
     at: number,
-    blocks: readonly Ranged[],
+    blocks: readonly Slot[],
     context: Level,
   ): number {
     for (let index = at; index < ops.length; index += 1) {
@@ -677,7 +767,7 @@ export function planPatch(
     return context.end;
   }
 
-  function liveOf(op: BlockOp | undefined, blocks: readonly Ranged[]): Ranged | undefined {
+  function liveOf(op: BlockOp | undefined, blocks: readonly Slot[]): Slot {
     if (op === undefined || op.op === 'insert') return undefined;
     return blocks[op.base.index];
   }
@@ -694,7 +784,12 @@ export function planPatch(
         { type: 'root', children: one.children },
         { type: 'root', children: other.children },
       ),
-      blockRanges(node.children),
+      // The same mapping the body gets: the base blocks of the footnote's own
+      // Markdown, each on the live block it is (MANUAL §7).
+      alignBlocks(
+        flattenBlocks({ type: 'root', children: one.children }),
+        blockRanges(node.children),
+      ),
       { depth: 1, end: found.end, segmentId: found.segmentId },
     );
   }
@@ -704,7 +799,7 @@ export function planPatch(
     found: Ranged,
     base: DiffBlock,
     context: Level,
-  ): { blocks: Ranged[]; level: Level } | undefined {
+  ): { blocks: Slot[]; level: Level } | undefined {
     if (found.children.length === 0) return undefined;
     if (base.type === 'table') {
       return {
@@ -730,7 +825,7 @@ export function planPatch(
   /* -------------------------------------------------------------- rows */
 
   /** A new row of a table: the row itself, then its cells, right to left. */
-  function insertRow(next: DiffBlock, blocks: readonly Ranged[], context: Level): void {
+  function insertRow(next: DiffBlock, blocks: readonly Slot[], context: Level): void {
     const table = context.table;
     if (table === undefined) return;
     const before = blocks[next.index - 1];
@@ -798,6 +893,15 @@ export function planPatch(
 }
 
 /* ------------------------------------------------------------- the pieces */
+
+/** The most of a block's text a refusal quotes, so the message stays a line. */
+const QUOTE = 60;
+
+/** A block's text, cut short enough to name it in a message. */
+function shorten(text: string): string {
+  const one = text.replaceAll('\n', ' ').trim();
+  return one.length <= QUOTE ? one : `${one.slice(0, QUOTE - 1)}\u2026`;
+}
 
 /** A range, in the segment it belongs to. */
 function range(startIndex: number, endIndex: number, segmentId?: string): DocsWriteRequest {

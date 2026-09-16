@@ -47,9 +47,9 @@ function characters(doc: DocsDocument, segmentId?: string): string {
   return out.join('').replaceAll('', '\n');
 }
 
-/** Every block of a tree, parents first. */
-function all(blocks: readonly Ranged[]): Ranged[] {
-  return blocks.flatMap((block) => [block, ...all(block.children)]);
+/** Every block of a tree that the base maps onto, parents first. */
+function all(blocks: readonly (Ranged | undefined)[]): Ranged[] {
+  return blocks.flatMap((block) => (block === undefined ? [] : [block, ...all(block.children)]));
 }
 
 /** The type and Markdown of every block, for comparing two flattenings. */
@@ -89,7 +89,9 @@ describe('every recorded Doc', () => {
 
       // The derived body is the body the fetch writes: no suggestions in these.
       expect(live.markdown).toBe(documentToMarkdown(doc));
-      expect(shape(live.blocks.map((one) => one.block))).toEqual(
+      // Base block n is live block n: the guarantee the whole module exists
+      // for, and the one ticket 41 made a fact rather than an assumption.
+      expect(shape(live.blocks.map((one) => one?.block as never))).toEqual(
         shape(flattenBlocks(parseMarkdown(live.markdown))),
       );
 
@@ -103,7 +105,7 @@ describe('every recorded Doc', () => {
   it('reads a table cell back out of the cell it names', () => {
     const doc = fixtureDocument('1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4');
     const live = readLive(doc);
-    const table = live.blocks.find((one) => one.block.type === 'table');
+    const table = live.blocks.find((one) => one?.block.type === 'table');
     const row = table?.children[0];
     const text = characters(doc);
 
@@ -200,7 +202,7 @@ describe('a footnote body', () => {
   it('is ranged inside its own segment', () => {
     const doc = fixtureDocument('1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4');
     const live = readLive(doc);
-    const definition = live.blocks.find((one) => one.block.type === 'footnoteDefinition');
+    const definition = live.blocks.find((one) => one?.block.type === 'footnoteDefinition');
     const node = definition?.block.source[0];
     if (node?.type !== 'footnoteDefinition') throw new Error('no footnote definition');
     const inside = blockRanges(node.children);
