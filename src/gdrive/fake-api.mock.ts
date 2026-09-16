@@ -8,6 +8,8 @@
  */
 import type {
   BatchUpdateResult,
+  CommentAnchor,
+  CommentThread,
   DocsDocument,
   DocsWriteReply,
   DocsWriteRequest,
@@ -16,6 +18,7 @@ import type {
   FileMetadata,
   GDriveApi,
   MoveOptions,
+  SuggestionThread,
   Tab,
 } from './api.js';
 import { createDocsModel, type DocsModel, type ViewMode } from './docs-model.mock.js';
@@ -42,6 +45,18 @@ export interface FakeTab {
   title: string;
   parentId?: string;
   model: DocsModel;
+  /**
+   * Where the tab's comments sit, by anchor id, as the preview answers them
+   * (MANUAL §6, ticket 40). Empty unless a test seeds one.
+   */
+  anchors: Record<string, CommentAnchor>;
+}
+
+/** One post of a fake discussion: what a reply in Docs carries. */
+export interface FakePost {
+  author: string;
+  content: string;
+  createTime: string;
 }
 
 export interface FakeDrive extends GDriveApi {
@@ -53,6 +68,16 @@ export interface FakeDrive extends GDriveApi {
   hosted: Map<string, Uint8Array>;
   /** Comment threads by file id, for a test of a root with `comments: true`. */
   threads: Map<string, DriveComment[]>;
+  /**
+   * What the preview's `commentsViewMode` answers, by file id (ticket 40).
+   * Empty unless a test seeds it, which is a Doc outside the preview — and a
+   * Doc with nothing to say, since the API leaves both fields out for one.
+   */
+  discussions: Map<string, { comments?: CommentThread[]; suggestions?: SuggestionThread[] }>;
+  /** A reply under a suggestion's card, as the preview's `addCommentReply` makes one. */
+  replyToSuggestion(documentId: string, suggestionId: string, post: FakePost): void;
+  /** The line Docs prints on a suggestion's card, which the API calls `summaryText`. */
+  summarise(documentId: string, suggestionId: string, summary: string): void;
   /** The shares that exist right now, as `<fileId>:<permissionId>`. */
   permissions: Set<string>;
   /** Every operation, in order: `createFile Notes`, `trash doc1`, … */
@@ -76,6 +101,10 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
   let nextTab = 0;
   const hosted = new Map<string, Uint8Array>();
   const threads = new Map<string, DriveComment[]>();
+  const discussions = new Map<
+    string,
+    { comments?: CommentThread[]; suggestions?: SuggestionThread[] }
+  >();
   const permissions = new Set<string>();
   const calls: string[] = [];
   let nextPermission = 0;
@@ -96,7 +125,17 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
 
   /** The tab every Doc has: `t.0`, which is what a one-tab Doc's id is. */
   function firstTab(id: string, name: string): FakeTab {
-    return { id: 't.0', title: name, model: createDocsModel(id, name) };
+    return { id: 't.0', title: name, model: createDocsModel(id, name), anchors: {} };
+  }
+
+  /** The discussion of one suggestion, made when a test first says something about it. */
+  function suggestionOf(documentId: string, suggestionId: string): SuggestionThread {
+    const held = discussions.get(documentId) ?? {};
+    const found = (held.suggestions ?? []).find((one) => one.suggestionId === suggestionId);
+    if (found !== undefined) return found;
+    const made: SuggestionThread = { suggestionId, status: 'OPEN', replies: [] };
+    discussions.set(documentId, { ...held, suggestions: [...(held.suggestions ?? []), made] });
+    return made;
   }
 
   /** The tabs of a Doc, or a loud failure: nothing else is a Doc. */
@@ -135,11 +174,12 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
   }
 
   /** The reply's tab tree: a parent, then the tabs nested in it. */
-  function tabTree(id: string, mode: ViewMode, parentId?: string): Tab[] {
+  function tabTree(id: string, mode: ViewMode, anchors: boolean, parentId?: string): Tab[] {
     return tabsOf(id)
       .filter((tab) => tab.parentId === parentId)
       .map((tab, index): Tab => {
         const document = tab.model.document(mode);
+        const placed = anchors && Object.keys(tab.anchors).length > 0;
         return {
           tabProperties: {
             tabId: tab.id,
@@ -155,8 +195,10 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
             ...(document.inlineObjects === undefined
               ? {}
               : { inlineObjects: document.inlineObjects }),
+            // Only under `COMMENTS_VIEW_MODE_INCLUDED`, as the API does it.
+            ...(placed ? { commentAnchors: tab.anchors } : {}),
           },
-          childTabs: tabTree(id, mode, tab.id),
+          childTabs: tabTree(id, mode, anchors, tab.id),
         };
       });
   }
@@ -196,7 +238,31 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
     calls,
     hosted,
     threads,
+    discussions,
     permissions,
+
+    replyToSuggestion(documentId, suggestionId, post) {
+      const thread = suggestionOf(documentId, suggestionId);
+      thread.replies = [
+        ...(thread.replies ?? []),
+        {
+          postId: `post${(thread.replies ?? []).length + 1}`,
+          content: post.content,
+          contentHtml: `<p>${post.content}</p>`,
+          author: { displayName: post.author },
+          createTime: post.createTime,
+          updateTime: post.createTime,
+          suggestionAction: 'NO_SUGGESTION_ACTION_CHANGE',
+        },
+      ];
+      calls.push(`addCommentReply ${documentId} ${suggestionId}`);
+    },
+
+    summarise(documentId, suggestionId, summary) {
+      const thread = suggestionOf(documentId, suggestionId);
+      thread.summaryText = summary;
+      thread.summaryHtml = `<p>${summary}</p>`;
+    },
 
     async createPermission(id, permission) {
       nextPermission += 1;
@@ -239,12 +305,22 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
       return metadata(get(id));
     },
 
-    async getDocument(id, mode = 'preview'): Promise<DocsDocument> {
+    async getDocument(id, mode = 'preview', options = {}): Promise<DocsDocument> {
       // As the real API answers with `includeTabsContent=true` (ticket 37):
       // the contents are under `tabs` and there is no top-level body at all.
       // Inline is the view a push and a comment sidecar read: the pending
       // suggestions are on the runs they touch (MANUAL §6, §7).
-      return { documentId: id, title: get(id).name, tabs: tabTree(id, mode) };
+      const asked = options.comments === true;
+      // The discussions and the anchors come only when asked for, and a Doc
+      // with none leaves the fields out, exactly as the API does (ticket 40).
+      const held = asked ? (discussions.get(id) ?? {}) : {};
+      return {
+        documentId: id,
+        title: get(id).name,
+        tabs: tabTree(id, mode, asked),
+        ...(held.comments === undefined ? {} : { comments: held.comments }),
+        ...(held.suggestions === undefined ? {} : { suggestions: held.suggestions }),
+      };
     },
 
     async comments(id) {
@@ -280,6 +356,7 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
             title,
             ...(properties?.parentTabId === undefined ? {} : { parentId: properties.parentTabId }),
             model: createDocsModel(documentId, title),
+            anchors: {},
           });
           calls.push(`addTab ${documentId} ${title}`);
           replies.push({ addDocumentTab: { tabProperties: { tabId: id, title } } });

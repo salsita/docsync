@@ -143,6 +143,77 @@ describe('a push under a suggest root', () => {
     expect(sidecar).toContain('Really.');
   });
 
+  it('places a comment thread by the anchor the preview answers (ticket 40)', async () => {
+    const api = await drive();
+    // Where "One." sits in the tab, as `commentAnchors` reports it.
+    const body = onlyTab(await api.getDocument(BRIEF_ID, 'inline')).body?.content ?? [];
+    const one = body
+      .flatMap((element) => element.paragraph?.elements ?? [])
+      .find((element) => element.textRun?.content === 'One.\n');
+    const tab = api.tabs(BRIEF_ID)[0];
+    if (tab === undefined) throw new Error('no tab');
+    tab.anchors = {
+      'kix.a': {
+        anchorId: 'kix.a',
+        ranges: [{ startIndex: one?.startIndex ?? 0, endIndex: (one?.startIndex ?? 0) + 4 }],
+      },
+    };
+    api.discussions.set(BRIEF_ID, {
+      comments: [
+        {
+          commentId: 'AAA1',
+          anchorId: 'kix.a',
+          status: 'OPEN',
+          plainTextQuote: 'One.',
+          headPost: {
+            postId: 'p1',
+            content: 'Is this still true?',
+            author: { displayName: 'Jane Client' },
+            createTime: '2026-09-14T08:51:14.902Z',
+          },
+          replies: [],
+        },
+      ],
+    });
+
+    const sidecar = textOf((await fetched(api)).files, 'client/Brief.comments.md') ?? '';
+
+    // Drive knows nothing of this thread; the Docs reply carried it whole.
+    expect(await api.comments(BRIEF_ID)).toEqual([]);
+    expect(sidecar).toContain('## AAA1 — comment');
+    expect(sidecar).toContain('> ==One.==');
+    expect(sidecar).toContain('in: Brief');
+    expect(sidecar).toContain('**Jane Client** · 2026-09-14 08:51\nIs this still true?');
+  });
+
+  it('carries a reply on a suggestion into the sidecar (ticket 40)', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+
+    // The client suggests a word in Docs, then argues about it under the card.
+    await api.batchUpdate(
+      BRIEF_ID,
+      [{ insertText: { location: { index: 12 }, text: ' Really.' } }],
+      { suggest: true },
+    );
+    const [id] = suggestionThreads(onlyTab(await api.getDocument(BRIEF_ID, 'inline')), '').map(
+      (thread) => thread.id,
+    );
+    api.summarise(BRIEF_ID, id ?? '', 'Insert: “ Really.”');
+    api.replyToSuggestion(BRIEF_ID, id ?? '', {
+      author: 'Jane Client',
+      content: 'The price lock stays.',
+      createTime: '2026-09-14T09:00:00.000Z',
+    });
+
+    const second = await fetched(api, first.index);
+    const sidecar = textOf(second.files, 'client/Brief.comments.md') ?? '';
+
+    // The discussion the Drive comments API does not return at all (MANUAL §6).
+    expect(sidecar).toContain(`## ${id} — suggestion\n\nInsert: “ Really.”\n`);
+    expect(sidecar).toContain('**Jane Client** · 2026-09-14 09:00\nThe price lock stays.');
+  });
+
   it('reads a Doc whose modified time did not move, and writes no other request', async () => {
     const api = await drive();
     const first = await fetched(api);
