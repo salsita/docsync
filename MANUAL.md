@@ -959,9 +959,14 @@ A push patches what changed and leaves the rest alone. There is nothing in
 the Markdown to make this possible: at push time the helper re-reads the live
 document, converts it, and requires the result to equal the version your
 commit started from. Push step 1 already guarantees that; the check makes it
-local. Base block *n* is then live block *n*, and the diff between your
-version and the base, computed the way `git diff` is but over blocks, says
-what to do with each:
+local. Base block *n* is then live block *n*. That mapping is made rather
+than assumed: the blocks the diff speaks about come from the Markdown a
+parser read, the ranges a request names come from the tree that printed it,
+and a node whose Markdown reads back as something else moves the two apart.
+So the two lists are matched against each other, and a base block with
+nothing to match is refused by name if you edited it, rather than written
+somewhere else. The diff between your version and the base, computed the way
+`git diff` is but over blocks, then says what to do with each:
 
 - An **untouched block** is not written at all. It keeps its id, its
   comments, its history, and every attribute the dialect cannot express.
@@ -974,7 +979,14 @@ what to do with each:
   reworked sentence goes out as one suggestion: a stretch of fewer than four
   kept words between two edits is rewritten with them rather than left as an
   island that cuts the suggestion into fragments. A plain push keeps every
-  kept word, formatting and comments included.
+  kept word, formatting and comments included. A paragraph somebody has a
+  **pending suggestion** on is edited like any other: the edit is planned
+  against the original text, around the words they have proposed adding,
+  and goes out as a **competing suggestion** beside theirs, never over them
+  and never as a replacement of the whole paragraph. The reviewer sees both
+  proposals and picks one. A suggestion the same account made in an earlier
+  push is the same case. Deleting a word somebody else has also proposed
+  deleting is allowed; the word is struck once either way.
 - An **inserted block** is created at its position; a **deleted block** is
   deleted. On Google Docs a list item inserted beside items of its kind and
   level takes the bullet of the item it lands in, before the next item or, at
@@ -995,6 +1007,17 @@ what to do with each:
 - A block whose **type changed** (a paragraph made a heading) is a style
   change on Google Docs and a delete-and-create on Notion, which cannot
   change a block's type.
+
+What cannot be said that way is refused by name, before a single request
+goes out, on a plain push and a suggesting one alike: "the edit at
+`<quote>` cannot be suggested beside the pending suggestion `<id>` by
+`<author>`; accept or reject it in Docs first". That is an edit that would
+have to take somebody's suggested words with it: a paragraph deleted or
+moved out from under them, a table rewritten around them. The API accepts
+such a request and their proposal is gone from the document with nothing
+left to reject, so docsync never sends one. A plain push is refused for the
+same reason, since writing over their words would discard the proposal
+silently.
 
 - Every location and range a push sends to Google Docs names its tab,
   single-tab Docs included, since a request without one is applied to the
@@ -1017,8 +1040,9 @@ What is lost, per source:
   formatting past the ninety-ninth run. Page-level comments, properties,
   sharing, child pages, child databases and the page id always survive.
 - **Google Docs:** formatting on the characters you rewrote; the anchor of
-  a comment that overlaps an edit; a pending suggestion in a paragraph you
-  edited, which is overwritten as plain text and named in the push report. A
+  a comment that overlaps an edit; nothing of a pending suggestion in a
+  paragraph you edited, since the edit goes in beside it as a competing
+  suggestion and the ids are named in the push report. A
   paragraph you moved, and one rewritten so far that the diff cannot pair it,
   are written afresh where they land. A horizontal rule cannot be created
   by the dialect, so a new one in your Markdown is dropped; an existing one

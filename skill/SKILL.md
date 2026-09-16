@@ -38,6 +38,12 @@ the `.comments.md` sidecar, and stays that way until they accept. That is
 not a lost edit. Only edits to documents already there can be pushed under
 such a root; creating, deleting and renaming are refused.
 
+**An edit that would have to delete somebody's pending suggestion**, a
+paragraph you removed or moved that they have suggested words inside, is
+refused by name. Accept or reject their suggestion in Docs first, pull, then
+push. Editing beside a pending suggestion is fine: it goes out as a
+competing suggestion and the reviewer picks one.
+
 **A Google Doc with several tabs is a directory** holding one `.md` per tab.
 A new `.md` with frontmatter in it becomes a new tab on push; deleting a tab
 file is refused, delete the tab in Docs.

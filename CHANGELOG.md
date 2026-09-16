@@ -31,6 +31,16 @@ version, commits, tags and pushes.
   and a checkout made before this release still holds only that until a
   `docsync pull --all` reads the Doc again.
 
+### Fixed
+
+- A push to a Google Doc with pending suggestions no longer rewrites the
+  paragraph and destroys the other author's suggested words: the edit goes
+  out as a competing suggestion beside theirs, and an edit that would have
+  to take their words with it is refused by name. Blocks are matched
+  between the checkout and the live Doc instead of counted, so a suggestion
+  can no longer land paragraphs away from where it was made, and an
+  appended list item no longer leaves an empty line.
+
 ### Changed
 
 - CI is green on Windows: the git runner spells the checkout's paths the
