@@ -1,6 +1,6 @@
 # 41 — Suggestions land in the wrong place, and rewrite whole paragraphs
 
-Unrefined. Phase 3. Manual §7 write-back.
+Phase 3. Manual §7 write-back (suggesting mode), §12 phase 3.
 
 ## What happened (2026-09-16, a suggesting push to a real contract Doc)
 
@@ -47,24 +47,33 @@ ranges the planner addresses, in a document where some live paragraphs
 (empty ones, suggested ones) have no block in the Markdown, or the other
 way round.
 
-## To find out
+## Decisions
 
-- How `readLive` / the planner map base block *n* to a live range when the
-  live document holds paragraphs that the converter drops (empty
-  paragraphs) or that are pending suggested insertions read in
-  `SUGGESTIONS_INLINE` mode, and paragraphs whose runs are pending
-  suggested deletions.
-- Why an in-paragraph edit next to another author's pending suggestion
-  becomes a whole-paragraph replacement (the islands rule of ticket 33, or
-  the character diff failing on the inline suggested text).
-- Where the empty paragraph before an appended list item comes from
-  (§7: "at the end of a list, after the last one").
-- Reproduce all four on the fake Docs model with these layouts, then the
-  live smoke on a Doc the script creates.
+| Concern | Choice | Why |
+|---|---|---|
+| The source | Unchanged: the body is the Doc with every pending suggestion rejected; suggestions live in the sidecar. An edit is a diff against that text | The alternative makes every pending suggestion part of the base and turns a disagreement into an edit war in the body. |
+| Another author's suggestion in the way | A **competing suggestion**: the planner maps the edit onto the live Doc with other authors' suggested insertions skipped over, since they are not in the base, and suggests only against original text. Deleting the same original word someone else already suggested deleting is allowed, the API stacks deletion ids on a run; inserting beside their insertion is allowed. The reviewer sees both proposals and picks one | Honest, and never rewrites a client's suggestion. |
+| Never | Deleting or otherwise touching another author's suggested text; falling back to a whole-block replacement because suggestions are in the way | The two faults of 2026-09-16. |
+| Cannot be expressed | Refused by name before any request goes out: "`<path>`: the edit at `<quote>` cannot be suggested beside the pending suggestion `<id>` by `<author>`; accept or reject it in Docs first" | Say what to do. |
+| Block alignment | Base block *n* is live block *n* has to hold on a Doc with empty paragraphs, paragraphs that are pending suggested insertions, runs that are pending suggested deletions, and placeholders; find the case that breaks it and pin it with a test that asserts every planned range lands inside the block it was meant for | Faults 2 and 3. |
+| Appended list item | No empty paragraph before or after a new last item | Fault 4. |
+| Plain (non-suggest) push | The same alignment fix applies; a plain write over a paragraph holding someone else's pending suggestion is refused with the same message, since a plain write would silently discard their proposal | Consistency; today it is undefined. |
+| Own pending suggestions | An edit over text the same account already suggested is the same case: a second competing suggestion, not a rewrite of the first | Keep one rule. |
 
-## Rule to decide
+## Module
 
-An edit inside a paragraph that carries someone else's pending suggestion:
-patch around it, or refuse by name ("… is under a pending suggestion by
-<author>; accept or reject it in Docs first")? The owner's call. Until
-fixed, a suggesting push to a Doc with pending suggestions is unsafe.
+| File | Purpose |
+|---|---|
+| `src/gdrive/ranges.ts` | The live block list and its ranges: the alignment fix; pieces that know which characters are another author's suggested insertion or deletion. |
+| `src/gdrive/patch.ts` | The character diff and the requests planned around foreign suggested runs; the refusal; the appended-item fix; no whole-block fallback in suggesting mode. |
+| `src/gdrive/to-markdown.ts` | Whatever provenance the pieces need (`provenance: true` already carries ranges). |
+| `src/gdrive/push.ts` | The refusal surfaces as a `PushError` naming path, quote, suggestion id and author. |
+| `src/gdrive/docs-model.mock.ts`, `fake-api.mock.ts` | The fake carries other authors' pending insertions and deletions in a paragraph, empty paragraphs, suggested paragraphs, and stacks deletion ids. |
+| `scripts/gdocs-competing-suggestion-smoke.ts` (new) | Creates its own Doc in the fixture folder, suggests `one`→`three` as one identity, then pushes `one`→`two` as an edit in suggesting mode, verifies the run carries both deletion ids and both insertions, verifies a paragraph placed after an empty paragraph, a suggested paragraph and a list lands where the Markdown put it, and trashes the Doc. |
+| Tests | The four layouts of the report reproduced on the fake, each failing before the fix: a) an in-paragraph edit beside a foreign suggestion becomes a competing suggestion of the changed words only, both deletion ids on the run, the foreign insertion untouched; b) a placeholder paragraph replaced after two ordinary paragraphs lands on the placeholder in a Doc with empty and suggested paragraphs earlier; c) a paragraph inserted after a list that carries a suggested item lands after the list; d) an appended list item adds no empty paragraph; plus the refusal case (an edit that would have to delete a foreign insertion), the plain-push refusal, an own-suggestion competing case, and an invariant test over a generated Doc: every range in a plan lies within the live block its base block maps to. |
+
+## Done when
+
+`pnpm check` green; the smoke script passes on the real API; the four
+layouts of the report, rebuilt in the fake, produce the expected
+suggestions and nothing else.
