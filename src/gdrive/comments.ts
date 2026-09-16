@@ -306,7 +306,10 @@ function postsOf(posts: readonly (CommentPost | undefined)[]): Entry[] {
           ? 'Someone'
           : post.author.displayName,
       time: post.createTime ?? '',
-      text: decodeEntities((post.content ?? '').trim()),
+      // `content` is plain text and `contentHtml` is the escaped one, so a
+      // literal `&amp;` somebody typed stays what they typed (probed
+      // 2026-09-16). Only the quote is escaped, as Drive escapes it.
+      text: (post.content ?? '').trim(),
     }))
     .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
 }
@@ -432,7 +435,9 @@ function docsCommentThreads(
 /** A suggestion thread with what the Docs API says about its discussion. */
 function discussed(thread: Thread, discussion: SuggestionThread | undefined): Thread {
   if (discussion === undefined) return thread;
-  const summary = decodeEntities((discussion.summaryText ?? '').trim());
+  // `summaryText` is the plain half of `summaryHtml`, as `content` is of
+  // `contentHtml`: nothing to decode.
+  const summary = (discussion.summaryText ?? '').trim();
   const entries = postsOf([discussion.headPost, ...(discussion.replies ?? [])]);
   return {
     ...thread,

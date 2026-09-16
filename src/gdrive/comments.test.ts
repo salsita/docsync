@@ -537,6 +537,27 @@ describe('threads from the Docs reply (ticket 40)', () => {
     );
   });
 
+  it('decodes the quote but never the post, which is plain text already', () => {
+    // `plainTextQuote` is escaped as Drive escapes `quotedFileContent`;
+    // `content` is the plain half of `contentHtml` (probed 2026-09-16).
+    const placed = placeThreads(tabs, [], {
+      comments: [
+        docsComment({
+          plainTextQuote: 'The rate is three hundred.',
+          headPost: {
+            postId: 'p1',
+            content: 'A & B, and a literal &amp; here',
+            contentHtml: 'A &amp; B, and a literal &amp;amp; here',
+            author: { displayName: 'Jane Client' },
+            createTime: '2026-09-14T08:51:14.902Z',
+          },
+        }),
+      ],
+    });
+
+    expect(placed[0]?.[0]?.entries[0]?.text).toBe('A & B, and a literal &amp; here');
+  });
+
   it('leaves a resolved thread and an empty one out', () => {
     const placed = placeThreads(tabs, [], {
       comments: [
