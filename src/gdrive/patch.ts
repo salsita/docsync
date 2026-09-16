@@ -116,7 +116,7 @@ export interface PatchPlan {
   counts: BlockCounts;
   /** What the API cannot create, for the report (MANUAL §7). */
   dropped: string[];
-  /** Pending suggestions this push overwrote (MANUAL §7). */
+  /** Pending suggestions on the paragraphs this push edited (MANUAL §7). */
   suggestions: string[];
   /** What could only be written by replacing it whole. */
   rewritten: string[];

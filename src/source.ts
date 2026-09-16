@@ -173,9 +173,10 @@ export interface PushedDocument {
    */
   blocks?: BlockCounts;
   /**
-   * Pending suggestions the push wrote over, by id (MANUAL §7). Google Docs
-   * only: the API can neither accept nor reject one, so an edit inside a
-   * suggested range resolves it by overwriting it.
+   * Pending suggestions on the paragraphs the push edited, by id (MANUAL §7).
+   * Google Docs only: the edit went in beside them as a competing suggestion,
+   * so the reviewer has both proposals and picks one. They used to be written
+   * over, which is the first fault ticket 41 fixed.
    */
   suggestions?: string[];
   /**
