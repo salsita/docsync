@@ -492,6 +492,20 @@ export function planPatch(
     );
   }
 
+  /**
+   * A base block the alignment could not pair with a live block (ranges.ts):
+   * the Markdown of some block reads back as a different structure, so the two
+   * lists disagree on how many blocks are there. Nothing can be written for it
+   * without guessing where, so the push says which block and stops.
+   */
+  function refuseUnmapped(quote: string): never {
+    throw new PushError(
+      `the block at ${JSON.stringify(shorten(quote))} cannot be located in the live document, ` +
+        'so this edit has nowhere to go; fetch and push again, and report the document if it repeats',
+      options.path,
+    );
+  }
+
   /** One block and everything nested under it. */
   function all(found: Ranged): Ranged[] {
     return [found, ...found.children.flatMap((child) => (child === undefined ? [] : all(child)))];
@@ -655,7 +669,8 @@ export function planPatch(
         }
         if (op.op === 'move') {
           const found = blocks[op.base.index];
-          if (found !== undefined) remove(found, context);
+          if (found === undefined) refuseUnmapped(op.base.text);
+          else remove(found, context);
           counts.deleted += 1;
         }
         if (pending.length === 0) anchor = anchorFor(paired, at, blocks, context);
@@ -666,7 +681,17 @@ export function planPatch(
       flush();
 
       const found = blocks[op.base.index];
-      if (found === undefined) continue;
+      if (found === undefined) {
+        // A base block the live document has no counterpart for: a kept block
+        // needs nothing, and an edit to it has nowhere to go. Writing it
+        // somewhere else is the fault of ticket 41; dropping it in silence
+        // would lose the edit. So it is refused by name.
+        if (op.op === 'keep') {
+          counts.kept += 1;
+          continue;
+        }
+        refuseUnmapped(op.base.text);
+      }
       if (op.op === 'delete') {
         remove(found, context);
         counts.deleted += 1;

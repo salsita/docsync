@@ -448,3 +448,33 @@ describe('every plan', () => {
     }
   });
 });
+
+describe('a base block the live document has no counterpart for', () => {
+  const TWO = 'First paragraph.\n\nSecond paragraph.\n';
+
+  function unmapped(next: string): () => PatchPlan {
+    const model = built(TWO);
+    const live = readLive(model.document('inline'), { from: PATH });
+    // What a misaligned document looks like to the planner: the first base
+    // block has nothing to write to.
+    (live.blocks as (typeof live.blocks)[number][])[0] = undefined;
+    const base = parseMarkdown(live.markdown);
+    return () => planPatch(live, diffBlocks(base, parseMarkdown(next)), { path: PATH });
+  }
+
+  it('refuses an edit to it by name rather than dropping it', () => {
+    expect(unmapped('First paragraph, changed.\n\nSecond paragraph.\n')).toThrow(
+      'the block at "First paragraph." cannot be located in the live document',
+    );
+  });
+
+  it('refuses deleting it too', () => {
+    expect(unmapped('Second paragraph.\n')).toThrow('cannot be located in the live document');
+  });
+
+  it('needs nothing for it when it is kept', () => {
+    const plan = unmapped('First paragraph.\n\nSecond paragraph, changed.\n')();
+    expect(plan.counts.kept).toBe(1);
+    expect(plan.counts.updated).toBe(1);
+  });
+});
