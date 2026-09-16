@@ -714,10 +714,15 @@ removes one is refused before any source is touched, with the `git checkout`
 command that restores it. Replying, resolving, accepting and rejecting stay
 in the source's own UI (§12). The body file never carries a comment.
 
-On a Doc with several tabs the sidecar is per tab file. A Drive comment
-names no tab, so a thread goes to the first tab, in tab order, whose body
-holds the text it quotes, and a thread whose text is nowhere goes to the
-first tab's sidecar; a suggestion is in the tab that carries it.
+On a Doc with several tabs the sidecar is per tab file. A comment the Docs
+API answers carries an anchor whose ranges are indices into one tab: the
+thread goes to that tab, and inside it to exactly the characters the ranges
+cover, which is what tells two identical sentences apart. A thread with no
+anchor, because the text it was on has been deleted since, and every thread
+on a checkout without the Developer Preview (§7) is placed the way a Drive
+comment has to be: it goes to the first tab, in tab order, whose body holds
+the text it quotes, and a thread whose text is nowhere goes to the first
+tab's sidecar. A suggestion is in the tab that carries it.
 
 The sidecar is Markdown, one `##` heading per thread, in the order the
 anchors appear in the body. A thread is what the source calls one: a Drive
@@ -744,6 +749,8 @@ Agreed, leave it.
 
 ## suggest.r73ve12ed25a — suggestion
 
+Replace: “this text” with “the paragraph”
+
 in: Heading six
 
 ```diff
@@ -762,8 +769,9 @@ in: Heading six
   the block is quoted without marks and a thread never spans two; a comment
   on the page itself has no quote and comes first. When the quoted text is
   found nowhere in the body, the bare text is quoted and `in:` says
-  `(not found)`. When it is found in two places, the first wins, and the
-  shortest run of blocks that holds it is the one quoted.
+  `(not found)`. When it is found in two places, the first wins unless the
+  source's own anchor says which one it is, and the shortest run of blocks
+  that holds it is the one quoted.
 - **Suggestion** (Google Docs only): one thread per suggestion, which is one
   id in the Docs API and one card in Docs, and it can span blocks. The diff
   is the blocks it touches, first to last: each as it stands on the `-` side
@@ -774,7 +782,14 @@ in: Heading six
   one paragraph are two threads, each shown with only its own changes
   applied. A pure formatting suggestion has the quote, every block it
   touches joined by a blank line, then the `in:` line, then `formatting
-  only` in place of the diff.
+  only` in place of the diff. Under the heading comes the line Docs prints
+  on the card, `Replace: “one” with “three”`, `Add: “three”`, `Delete:
+  “us”`, in the API's own words. Under the diff comes the suggestion's own
+  discussion, the replies under that card, as entries in the format a
+  comment thread uses; the card's head post is the suggestion itself and
+  carries no text, so it is not one of them. Both the summary and the
+  discussion come from the Docs API and need the Developer Preview (§7);
+  without it a suggestion is its diff alone.
 - **Entries** are author, time (UTC, to the minute) and text, in creation
   order. Deleted entries are omitted. The thread id is the source's: the
   Drive comment id, or the Notion discussion id in the bare form the
@@ -839,6 +854,14 @@ A comment moves no last-edit time at either source, so on a root with
 `comments: true` comments are re-read for every document on every fetch:
 one comment listing per Google Doc, plus the document itself when it
 changed or had a thread, and on Notion one request per block of every page.
+On Google Docs that document read asks for the discussions with it: the
+comment threads, the discussion under each suggestion's card and the exact
+per-tab anchors come back in the one reply, at no request of their own. It
+is a Google Workspace Developer Preview feature, on the project that owns
+the OAuth client. A project that is not enrolled has the parameter refused;
+the document is read again without it and the sidecar is built from Drive's
+comment threads placed by the text they quote, with no discussion under a
+suggestion. One line on stderr says so, once per root.
 
 A suggestion moves no last-edit time either, and neither does accepting or
 rejecting one, so on a root with `suggest: true` every Google Doc is read on
@@ -1180,7 +1203,10 @@ On a root with `comments: true`, open comment threads and pending
 suggestions are pulled into a read-only sidecar beside the document (§6
 "Comments and suggestions"), so a person or an agent can read them in
 context and answer them by editing the body. Nothing is pushed back in this
-phase.
+phase. On Google Docs the discussion under a suggestion's card is read too,
+with the line Docs prints on it, and comment threads are placed by the
+anchors the source gives them rather than by the text they quote, both under
+the Developer Preview Program (§7).
 
 **Later:** replies and resolving from the checkout. Google Docs allows both
 through the API; Notion allows replies but has no resolve call and does not

@@ -14,6 +14,10 @@ version, commits, tags and pushes.
 
 ### Added
 
+- The discussion under a Google Docs suggestion, and the line Docs prints
+  on its card, are in the sidecar; comment threads are placed by the
+  source's exact anchors, per tab. Both come from the Docs API under the
+  Developer Preview; a project outside it keeps today's sidecar.
 - A Google Calendar event as a source. `docsync add calendar:<eventId>`, or
   a Calendar URL, checks out the Drive files attached to the event's past
   instances, the Gemini notes and Meet transcripts, one directory per call,
