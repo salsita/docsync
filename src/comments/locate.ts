@@ -54,6 +54,18 @@ export interface LocateOptions {
    * off, since a Notion comment belongs to exactly one block (MANUAL §6).
    */
   spans?: boolean;
+  /**
+   * How many occurrences of the quoted text to step over before taking one
+   * (MANUAL §6, ticket 40).
+   *
+   * Drive says only what a comment quotes, so the first block holding that text
+   * wins; the Docs API says exactly where the anchor is, and the count of
+   * earlier occurrences is how that exactness reaches a search that works on
+   * text. With a `skip` the run pass is off and nothing is answered when the
+   * body holds fewer occurrences than that — the caller falls back to the plain
+   * search, which is what a thread with no anchor gets anyway.
+   */
+  skip?: number;
 }
 
 /** The part of an anchor a sidecar thread carries. `blocks` is not one. */
@@ -242,6 +254,8 @@ interface Match {
   length: number;
   /** The collapsed index at which the second block's text starts. */
   boundary: number;
+  /** How many times the needle occurs in the run, without overlapping itself. */
+  count: number;
 }
 
 /** The anchor a run of blocks makes for `needle`, and what growing it further costs. */
@@ -250,14 +264,15 @@ function match(
   blocks: readonly Block[],
   needle: string,
   heading: (offset: number) => string | undefined,
+  skip = 0,
 ): Match {
   const first = blocks[0];
   const { quote, pieces, firstLength } = runOf(body, blocks);
   const plain = collapse(pieces.map((piece) => piece.text).join(''));
   const boundary = blocks.length === 1 ? plain.text.length : collapsedIndex(plain.at, firstLength);
-  const bounds = { length: plain.text.length, boundary };
+  const bounds = { length: plain.text.length, boundary, count: countOf(plain.text, needle) };
 
-  const found = plain.text.indexOf(needle);
+  const found = occurrenceOf(plain.text, needle, skip);
   // A match that does not reach into the first block belongs to a shorter run
   // starting later, which document order reaches on its own.
   if (first === undefined || found < 0 || found >= boundary) return bounds;
@@ -270,6 +285,25 @@ function match(
   };
   const mark = rangeOf(pieces, plain.at[found], plain.at[found + needle.length - 1]);
   return { ...bounds, anchor: mark === undefined ? anchor : { ...anchor, mark } };
+}
+
+/** How many times `needle` occurs in `text`, counted without overlapping. */
+function countOf(text: string, needle: string): number {
+  let count = 0;
+  for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length)) {
+    count += 1;
+  }
+  return count;
+}
+
+/** Where the occurrence after the first `skip` of them starts, or -1. */
+function occurrenceOf(text: string, needle: string, skip: number): number {
+  let at = 0;
+  for (let seen = 0; ; seen += 1) {
+    const found = text.indexOf(needle, at);
+    if (found < 0 || seen >= skip) return found;
+    at = found + needle.length;
+  }
 }
 
 /** Where an index into the uncollapsed text falls in the collapsed one. */
@@ -293,10 +327,19 @@ export function locate(
   if (needle === '') return undefined;
   const { blocks, heading, joined } = parsed(body);
 
+  // An anchored thread knows which occurrence is its own, so the blocks are
+  // walked with a budget of occurrences to step over rather than stopping at
+  // the first one (MANUAL §6, ticket 40).
+  const skip = options.skip ?? 0;
+  let left = skip;
   for (const block of blocks) {
-    const { anchor } = match(body, [block], needle, heading);
+    const { anchor, count } = match(body, [block], needle, heading, left);
     if (anchor !== undefined) return anchor;
+    left -= count;
   }
+  // The body holds fewer occurrences than the anchor counted: the text moved
+  // under the comment, and the caller falls back to the plain search.
+  if (skip > 0) return undefined;
   if (options.spans === false) return undefined;
 
   // Nothing holds the whole quote, so the selection ran over a block boundary.

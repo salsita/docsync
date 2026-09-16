@@ -59,6 +59,37 @@ describe('locate', () => {
     expect(found?.offset).toBe(body.indexOf('The word twice: once here.'));
   });
 
+  it('takes the second one when an anchor says to skip the first (ticket 40)', () => {
+    const found = locate(body, 'The word twice', { skip: 1 });
+
+    expect(found?.quote).toBe('The word twice: and once there.');
+    expect(found?.offset).toBe(body.indexOf('The word twice: and once there.'));
+  });
+
+  it('is the plain search when nothing is skipped', () => {
+    expect(locate(body, 'The word twice', { skip: 0 })).toEqual(locate(body, 'The word twice'));
+  });
+
+  it('counts occurrences inside one block too', () => {
+    const twice = 'A pin and another pin.\n';
+
+    expect(locate(twice, 'pin', { skip: 1 })?.mark).toEqual([18, 21]);
+    expect(locate(twice, 'pin')?.mark).toEqual([2, 5]);
+  });
+
+  it('answers nothing when the body holds fewer occurrences than the anchor counted', () => {
+    // The text moved under the comment since the anchor was recorded; the
+    // caller falls back to the plain search (MANUAL §6).
+    expect(locate(body, 'The word twice', { skip: 2 })).toBeUndefined();
+  });
+
+  it('does not grow a run of blocks while skipping', () => {
+    // A quote that only a run of blocks holds has no occurrence to count, so a
+    // skipping search gives up rather than answering the wrong span.
+    expect(locate(body, 'once here. The word twice', { skip: 1 })).toBeUndefined();
+    expect(locate(body, 'once here. The word twice')?.blocks).toBe(2);
+  });
+
   it('quotes the whole list item, both its lines', () => {
     const found = locate(body, 'a needle');
 
