@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createGDriveApi, DOCS_ENDPOINT, DRIVE_ENDPOINT } from './api.js';
+import { GoogleApiError } from '../google-http.js';
+import { commentsRefused, createGDriveApi, DOCS_ENDPOINT, DRIVE_ENDPOINT } from './api.js';
 
 /** One canned response, in the order the fake hands them out. */
 interface Canned {
@@ -119,6 +120,79 @@ describe('getDocument', () => {
     for (const call of calls) expect(call).toContain('includeTabsContent=true');
   });
 
+  it('asks for the discussions when the sidecar needs them (ticket 40)', async () => {
+    const { api, calls } = apiWith([{ body: { documentId: 'd' } }]);
+
+    await api.getDocument('d', 'inline', { comments: true });
+    expect(calls[0]).toBe(
+      `${DOCS_ENDPOINT}/documents/d?suggestionsViewMode=SUGGESTIONS_INLINE` +
+        '&includeTabsContent=true&commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED',
+    );
+  });
+
+  it('leaves the parameter off when nothing asked for it', async () => {
+    // The default is `COMMENTS_VIEW_MODE_OMITTED`, and a project outside the
+    // preview refuses the parameter altogether (probed 2026-09-16).
+    const { api, calls } = apiWith([{ body: { documentId: 'd' } }, { body: { documentId: 'd' } }]);
+
+    await api.getDocument('d', 'inline');
+    await api.getDocument('d', 'inline', { comments: false });
+    for (const call of calls) expect(call).not.toContain('commentsViewMode');
+  });
+
+  it('answers the discussions and the anchors the reply carries (ticket 40)', async () => {
+    const answer = {
+      documentId: 'd',
+      comments: [
+        {
+          commentId: 'AAA1',
+          anchorId: 'kix.a1',
+          status: 'OPEN',
+          plainTextQuote: 'one',
+          headPost: {
+            postId: 'p1',
+            content: 'Why one?',
+            contentHtml: '<p>Why one?</p>',
+            author: { displayName: 'Jane Client', user: 'users/1' },
+            createTime: '2026-09-16T08:00:00Z',
+            updateTime: '2026-09-16T08:00:00Z',
+            commentAction: 'NO_COMMENT_ACTION_CHANGE',
+          },
+          replies: [],
+        },
+      ],
+      suggestions: [
+        {
+          suggestionId: 'suggest.s1',
+          status: 'OPEN',
+          summaryText: 'Replace: one with three',
+          summaryHtml: '<p>Replace: one with three</p>',
+          headPost: { postId: 'p2', createTime: '2026-09-16T08:01:00Z' },
+          replies: [],
+        },
+      ],
+      tabs: [
+        {
+          tabProperties: { tabId: 't.0' },
+          documentTab: {
+            body: { content: [] },
+            commentAnchors: {
+              'kix.a1': { anchorId: 'kix.a1', ranges: [{ startIndex: 4, endIndex: 7 }] },
+            },
+          },
+        },
+      ],
+    };
+    const { api } = apiWith([{ body: answer }]);
+
+    const document = await api.getDocument('d', 'inline', { comments: true });
+    expect(document.comments?.[0]?.commentId).toBe('AAA1');
+    expect(document.suggestions?.[0]?.summaryText).toBe('Replace: one with three');
+    expect(document.tabs?.[0]?.documentTab?.commentAnchors?.['kix.a1']?.ranges).toEqual([
+      { startIndex: 4, endIndex: 7 },
+    ]);
+  });
+
   it('answers the tabs the reply carries', async () => {
     const tabs = [
       {
@@ -129,6 +203,28 @@ describe('getDocument', () => {
     const { api } = apiWith([{ body: { documentId: 'd', title: 'Doc', tabs } }]);
 
     expect((await api.getDocument('d')).tabs).toEqual(tabs);
+  });
+});
+
+describe('commentsRefused (ticket 40)', () => {
+  it('is true for the refusal a project outside the preview gets', async () => {
+    const { api } = apiWith([
+      { status: 400, body: { error: { message: 'Invalid value at commentsViewMode' } } },
+    ]);
+
+    await expect(api.getDocument('d', 'inline', { comments: true })).rejects.toSatisfy(
+      commentsRefused,
+    );
+  });
+
+  it('is true for a 403, which is how a preview field is refused too', () => {
+    expect(commentsRefused(new GoogleApiError(403, 'url', 'not enrolled'))).toBe(true);
+  });
+
+  it('is false for anything else, so a real failure is not retried into silence', () => {
+    expect(commentsRefused(new GoogleApiError(404, 'url', 'gone'))).toBe(false);
+    expect(commentsRefused(new GoogleApiError(500, 'url', ''))).toBe(false);
+    expect(commentsRefused(new Error('offline'))).toBe(false);
   });
 });
 

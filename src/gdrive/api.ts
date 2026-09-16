@@ -14,7 +14,7 @@
  * out.
  */
 
-import { createGoogleHttp, type GoogleHttpOptions } from '../google-http.js';
+import { createGoogleHttp, GoogleApiError, type GoogleHttpOptions } from '../google-http.js';
 
 export const DRIVE_ENDPOINT = 'https://www.googleapis.com/drive/v3';
 export const DOCS_ENDPOINT = 'https://docs.googleapis.com/v1';
@@ -188,6 +188,18 @@ export interface TabProperties {
 }
 
 /**
+ * Where one comment sits in a tab, exactly (MANUAL §6, ticket 40).
+ *
+ * `comments[].anchorId` names one of these, and the ranges are indices into
+ * *this* tab's body — which is what says both which tab a thread belongs to and
+ * where in it, when the quoted text alone would be ambiguous.
+ */
+export interface CommentAnchor {
+  anchorId?: string;
+  ranges?: { startIndex?: number; endIndex?: number }[];
+}
+
+/**
  * One tab's contents: everything a document used to carry at the top level.
  * Asked for with `includeTabsContent=true`, which is when the reply stops
  * carrying a top-level `body` at all.
@@ -198,6 +210,68 @@ export interface DocumentTab {
   footnotes?: Record<string, Footnote>;
   inlineObjects?: Record<string, InlineObject>;
   positionedObjects?: Record<string, unknown>;
+  /** By anchor id, and only with `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED`. */
+  commentAnchors?: Record<string, CommentAnchor>;
+}
+
+/** Who wrote one post of a discussion. `user` is `users/<id>`, never resolved. */
+export interface PostAuthor {
+  displayName?: string;
+  user?: string;
+  me?: boolean;
+}
+
+/**
+ * One post of a comment or a suggestion discussion (MANUAL §6, ticket 40).
+ *
+ * `content` is the plain text docsync prints; `contentHtml` says the same thing
+ * in markup docsync has no use for. A post that only resolved a thread or
+ * accepted a suggestion carries an action and no content at all — as does the
+ * head post of a suggestion, which is the suggestion itself.
+ */
+export interface CommentPost {
+  postId?: string;
+  content?: string;
+  contentHtml?: string;
+  author?: PostAuthor;
+  createTime?: string;
+  updateTime?: string;
+  commentAction?: string;
+  suggestionAction?: string;
+  deleted?: boolean;
+}
+
+/**
+ * One comment thread as the Docs API answers it, which is the same thread Drive
+ * answers under the same id — replies, status and quote included.
+ */
+export interface CommentThread {
+  commentId?: string;
+  /** The `commentAnchors` entry that says where in which tab this sits. */
+  anchorId?: string;
+  headPost?: CommentPost;
+  replies?: CommentPost[];
+  /** `OPEN` is the only status that reaches a sidecar (MANUAL §6). */
+  status?: string;
+  /** The text the comment is attached to, HTML-escaped as Drive escapes it. */
+  plainTextQuote?: string;
+}
+
+/**
+ * One suggestion's discussion (MANUAL §6, ticket 40): the replies under its
+ * card in Docs, which the Drive comments API does not return at all.
+ *
+ * The head post is the suggestion itself and has no content; `summaryText` is
+ * the line Docs prints on the card, "Replace: … with …".
+ */
+export interface SuggestionThread {
+  suggestionId?: string;
+  headPost?: CommentPost;
+  replies?: CommentPost[];
+  /** `OPEN`, `ACCEPTED` or `REJECTED`. Only a pending one is in a sidecar. */
+  status?: string;
+  summaryText?: string;
+  summaryHtml?: string;
 }
 
 /** One tab of a document, and the tabs nested inside it. */
@@ -225,6 +299,17 @@ export interface DocsDocument {
   inlineObjects?: Record<string, InlineObject>;
   /** Every root-level tab, each with its own children (MANUAL §6). */
   tabs?: Tab[];
+  /**
+   * The document's comment threads, only with
+   * `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED` (MANUAL §6, ticket 40). A
+   * document with none leaves the field out, which is also what a read that
+   * did not ask for them looks like.
+   */
+  comments?: CommentThread[];
+  /** The discussions on its suggestions, under the same parameter. */
+  suggestions?: SuggestionThread[];
+  /** A one-tab view of a tab's anchors (`tabs.ts`); the API answers per tab. */
+  commentAnchors?: Record<string, CommentAnchor>;
 }
 
 /** One `batchUpdate` request. The API's own JSON, not a wrapper. */
@@ -315,6 +400,36 @@ export interface DriveComment {
 /** What `documents.get` does with pending suggestions. */
 export type SuggestionsMode = 'preview' | 'inline';
 
+/** What else one `documents.get` asks for (MANUAL §7, ticket 40). */
+export interface GetDocumentOptions {
+  /**
+   * `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED`: the comment threads, the
+   * suggestion discussions and the per-tab comment anchors, in the same reply.
+   * A Developer Preview field; a project outside the preview refuses it.
+   */
+  comments?: boolean;
+}
+
+/**
+ * The line a fetch prints, once, when the preview refused the parameter and the
+ * sidecar fell back to Drive's comment threads (MANUAL §7, ticket 40).
+ */
+export const COMMENTS_PREVIEW_HINT =
+  'the discussion on a suggestion and exact comment anchors need the Google Workspace Developer Preview Program on the project that owns the OAuth client; falling back to Drive comment threads';
+
+/**
+ * Whether a failed read is the preview refusing `commentsViewMode`, which is
+ * what a fetch retries without it (MANUAL §7).
+ *
+ * A project that is not enrolled answers 400 for the unknown parameter, and an
+ * enrolled project whose caller may not use it answers 403. Nothing else is
+ * retried: a 404 or a 5xx says the document could not be read at all, and
+ * asking again without the parameter would only hide it.
+ */
+export function commentsRefused(error: unknown): boolean {
+  return error instanceof GoogleApiError && (error.status === 400 || error.status === 403);
+}
+
 /** The metadata half of a create or an update: what Drive calls a File. */
 export interface FileMetadata {
   name?: string;
@@ -340,8 +455,15 @@ export interface GDriveApi {
    * suggestions: leave them out, which is what a fetch wants, or bring them
    * inline, which is what a push needs to derive the version it diffs from
    * (MANUAL §7, ticket 16).
+   *
+   * `options.comments` adds the discussions and the anchors a sidecar is built
+   * from, in the same reply and at no extra request (MANUAL §6, ticket 40).
    */
-  getDocument(id: string, mode?: SuggestionsMode): Promise<DocsDocument>;
+  getDocument(
+    id: string,
+    mode?: SuggestionsMode,
+    options?: GetDocumentOptions,
+  ): Promise<DocsDocument>;
   /**
    * Every comment thread on a file, replies included, deleted ones left out
    * (MANUAL §6). One request per document per fetch: a comment does not move
@@ -447,7 +569,7 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
       return json<DriveFile>(`${DRIVE_ENDPOINT}/files/${id}?${query}`);
     },
 
-    async getDocument(id, mode = 'preview') {
+    async getDocument(id, mode = 'preview', options = {}) {
       // Suggestions are never part of the body (MANUAL §6), so a fetch leaves
       // them out at the source rather than filtering them out afterwards. A
       // push asks for them inline: it has to know they are there, and it has
@@ -456,8 +578,15 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
       // Always with the tabs (ticket 37): asked without the flag, the API
       // answers the first tab as the legacy `body` and says nothing about the
       // rest, so a Gemini notes Doc would arrive as its "Quick notes" alone.
+      // The discussions and the anchors ride on the read a sidecar already
+      // makes (MANUAL §6, ticket 40); the default is
+      // `COMMENTS_VIEW_MODE_OMITTED`, so nothing is asked for unless it is
+      // needed, and a project outside the preview never sees the parameter.
+      const discussions =
+        options.comments === true ? '&commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED' : '';
       return json<DocsDocument>(
-        `${DOCS_ENDPOINT}/documents/${id}?suggestionsViewMode=${view}&includeTabsContent=true`,
+        `${DOCS_ENDPOINT}/documents/${id}?suggestionsViewMode=${view}` +
+          `&includeTabsContent=true${discussions}`,
       );
     },
 

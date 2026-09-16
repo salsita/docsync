@@ -93,6 +93,20 @@ describe('flattenTabs', () => {
     expect(full?.doc.tabs).toBeUndefined();
   });
 
+  it('carries a tab’s comment anchors with it (ticket 40)', () => {
+    const anchors = { 'kix.a1': { anchorId: 'kix.a1', ranges: [{ startIndex: 1, endIndex: 5 }] } };
+    const one = tab('t.0', 'Quick notes');
+    const withAnchors: DocsDocument = {
+      documentId: 'doc1',
+      tabs: [{ ...one, documentTab: { ...one.documentTab, commentAnchors: anchors } }],
+    };
+
+    // The ranges are indices into this tab's body and nowhere else, which is
+    // what places an anchored thread in the right tab (MANUAL §6).
+    expect(flattenTabs(withAnchors)[0]?.doc.commentAnchors).toEqual(anchors);
+    expect(flattenTabs(threeTabs)[0]?.doc.commentAnchors).toBeUndefined();
+  });
+
   it('says which tabs have children and who each one belongs to', () => {
     const tabs = flattenTabs(threeTabs);
     expect(tabs.map((one) => one.hasChildren)).toEqual([false, true, false, false]);

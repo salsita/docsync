@@ -92,6 +92,9 @@ function viewOf(doc: DocsDocument, tab: Tab): DocsDocument {
     ...(content.lists === undefined ? {} : { lists: content.lists }),
     ...(content.footnotes === undefined ? {} : { footnotes: content.footnotes }),
     ...(content.inlineObjects === undefined ? {} : { inlineObjects: content.inlineObjects }),
+    // A comment anchor's ranges are indices into *this* tab's body, so they
+    // travel with the tab (MANUAL §6, ticket 40).
+    ...(content.commentAnchors === undefined ? {} : { commentAnchors: content.commentAnchors }),
   };
 }
 
