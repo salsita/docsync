@@ -613,7 +613,12 @@ async function patchDocument(
   const images = new Map(staged.images.map((one): [string, string] => [one.path, one.uri]));
   for (const one of staged.images) progress(`upload ${one.path}`);
 
-  const plan = planPatch(live, ops, { path: change.path, images, suggest });
+  const plan = planPatch(live, ops, {
+    path: change.path,
+    images,
+    suggest,
+    authors: authorsOf(document),
+  });
   if (staged.images.length === 0) {
     const written = await write(
       () => writer.patchBody(id, plan, { suggest, ...(tabId === undefined ? {} : { tabId }) }),
@@ -638,6 +643,23 @@ async function patchDocument(
     suggested: outcome.result?.suggested ?? 0,
     skipped: staged.skipped,
   };
+}
+
+/**
+ * Who made each pending suggestion, for a refusal that has to name them
+ * (MANUAL §7).
+ *
+ * Only a read that asked for the discussions answers this — the Developer
+ * Preview's `commentsViewMode`, which a fetch asks for and a push does not — so
+ * on an ordinary push the map is empty and the refusal says `someone`.
+ */
+function authorsOf(doc: DocsDocument): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  for (const one of doc.suggestions ?? []) {
+    const name = one.headPost?.author?.displayName ?? '';
+    if (one.suggestionId !== undefined && name !== '') out.set(one.suggestionId, name);
+  }
+  return out;
 }
 
 /**

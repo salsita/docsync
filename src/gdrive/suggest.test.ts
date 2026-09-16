@@ -121,6 +121,46 @@ describe('a push under a suggest root', () => {
     expect(api.calls).toEqual([]);
   });
 
+  it('refuses to delete a paragraph the client has suggested inside', async () => {
+    const api = await drive();
+    const first = await fetched(api);
+    const before = textOf(first.files, PATH) ?? '';
+
+    // The client proposes a word inside the paragraph this push deletes.
+    // Taking the paragraph would take their proposal with it, which is the one
+    // thing a suggesting push may never do (MANUAL §7).
+    await api.batchUpdate(
+      BRIEF_ID,
+      [{ insertText: { location: { index: 9 }, text: ' Really.' } }],
+      {
+        suggest: true,
+      },
+    );
+    const second = await fetched(api, first.index);
+    api.calls.length = 0;
+
+    await expect(
+      pushRoot(
+        root,
+        [
+          {
+            kind: 'modified',
+            path: PATH,
+            text: before.replace('One.\n\n', ''),
+            previousText: before,
+          },
+        ],
+        provider,
+        second.index,
+        { api },
+      ),
+    ).rejects.toThrow(
+      /the edit at "One\." cannot be suggested beside the pending suggestion .+ by someone; accept or reject it in Docs first \(client\/Brief\.md\)/,
+    );
+    // Nothing went out: the refusal is made before the batch is sent.
+    expect(api.calls.some((call) => call.startsWith('batchUpdate'))).toBe(false);
+  });
+
   it('shows a suggestion somebody made in Docs on the next fetch', async () => {
     const api = await drive();
     const first = await fetched(api);

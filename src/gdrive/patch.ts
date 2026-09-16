@@ -98,8 +98,9 @@ export interface PatchOptions {
   suggest?: boolean;
   /**
    * Who made each pending suggestion, by id, for the refusal that names them
-   * (MANUAL §7). The Docs API only says so on a read that asked for the
-   * discussions, so a suggestion nobody can name is "another author".
+   * (MANUAL §7). The Docs API says so only on a read that asked for the
+   * discussions, which a push does not, so a suggestion nobody can name is
+   * made by `someone` — as an unnamed comment author is in a sidecar.
    */
   authors?: ReadonlyMap<string, string>;
 }
@@ -482,7 +483,7 @@ export function planPatch(
     const first = covered[0];
     if (first === undefined) return;
     const id = first.ids[0] ?? '';
-    const author = options.authors?.get(id) ?? 'another author';
+    const author = options.authors?.get(id) ?? 'someone';
     const verb = options.suggest === true ? 'suggested' : 'written';
     throw new PushError(
       `the edit at ${JSON.stringify(shorten(quote))} cannot be ${verb} beside the pending ` +
