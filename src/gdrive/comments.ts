@@ -9,6 +9,14 @@
  * once — so a suggestion becomes the paragraph as it stands and the paragraph
  * as it would read accepted, which is the diff the sidecar prints.
  *
+ * Asked with `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED` as well (ticket
+ * 40), that same response answers three things Drive cannot: the comment
+ * threads under the ids Drive gives them, the *discussion* on each suggestion —
+ * the replies under its card, which `comments.list` does not return at all —
+ * and, per tab, where each comment is anchored, to the character. It is a
+ * Developer Preview parameter, so every one of them is optional here and the
+ * Drive threads are what a checkout without the preview is built from.
+ *
  * Pure: recorded JSON and a body in, threads out. No requests, no clock.
  */
 import type { Entry, Thread } from '../comments/format.js';
@@ -473,14 +481,17 @@ export function placeThreads(
   comments: readonly DriveComment[],
   discussions: Discussions = {},
 ): Thread[][] {
-  const texts = tabs.map((tab) => tabTextOf(tab.doc));
-
   // One source for both, when there is one: `comments[]` is the same thread
   // under the same id Drive answers, so the headings and the index do not move.
+  // Without it nothing walks the tabs' runs at all.
   const placed =
     discussions.comments === undefined
       ? driveCommentThreads(tabs, comments)
-      : docsCommentThreads(discussions.comments, tabs, texts);
+      : docsCommentThreads(
+          discussions.comments,
+          tabs,
+          tabs.map((tab) => tabTextOf(tab.doc)),
+        );
 
   const byId = new Map(
     (discussions.suggestions ?? []).map((one): [string, SuggestionThread] => [
