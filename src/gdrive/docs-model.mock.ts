@@ -380,6 +380,12 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
    * carries the suggestion's id, which is how `documents.get` reports one
    * inline and why a suggested deletion is still part of the base a push diffs
    * from.
+   *
+   * A run somebody **already** proposes deleting keeps the id it has: the real
+   * API absorbs the second proposal rather than stacking a second id on the
+   * run, so a competing suggestion over the same word shows the reviewer one
+   * strike and not two (probed on the live API 2026-09-16, ticket 41). The
+   * field is still a list, because one suggestion can reach across runs.
    */
   function markDeleted(request: Record<string, unknown>, id: string): void {
     const range = request.range as { startIndex: number; endIndex: number; segmentId?: string };
@@ -399,7 +405,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
         out.push({
           ...item,
           text: item.text.slice(from, to),
-          deletions: [...(item.deletions ?? []), id],
+          deletions: item.deletions === undefined ? [id] : [...item.deletions],
         });
         if (to < length) out.push({ ...item, text: item.text.slice(to) });
       }

@@ -159,22 +159,32 @@ describe('an edit inside a paragraph the client has suggested on', () => {
     }
   });
 
-  it('stacks its deletion on the one the client already made', () => {
+  it('leaves the client\u2019s own words as their own proposal', () => {
     const model = suggested();
     const patch = plan(model, BASE.replace('one (1) year', 'two (2) years'), { suggest: true });
     model.apply(patch.requests, { suggest: true });
 
-    // The run holding `one` now carries both proposals to delete it, which is
-    // what the API does with two suggestions over one run (MANUAL §7).
     const runs = (model.document('inline').body?.content ?? []).flatMap(
       (element) => element.paragraph?.elements ?? [],
     );
-    const stacked = runs.find((run) => run.textRun?.content === 'one');
-    expect(stacked?.textRun?.suggestedDeletionIds?.length).toBe(2);
-    // And the client's own words are still exactly one suggestion each.
+    // `one` is proposed for deletion — by the client, and now by this push
+    // too; the API keeps one strike on the run either way (probed on the live
+    // API 2026-09-16). What matters is that `three` is still exactly what it
+    // was: their insertion, not struck and not rewritten.
     expect(
-      runs.find((run) => run.textRun?.content === 'three')?.textRun?.suggestedInsertionIds,
+      runs.find((run) => run.textRun?.content === 'one')?.textRun?.suggestedDeletionIds,
     ).toHaveLength(1);
+    const theirs = runs.find((run) => run.textRun?.content === 'three')?.textRun;
+    expect(theirs?.suggestedInsertionIds).toHaveLength(1);
+    expect(theirs?.suggestedDeletionIds).toBeUndefined();
+    // And this push's own words went in beside them.
+    expect(
+      runs.some(
+        (run) =>
+          (run.textRun?.suggestedInsertionIds ?? []).length > 0 &&
+          (run.textRun?.content ?? '').includes('two (2) years'),
+      ),
+    ).toBe(true);
   });
 
   it('is the same case when the suggestion in the way is our own', () => {
