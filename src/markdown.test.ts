@@ -1,6 +1,26 @@
+import type { PhrasingContent, Root } from 'mdast';
 import { describe, expect, it } from 'vitest';
 import { CANONICAL_DOCUMENT } from './dialect.mock.js';
 import { parseMarkdown, stringifyMarkdown } from './markdown.js';
+
+const t = (value: string): PhrasingContent => ({ type: 'text', value });
+const br: PhrasingContent = { type: 'break' };
+
+/** One paragraph, the way an adapter hands it over. */
+function paragraphOf(children: PhrasingContent[]): Root {
+  return { type: 'root', children: [{ type: 'paragraph', children }] };
+}
+
+/** What a run of inline content says, with a line break as the newline it is. */
+function plainOf(nodes: readonly PhrasingContent[]): string {
+  return nodes
+    .map((node) => {
+      if (node.type === 'text') return node.value;
+      if (node.type === 'break') return '\n';
+      return 'children' in node ? plainOf(node.children as PhrasingContent[]) : '';
+    })
+    .join('');
+}
 
 describe('the markdown pipeline', () => {
   it('round-trips a canonical document byte for byte', () => {
@@ -111,5 +131,53 @@ describe('the markdown pipeline', () => {
 
   it('keeps ordered list numbers incrementing', () => {
     expect(stringifyMarkdown(parseMarkdown('1. a\n1. b\n'))).toBe('1. a\n2. b\n');
+  });
+});
+
+/**
+ * Ticket 42. A source splits a run wherever an edit or a style change began, so
+ * a run that *ends* in a line break leaves an empty text node behind it. The
+ * serializer takes `before` from the last thing it wrote, the empty node makes
+ * that `''`, and every escape that depends on knowing a line just began stops
+ * firing: `# x` after the break comes back as a heading and the paragraph is
+ * two blocks. The adapters no longer emit one; this is the net under them.
+ */
+describe('an empty text node beside a line break', () => {
+  const cases: [name: string, children: PhrasingContent[]][] = [
+    ['a heading marker', [t('text'), br, t(''), t('# x')]],
+    ['an ordered list marker', [t('text'), br, t(''), t('1. x')]],
+    ['a bullet', [t('text'), br, t(''), t('- x')]],
+    ['a block quote', [t('text'), br, t(''), t('> x')]],
+    ['the other bullet', [t('text'), br, t(''), t('+ x')]],
+    ['a setext underline', [t('text'), br, t(''), t('---')]],
+    ['the other setext underline', [t('text'), br, t(''), t('===')]],
+    ['four leading spaces', [t('text'), br, t(''), t('    indented')]],
+    ['a styled heading marker', [t('text'), br, t(''), { type: 'strong', children: [t('# x')] }]],
+    ['a heading marker at the very start', [t(''), t('# x')]],
+    ['a styled start', [t(''), { type: 'strong', children: [t('x')] }]],
+  ];
+
+  for (const [name, children] of cases) {
+    it(`escapes ${name} the way it would without the empty node`, () => {
+      const printed = stringifyMarkdown(paragraphOf(children));
+      // Idempotence alone is not enough: `# x` at the very start of a paragraph
+      // prints as a heading and a heading prints as a heading, so the row that
+      // loses a whole block reads as stable.
+      expect(stringifyMarkdown(parseMarkdown(printed))).toBe(printed);
+      const { children: blocks } = parseMarkdown(printed);
+      expect(blocks).toHaveLength(1);
+      const only = blocks[0];
+      expect(only?.type).toBe('paragraph');
+      expect(only?.type === 'paragraph' ? plainOf(only.children) : '').toBe(plainOf(children));
+    });
+  }
+
+  it('leaves the tree it was handed alone', () => {
+    // `readLive` (`gdrive/ranges.ts`) stringifies a tree and then reads the
+    // ranges off that same tree, so the net prunes a copy.
+    const tree = paragraphOf([t('text'), br, t(''), t('# x')]);
+    stringifyMarkdown(tree);
+    const [only] = tree.children;
+    expect(only?.type === 'paragraph' ? only.children : []).toHaveLength(4);
   });
 });

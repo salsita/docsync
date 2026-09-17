@@ -131,7 +131,38 @@ export function parseMarkdown(text: string): Root {
   return parser.parse(text);
 }
 
+/** A text node holding nothing, which is to say holding no document at all. */
+function isEmptyText(node: unknown): boolean {
+  const own = node as { type?: unknown; value?: unknown } | null;
+  return typeof own === 'object' && own !== null && own.type === 'text' && own.value === '';
+}
+
+/**
+ * The same tree without the empty text nodes in it — the same tree itself when
+ * it has none.
+ *
+ * `mdast-util-to-markdown` decides every escape from `before`, the output so
+ * far, and an empty text node writes nothing while still making `before` empty:
+ * after one, the serializer no longer knows that a line just began, and `# x`
+ * after a line break goes out unescaped and re-parses as a heading. A source
+ * hands us the shape constantly, since it splits a run wherever an edit or a
+ * style change began, so a run ending in a line break leaves an empty node
+ * behind it (ticket 42). The adapters do not emit one any more; this is the net
+ * under them and under whatever adapter comes next.
+ *
+ * The copy is not politeness: `readLive` (`gdrive/ranges.ts`) stringifies a
+ * tree and then reads the document ranges off that same tree's nodes, so this
+ * must not reach in and edit it.
+ */
+function pruneEmptyText<T>(node: T): T {
+  if (typeof node !== 'object' || node === null || !('children' in node)) return node;
+  const children = (node as { children: readonly unknown[] }).children;
+  const kept = children.filter((child) => !isEmptyText(child)).map(pruneEmptyText);
+  const same = kept.length === children.length && kept.every((child, at) => child === children[at]);
+  return same ? node : ({ ...node, children: kept } as T);
+}
+
 /** mdast to canonical Markdown text. The inverse of `parseMarkdown`. */
 export function stringifyMarkdown(tree: Root): string {
-  return stringifier.stringify(tree);
+  return stringifier.stringify(pruneEmptyText(tree));
 }
