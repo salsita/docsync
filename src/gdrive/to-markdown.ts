@@ -635,12 +635,20 @@ function mergeAdjacent(nodes: PhrasingContent[]): PhrasingContent[] {
  * to encode it — `&#x20;SA: …`, `…(Contract.md)&#x20;` — so it is noise in
  * every diff of every document that has one.
  *
- * Spaces only, and only at the block's own two edges: a space beside a line
- * break inside the block is the block's text, and a space inside a link is the
- * link's. The characters that go are characters of the document all the same,
- * so the run's origin moves with them, exactly as `trimLeading` does it for a
- * footnote's leading space; a patch addresses the document through those
+ * Spaces only at the start, and only at the block's own edges: a space beside a
+ * line break inside the block is the block's text, and a space inside a link is
+ * the link's. The characters that go are characters of the document all the
+ * same, so the run's origin moves with them, exactly as `trimLeading` does it
+ * for a footnote's leading space; a patch addresses the document through those
  * origins (ticket 16).
+ *
+ * At the end a **line break** goes the same way (ticket 42). Markdown has no
+ * spelling for one there: `text\` at the end of a paragraph is a literal
+ * backslash, in a heading the break becomes a trailing space and the heading
+ * prints as setext, and in a table cell it pads the cell — so what a fetch
+ * wrote read back as something else and the base check refused every push of
+ * the document. A break at the very *start* of a block round-trips (`\⏎text`)
+ * and stays.
  */
 function trimEdges(nodes: PhrasingContent[]): PhrasingContent[] {
   const first = nodes[0];
@@ -653,17 +661,47 @@ function trimEdges(nodes: PhrasingContent[]): PhrasingContent[] {
     }
     first.value = value;
   }
-  const last = nodes.at(-1);
-  if (last?.type === 'text') {
-    const value = last.value.replace(/ +$/, '');
-    const origin = originOf(last);
-    if (origin !== undefined) {
-      origin.end -= last.value.length - value.length;
-      origin.text = value.length;
+  return trimTail(nodes);
+}
+
+/**
+ * The spaces and line breaks at the end of a run of inline content, taken off.
+ *
+ * They go together and they go all the way: `a \⏎ \⏎` is `a`, since each one
+ * uncovers the next. The scan reaches inside the node the content ends with —
+ * a bold or linked run that ends in a line break is the same case, and leaving
+ * the break there wrote `**a\&#xA;**` — and drops a wrapper left holding
+ * nothing. Inside a wrapper only the break goes: a space in a link is the
+ * link's, not the block's edge (MANUAL §6).
+ */
+function trimTail(nodes: PhrasingContent[], spaces = true): PhrasingContent[] {
+  const out = [...nodes];
+  while (out.length > 0) {
+    const last = out.at(-1);
+    if (last === undefined) break;
+    if (last.type === 'break') {
+      out.pop();
+      continue;
     }
-    last.value = value;
+    if (last.type === 'text') {
+      const value = spaces ? last.value.replace(/ +$/, '') : last.value;
+      const origin = originOf(last);
+      if (origin !== undefined) {
+        origin.end -= last.value.length - value.length;
+        origin.text = value.length;
+      }
+      last.value = value;
+      if (value !== '') break;
+      out.pop();
+      continue;
+    }
+    if (!('children' in last)) break;
+    const children = trimTail(last.children as PhrasingContent[], false);
+    (last as { children: PhrasingContent[] }).children = children;
+    if (children.length > 0) break;
+    out.pop();
   }
-  return nodes;
+  return out;
 }
 
 function isEmptyText(node: PhrasingContent | undefined): boolean {
@@ -933,13 +971,19 @@ function textNodes(
       out.push(mark({ type: 'break' }, context, { start: at, end: at + 1, text: 1 }));
       at += 1;
     }
-    out.push(
-      mark({ type: 'text', value: line }, context, {
-        start: at,
-        end: at + line.length,
-        text: line.length,
-      }),
-    );
+    // A run that *ends* in a vertical tab — what Docs stores whenever the style
+    // changes or an edit began after the break — would leave an empty text node
+    // behind the break, and an empty node tells the serializer that no line
+    // just began (ticket 42). It carries no characters, so nothing is lost.
+    if (line !== '') {
+      out.push(
+        mark({ type: 'text', value: line }, context, {
+          start: at,
+          end: at + line.length,
+          text: line.length,
+        }),
+      );
+    }
     at += line.length;
   }
   return out;

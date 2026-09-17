@@ -259,6 +259,91 @@ describe('the edges of a block (ticket 30)', () => {
   });
 });
 
+describe('a line break beside a run boundary (ticket 42)', () => {
+  // Docs splits a run wherever an edit or a style change began, so a run that
+  // ends in a vertical tab is the ordinary shape, not an exotic one.
+  it('escapes what follows a line break at a run boundary', () => {
+    expect(documentToMarkdown(doc([para([run('text'), run('# not a heading\n')])]))).toBe(
+      'text\\\n\\# not a heading\n',
+    );
+    expect(documentToMarkdown(doc([para([run('text'), run('1. not a list\n')])]))).toBe(
+      'text\\\n1\\. not a list\n',
+    );
+  });
+
+  it('does the same when the run after the break is styled', () => {
+    expect(
+      documentToMarkdown(
+        doc([para([run('text'), run('# not a heading', { bold: true }), run('\n')])]),
+      ),
+    ).toBe('text\\\n**# not a heading**\n');
+  });
+
+  it('does the same when the vertical tab is a run of its own', () => {
+    expect(documentToMarkdown(doc([para([run('text'), run(''), run('# not a heading\n')])]))).toBe(
+      'text\\\n\\# not a heading\n',
+    );
+  });
+
+  it('keeps the spaces a line at the start of the block would otherwise lose', () => {
+    // Four leading spaces are an indented code block to a parser, and a
+    // continuation line loses them outright, so the first one is encoded.
+    expect(documentToMarkdown(doc([para([run('text'), run('    indented\n')])]))).toBe(
+      'text\\\n&#x20;   indented\n',
+    );
+  });
+
+  it('drops a line break at the very end of a block, the way a space goes', () => {
+    // Markdown has no spelling for it: `text\` at the end of a paragraph is a
+    // literal backslash, and the base check then refuses every push.
+    expect(documentToMarkdown(doc([para([run('text\n')])]))).toBe('text\n');
+    expect(
+      documentToMarkdown(
+        doc([para([run('text\n')], { paragraphStyle: { namedStyleType: 'HEADING_2' } })]),
+      ),
+    ).toBe('## text\n');
+    expect(
+      documentToMarkdown(
+        doc([text('item', { bullet: { listId: 'L' } })], {
+          lists: list(BULLET),
+        }),
+      ),
+    ).toBe('- item\n');
+  });
+
+  it('drops the break at the end of a table cell too', () => {
+    const cell = (content: string) => ({ content: [text(content)] });
+    const document = doc([
+      {
+        table: {
+          rows: 2,
+          columns: 2,
+          tableRows: [
+            { tableCells: [cell('Name'), cell('Value')] },
+            { tableCells: [cell('a'), cell('b')] },
+          ],
+        },
+      },
+    ]);
+    expect(documentToMarkdown(document)).toBe(
+      '| Name | Value |\n| ---- | ----- |\n| a    | b     |\n',
+    );
+  });
+
+  it('takes trailing spaces and breaks at the end together', () => {
+    expect(documentToMarkdown(doc([para([run('text  \n')])]))).toBe('text\n');
+  });
+
+  it('keeps a line break at the very start of a block, which does round-trip', () => {
+    expect(documentToMarkdown(doc([para([run('text\n')])]))).toBe('\\\ntext\n');
+  });
+
+  it('writes nothing for a paragraph that is only a line break', () => {
+    // What is left is an empty paragraph, which has no Markdown form.
+    expect(documentToMarkdown(doc([para([run('\n')]), text('after')]))).toBe('after\n');
+  });
+});
+
 describe('lists', () => {
   it('converts a bulleted list, nested', () => {
     const document = doc([item('One'), item('Nested', 1), item('Deeper', 2), item('Two')], {
