@@ -614,6 +614,16 @@ item, since it is invisible at the source and could only be written as
 `&#x20;`. Spaces beside a line break inside the block, and spaces inside a
 link or a `<span>`, are content and stay.
 
+A line break at the very end of a block's inline content is dropped the same
+way, and for a harder reason: Markdown has no spelling for one there. `text\`
+at the end of a paragraph is a literal backslash, and in a heading or a table
+cell the break becomes a trailing space, so what a fetch wrote read back as
+something else and every push of the document was refused. Paragraph, heading,
+list item and table cell, on both sources. Several breaks at the end all go,
+spaces and breaks mixed at the end go together, and so does a break at the end
+of the bold or linked run a block closes with. A line break at the very start
+of a block is written as `\` and a newline, and stays.
+
 **Block attributes.** What Notion stores on a block that GFM cannot express
 goes in an HTML comment on its own line directly above the block, only when
 the value is not the default. Two attributes exist: block colour on any block,
@@ -1037,12 +1047,17 @@ What is lost, per source:
   deletes the block. A page pushed from a checkout that has no base version
   of it is refused: fetch, merge, push again. A block
   with more than a hundred rich-text runs keeps its text but loses the
-  formatting past the ninety-ninth run. Page-level comments, properties,
+  formatting past the ninety-ninth run. A space or a line break the dialect
+  dropped at the edge of a block (§6) goes when you edit that block, since
+  the block's text is then written whole from your Markdown; an edit to any
+  other block leaves it alone. Page-level comments, properties,
   sharing, child pages, child databases and the page id always survive.
 - **Google Docs:** formatting on the characters you rewrote; the anchor of
   a comment that overlaps an edit; nothing of a pending suggestion in a
   paragraph you edited, since the edit goes in beside it as a competing
-  suggestion and the ids are named in the push report. A
+  suggestion and the ids are named in the push report. A space or a line
+  break the dialect dropped at the edge of a block (§6) is never lost: no
+  request can address it, so an edit to the block is planned around it. A
   paragraph you moved, and one rewritten so far that the diff cannot pair it,
   are written afresh where they land. A horizontal rule cannot be created
   by the dialect, so a new one in your Markdown is dropped; an existing one

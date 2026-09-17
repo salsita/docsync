@@ -40,6 +40,11 @@ version, commits, tags and pushes.
   between the checkout and the live Doc instead of counted, so a suggestion
   can no longer land paragraphs away from where it was made, and an
   appended list item no longer leaves an empty line.
+- A soft line break in a Google Doc or a Notion block no longer makes every
+  push of the document fail with "the source changed". Text in a run of its
+  own right after the break (`# x`, `1. x`, `---`) is escaped instead of
+  turning into a heading, a list or a literal `&#xNAN;`, and a line break at
+  the very end of a block, which Markdown cannot spell, is dropped on fetch.
 
 ### Changed
 
