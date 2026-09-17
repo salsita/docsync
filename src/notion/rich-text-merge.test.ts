@@ -224,6 +224,20 @@ describe('mergeRichText', () => {
     ]);
   });
 
+  it('writes the block whole when the dialect dropped a character at its edge', () => {
+    // A space at the very end of a block is not in the base (MANUAL §6), so the
+    // base does not say what Notion holds and the offsets cannot cut the live
+    // runs: the block goes back from the new Markdown alone and the space is
+    // gone with it. A line break dropped at that edge follows this precedent
+    // rather than inventing a rule of its own (ticket 42).
+    for (const tail of [' ', '\n']) {
+      const live = [run(`Edit me.${tail}`)];
+      expect(shape(mergeRichText(live, phrasing('Edit me.'), phrasing('Edited.')))).toEqual([
+        { text: 'Edited.' },
+      ]);
+    }
+  });
+
   it('answers the live runs unchanged when nothing changed', () => {
     const live = [run('unchanged '), run('text', { bold: true })];
     expect(

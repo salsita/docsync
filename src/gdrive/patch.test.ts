@@ -573,3 +573,66 @@ describe('a deleted list item', () => {
     expect(applied(base, next)).toBe(next);
   });
 });
+
+describe('a document holding a line break the dialect cannot write (ticket 42)', () => {
+  // Written straight into the model: these paragraphs are exactly the ones no
+  // Markdown says, a vertical tab beside a marker and one at a paragraph's end.
+  const TEXT = 'text# not a heading\ntext1. not a list\nEdit me.\nends in a break';
+
+  function model() {
+    const made = createDocsModel('doc', 'Doc');
+    made.apply([{ insertText: { location: { index: 1 }, text: TEXT } }]);
+    return made;
+  }
+
+  const base =
+    'text\\\n\\# not a heading\n\ntext\\\n1\\. not a list\n\nEdit me.\n\nends in a break\n';
+
+  it('reads back as the Markdown a fetch wrote, so a push is not refused', () => {
+    expect(documentToMarkdown(model().document(), convertOptions({}))).toBe(base);
+  });
+
+  it('edits another paragraph without touching any of the three', () => {
+    const next = base.replace('Edit me.', 'Edited.');
+    const patch = plan(base, next, model().document());
+
+    // "Edit me." is the third paragraph: the first two are 21 and 19 code
+    // units long, so it runs from 41 to 49 and every request is inside it.
+    for (const index of indices(patch.requests)) {
+      expect(index).toBeGreaterThanOrEqual(41);
+      expect(index).toBeLessThan(50);
+    }
+  });
+
+  it('places an edit inside a paragraph that ends in a break', () => {
+    // The dropped break is one code unit of the paragraph that no node carries,
+    // so an offset counted past it would land on the vertical tab and cut it.
+    const next = base.replace('ends in a break', 'ends in a wrap');
+    const made = model();
+    const patch = plan(base, next, made.document());
+
+    // The paragraph starts at 50, so "break" is 60 to 64 and the vertical tab
+    // is 65: the deletion stops short of it and the new word goes in front of
+    // it, rather than one place late and over it.
+    expect(patch.requests).toEqual([
+      { insertText: { location: { index: 65 }, text: 'wrap' } },
+      { deleteContentRange: { range: { startIndex: 60, endIndex: 65 } } },
+    ]);
+    made.apply(patch.requests);
+    expect(documentToMarkdown(made.document(), convertOptions({}))).toBe(next);
+  });
+
+  it('leaves the breaks in the document where they were', () => {
+    const next = base.replace('Edit me.', 'Edited.');
+    const made = model();
+    made.apply(plan(base, next, made.document()).requests);
+
+    expect(documentToMarkdown(made.document(), convertOptions({}))).toBe(next);
+    const written = (made.document().body?.content ?? [])
+      .flatMap((element) => element.paragraph?.elements ?? [])
+      .map((element) => element.textRun?.content ?? '')
+      .join('');
+    // The vertical tabs are the source's, and nothing addressed them.
+    expect(written.split('')).toHaveLength(4);
+  });
+});
