@@ -99,3 +99,38 @@ the author on push, `restyle()` over a foreign insertion).
 - A live check, by Claude after landing: a Doc a smoke script creates in the
   "Docsync test" folder with those paragraphs, fetched, an unrelated
   paragraph edited, pushed, fetched again with no diff, then trashed.
+
+## Outcome
+
+Landed 2026-09-17 as the ticket decided, with one correction to it.
+
+- `stringifyMarkdown` prunes empty text nodes from a **copy** of the tree:
+  `readLive` stringifies a tree and then reads the ranges off the same
+  nodes, so pruning in place would edit the map a patch addresses the Doc
+  through. Both converters stopped emitting the empty node, and both
+  `trimEdges` end in a new `trimTail` that takes trailing breaks and spaces
+  off together, reaching into the bold or linked run a block ends with
+  (inside a wrapper only the break goes; a space in a link is the link's).
+- The trailing break is dropped in the converters, not in the stringifier:
+  on Google Docs its `Origin` has to go with it, or the base text and the
+  pieces disagree by one character.
+- **Decision 3 assumed one edge-space precedent; there are two.** On Google
+  Docs a dropped edge character is outside every origin, no request can
+  name it, and an edit to the block leaves it where it is. On Notion a
+  dropped edge character makes `mergeRichText` take the whole-block branch,
+  so an edit to that block deletes it, as it always has for a trailing
+  space. The break follows each source's precedent; the manual (§6, §7)
+  says both.
+- No snapshot and no recorded fixture changed; no fixture holds the case.
+  Two outputs change for documents whose old output was broken: a bold or
+  linked run ending in a break (`**a\&#xA;**` → `**a**`), and trailing
+  spaces spread over more than one node (`a&#x20;` → `a`).
+- Live check: `scripts/gdocs-soft-break-smoke.ts` (Claude's), all checks
+  passed against a Doc it made and trashed in "Docsync test". Docs does
+  store the run boundary right behind the vertical tab.
+
+Follow-ups, not done: Notion could keep a dropped edge character on an edit
+(`mergeRichText` tolerating a base trimmed by the dialect's own rule); a
+vertical tab inside a code-font run is written into the file as a raw
+U+000B; a break at a block's end inside `<u>` or `<span data-color>` is not
+dropped, as an edge space there is not.
