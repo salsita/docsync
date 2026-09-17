@@ -629,6 +629,66 @@ describe('the edges of a block (ticket 30)', () => {
   });
 });
 
+describe('a line break beside a run boundary (ticket 42)', () => {
+  // Notion cuts a run wherever an edit or a comment began, so an item that
+  // ends in a newline with another item behind it is the ordinary shape.
+  it('escapes what follows a line break at a run boundary', () => {
+    expect(inlineMarkdown([text('text\n'), text('# not a heading')])).toBe(
+      'text\\\n\\# not a heading',
+    );
+    expect(inlineMarkdown([text('text\n'), text('1. not a list')])).toBe('text\\\n1\\. not a list');
+  });
+
+  it('does the same when the run after the break is styled', () => {
+    expect(inlineMarkdown([text('text\n'), text('# not a heading', { bold: true })])).toBe(
+      'text\\\n**# not a heading**',
+    );
+  });
+
+  it('keeps the spaces a line at the start of the block would otherwise lose', () => {
+    expect(inlineMarkdown([text('text\n'), text('    indented')])).toBe(
+      'text\\\n&#x20;   indented',
+    );
+  });
+
+  it('drops a line break at the very end of a block, the way a space goes', () => {
+    // Markdown has no spelling for it: `text\` at the end of a paragraph is a
+    // literal backslash, and the base check then refuses every push.
+    expect(one('paragraph', { rich_text: [text('text\n')] })).toBe('text\n');
+    expect(one('heading_2', { rich_text: [text('text\n')] })).toBe('## text\n');
+    expect(one('bulleted_list_item', { rich_text: [text('item\n')] })).toBe('- item\n');
+    expect(inlineMarkdown([text('a\n', { bold: true })])).toBe('**a**');
+  });
+
+  it('drops the break at the end of a table cell too', () => {
+    const row = (...cells: string[]): NotionBlock => ({
+      object: 'block',
+      id: `r${cells[0]}`,
+      type: 'table_row',
+      has_children: false,
+      table_row: { cells: cells.map((cell) => [text(cell)]) },
+    });
+    const table: NotionBlock = {
+      ...block('table', { table_width: 2, has_column_header: true, has_row_header: false }),
+      has_children: true,
+      children: [row('Name', 'Value'), row('a\n', 'b')],
+    };
+    expect(markdown([table])).toBe('| Name | Value |\n| ---- | ----- |\n| a    | b     |\n');
+  });
+
+  it('takes trailing spaces and breaks at the end together', () => {
+    expect(inlineMarkdown([text('text \n \n')])).toBe('text');
+  });
+
+  it('keeps a line break at the very start of a block, which does round-trip', () => {
+    expect(inlineMarkdown([text('\ntext')])).toBe('\\\ntext');
+  });
+
+  it('writes nothing for a paragraph that is only a line break', () => {
+    expect(markdown([block('paragraph', { rich_text: [text('\n')] })])).toBe('');
+  });
+});
+
 describe('the escaping paragraph in the fixture', () => {
   const BLOCKS_PAGE = '3cf715cbeb0881168ea0f3f18715e1a4';
 

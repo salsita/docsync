@@ -383,19 +383,63 @@ export function inline(
  * has to encode it — `&#x20;SA: …`, `…(Contract.md)&#x20;` — so it is noise in
  * every diff of every document that has one.
  *
- * Spaces only, and only at the block's own two edges: a space beside a line
- * break inside the block is the block's text, and a space inside a link or a
- * `<span>` is that node's. The push-time comparison converts the live block
+ * Spaces only at the start, and only at the block's own edges: a space beside a
+ * line break inside the block is the block's text, and a space inside a link or
+ * a `<span>` is that node's. The push-time comparison converts the live block
  * with this same code, so a trimmed base never reads as an edit, and
  * `mergeRichText` compares plain text, so the space at the source survives.
+ *
+ * At the end a **line break** goes the same way (ticket 42). Markdown has no
+ * spelling for one there: `text\` at the end of a paragraph is a literal
+ * backslash, in a heading the break becomes a trailing space and the heading
+ * prints as setext, and in a table cell it pads the cell — so what a fetch
+ * wrote read back as something else and the base check refused every push of
+ * the page. A break at the very *start* of a block round-trips (`\⏎text`) and
+ * stays.
  */
 function trimEdges(nodes: PhrasingContent[]): PhrasingContent[] {
   const out = [...nodes];
   const first = out[0];
   if (first?.type === 'text') out[0] = { ...first, value: first.value.replace(/^ +/, '') };
-  const last = out.at(-1);
-  if (last?.type === 'text')
-    out[out.length - 1] = { ...last, value: last.value.replace(/ +$/, '') };
+  return trimTail(out);
+}
+
+/**
+ * The spaces and line breaks at the end of a run of inline content, taken off.
+ *
+ * They go together and they go all the way: `a \⏎ \⏎` is `a`, since each one
+ * uncovers the next. The scan reaches inside the node the content ends with —
+ * a bold or linked run that ends in a newline is the same case, and leaving the
+ * break there wrote `**a\&#xA;**` — and drops a wrapper left holding nothing.
+ * Inside a wrapper only the break goes: a space in a link is the link's.
+ */
+function trimTail(nodes: PhrasingContent[], spaces = true): PhrasingContent[] {
+  const out = [...nodes];
+  while (out.length > 0) {
+    const last = out.at(-1);
+    if (last === undefined) break;
+    if (last.type === 'break') {
+      out.pop();
+      continue;
+    }
+    if (last.type === 'text') {
+      const value = spaces ? last.value.replace(/ +$/, '') : last.value;
+      if (value === '') {
+        out.pop();
+        continue;
+      }
+      out[out.length - 1] = { ...last, value };
+      break;
+    }
+    if (!('children' in last)) break;
+    const children = trimTail(last.children as PhrasingContent[], false);
+    if (children.length === 0) {
+      out.pop();
+      continue;
+    }
+    out[out.length - 1] = { ...last, children } as PhrasingContent;
+    break;
+  }
   return out;
 }
 
@@ -539,18 +583,23 @@ function base(part: RichText, options: ToMarkdownOptions): PhrasingContent[] {
 }
 
 /**
- * Plain text as mdast. A line break inside one block is two trailing spaces
+ * Plain text as mdast. A line break inside one block is a trailing backslash
  * (MANUAL §6), which is what a `break` node prints under our stringifier
  * options.
+ *
+ * A line with nothing on it contributes no node. An empty text node writes
+ * nothing and still tells the serializer that no line just began, so `# x`
+ * after a break would go out unescaped and re-parse as a heading — and an item
+ * that ends in a newline with another item behind it, which is what Notion
+ * stores wherever an edit or a comment began, is the ordinary shape (ticket 42).
  */
 function textNodes(text: string): PhrasingContent[] {
   return text
     .split('\n')
-    .flatMap((line, index) =>
-      index === 0
-        ? [{ type: 'text' as const, value: line }]
-        : [{ type: 'break' as const }, { type: 'text' as const, value: line }],
-    );
+    .flatMap((line, index) => [
+      ...(index === 0 ? [] : [{ type: 'break' as const }]),
+      ...(line === '' ? [] : [{ type: 'text' as const, value: line }]),
+    ]);
 }
 
 /**
