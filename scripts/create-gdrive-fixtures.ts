@@ -1,5 +1,5 @@
 /**
- * Create the Google Drive fixture tree for ticket 07, once, with the owner's
+ * Create the Google Drive fixture tree for #7, once, with the owner's
  * own token. Refuses to run when a "Docsync test" folder already exists in the
  * Drive root, so it cannot duplicate the tree.
  *

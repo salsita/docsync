@@ -151,7 +151,7 @@ describe('validateRoots', () => {
     });
   });
 
-  describe('isInsideRepository (MANUAL §4, ticket 35)', () => {
+  describe('isInsideRepository (MANUAL §4, #35)', () => {
     it('accepts a path that names something in the checkout', () => {
       for (const path of ['Specs/', 'notes/roadmap.md', 'a/b/c.md', 'Caf\u00e9/']) {
         expect(isInsideRepository(path), path).toBe(true);

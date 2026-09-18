@@ -101,7 +101,7 @@ describe('signIn to Notion', () => {
     expect(lines[0]).toContain('teamspaces');
     // The comment sidecar needs it, and Notion grants it per integration.
     expect(lines[0]).toContain('read comments');
-    // Three scopes since ticket 38: the calendar is part of the Google grant.
+    // Three scopes since #38: the calendar is part of the Google grant.
     expect(grantHint('gdocs')).toContain('Drive, Docs and your calendar');
   });
 

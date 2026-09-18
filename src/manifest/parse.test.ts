@@ -115,7 +115,7 @@ roots:
     expect(manifest.roots[0]?.suggest).toBeUndefined();
   });
 
-  describe('a root path is inside the repository (MANUAL §4, ticket 35)', () => {
+  describe('a root path is inside the repository (MANUAL §4, #35)', () => {
     const REFUSED =
       '"path" must be a relative path inside the repository, not the repository itself';
     const withPath = (path: string): string =>

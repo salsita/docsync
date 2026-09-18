@@ -245,7 +245,7 @@ describe('a list', () => {
       },
     });
     // A tick cannot be written: the API has no request for one and the read
-    // side cannot see one either (ticket 07 Outcome).
+    // side cannot see one either (#7 Outcome).
     expect(requests('- [x] done\n').at(-1)).toEqual({
       createParagraphBullets: {
         range: { startIndex: 1, endIndex: 6 },

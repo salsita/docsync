@@ -5,7 +5,7 @@
  * `src/markdown.ts` produces: this module never looks at Markdown text and
  * never talks to Google. It answers requests; `write.ts` sends them.
  *
- * The whole design is one decision (ticket 08): **every block is inserted at
+ * The whole design is one decision (#8): **every block is inserted at
  * index 1, in reverse document order**, each with its own styling requests
  * immediately after its `insertText`. A request therefore only ever addresses
  * indices inside the block it belongs to, all of which are known while the
@@ -327,7 +327,7 @@ function blockSegments(
       // The dialect never writes one for Docs, but a person might.
       return buildSegments((node as Blockquote).children, context, base);
     case 'thematicBreak':
-      // The Docs API has no request that creates one (ticket 08 decisions).
+      // The Docs API has no request that creates one (#8 decisions).
       context.dropped.push('horizontal rule');
       return [];
     case 'footnoteDefinition':
@@ -447,7 +447,7 @@ function textSegment(
   // inherits its bullet: a block before a list would join the list. A list
   // clears them too, and must — `createParagraphBullets` only reads the
   // leading tabs of a paragraph that is not already a list item, which is what
-  // the manual test caught (ticket 08 Outcome).
+  // the manual test caught (#8 Outcome).
   if (options.keepBullets !== true) {
     requests.push({ deleteParagraphBullets: { range: range(base, base + text.length) } });
   }

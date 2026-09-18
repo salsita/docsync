@@ -53,7 +53,7 @@ export interface StyledRun {
   /**
    * Set on the one-character run an image is: the URL it points at, so that an
    * adapter writing the run back creates the object rather than the character
-   * (ticket 23).
+   * (#23).
    */
   image?: string;
 }
@@ -62,7 +62,7 @@ export interface StyledRun {
  * What an image is in a block's plain text: one object replacement character,
  * whatever its alt says. One character is what Google Docs counts an inline
  * object as, and counting the alt instead hid an empty-alt image from the diff
- * altogether (ticket 23).
+ * altogether (#23).
  */
 export const OBJECT_REPLACEMENT = '￼';
 

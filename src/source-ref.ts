@@ -18,8 +18,8 @@
  * Canonical ids: a Notion id is 32 lowercase hex digits without dashes, and a
  * Google id is verbatim, since Drive ids are opaque. Two forms carry a second
  * id inside the first: `gdocs:<docId>#<tabId>` is one tab of a Google Doc
- * (MANUAL §6, ticket 37), and `calendar:<eventId>@<calendarId>` one event on
- * somebody's calendar (ticket 38). `splitGDocsRef` and `splitCalendarRef` take
+ * (MANUAL §6, #37), and `calendar:<eventId>@<calendarId>` one event on
+ * somebody's calendar (#38). `splitGDocsRef` and `splitCalendarRef` take
  * them apart, and nothing else has to. `formatSourceRef` prints
  * the canonical form, which is always a literal ref and never contains a
  * slash — which is what lets an ignore list mix refs with globs.
@@ -30,7 +30,7 @@
 /**
  * A document store. `calendar` is Google Calendar, whose objects are events
  * rather than documents: what it checks out are the Drive files attached to
- * them (MANUAL §1, ticket 38). Its credential is the Google one.
+ * them (MANUAL §1, #38). Its credential is the Google one.
  */
 export type Source = 'notion' | 'gdocs' | 'calendar';
 
@@ -55,7 +55,7 @@ const NOTION_DASHED = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const GOOGLE_ID = /^[A-Za-z0-9_-]{20,}$/;
 
 /**
- * A Google Docs tab id (MANUAL §6, ticket 37). Every one of them is `t.` and
+ * A Google Docs tab id (MANUAL §6, #37). Every one of them is `t.` and
  * then some, which is what lets `gdocs:<docId>#<tabId>` stay one token: the
  * fragment cannot be mistaken for the `#<startIndex>` a placeholder addresses a
  * structural element by.
@@ -65,7 +65,7 @@ const GOOGLE_TAB_ID = /^t\.[A-Za-z0-9_-]+$/;
 const GOOGLE_TAB_SHAPE = 'A Google Docs tab id starts with "t.".';
 
 /**
- * A Calendar event id (ticket 38). Google's own rule: base32hex, which is the
+ * A Calendar event id (#38). Google's own rule: base32hex, which is the
  * lowercase letters a-v and the digits, five characters or more. That alphabet
  * holds no `@`, which is what lets `calendar:<eventId>@<calendarId>` split at
  * the first one even though a calendar id is an address with an `@` of its own.
@@ -75,7 +75,7 @@ const EVENT_ID = /^[a-v0-9]{5,1024}$/;
 /**
  * One occurrence of a recurring event: the series id, an underscore, and the
  * instance's start (`_20260901T070000Z`). The underscore is outside base32hex,
- * so it can only be this (ticket 38).
+ * so it can only be this (#38).
  */
 const INSTANCE_SUFFIX = /_[A-Za-z0-9]*$/;
 
@@ -190,7 +190,7 @@ export function parseSourceRefOrUrl(text: string): SourceRef | SourceRefError {
 }
 
 /**
- * A Calendar URL (ticket 38). The event id is nowhere in the page; the one
+ * A Calendar URL (#38). The event id is nowhere in the page; the one
  * place the UI shows it is the `eid`, which is unpadded base64url of
  * `<eventId> <calendarId>` and appears either as the segment after
  * `eventedit/` or as the `eid` query parameter.
@@ -248,7 +248,7 @@ function parseLiteral(text: string): SourceRef | SourceRefError | undefined {
   }
   if (source === 'gdocs') {
     // `<docId>` or `<docId>#<tabId>`, and nothing else: a second `#` is not a
-    // ref at all (ticket 37).
+    // ref at all (#37).
     const [docId = '', tabId, ...rest] = id.split('#');
     if (!GOOGLE_ID.test(docId)) return fail(text, GOOGLE_ID_SHAPE);
     if (rest.length > 0) return fail(text, GOOGLE_TAB_SHAPE);
@@ -259,7 +259,7 @@ function parseLiteral(text: string): SourceRef | SourceRefError | undefined {
   }
   if (source === 'calendar') {
     // Split at the *first* `@`: what follows is a calendar id, which is an
-    // address and holds one of its own (ticket 38).
+    // address and holds one of its own (#38).
     const at = id.indexOf('@');
     const eventId = seriesOf(at === -1 ? id : id.slice(0, at));
     const calendarId = at === -1 ? PRIMARY_CALENDAR : id.slice(at + 1);
@@ -315,7 +315,7 @@ export function sourceUrl(ref: SourceRef, mimeType?: string): string {
   if (ref.source === 'calendar') {
     const { eventId, calendarId } = splitCalendarRef(ref);
     // Calendar reads the pair back out of the token, so the calendar is spelled
-    // out even when the ref left it unsaid (ticket 38).
+    // out even when the ref left it unsaid (#38).
     const token = btoa(`${eventId} ${calendarId}`)
       .replaceAll('+', '-')
       .replaceAll('/', '_')
@@ -325,7 +325,7 @@ export function sourceUrl(ref: SourceRef, mimeType?: string): string {
   if (mimeType === GOOGLE_FOLDER) return `https://drive.google.com/drive/folders/${ref.id}`;
   const { docId, tabId } = splitGDocsRef(ref);
   // Only a Google Doc has tabs, so a tab ref is one whatever Drive said the
-  // file was — and the URL opens on that tab (MANUAL §6, ticket 37).
+  // file was — and the URL opens on that tab (MANUAL §6, #37).
   if (tabId !== undefined) {
     return `https://docs.google.com/document/d/${docId}/edit?tab=${tabId}`;
   }
@@ -343,7 +343,7 @@ export interface GDocsTarget {
 }
 
 /**
- * Splits a `gdocs:` ref into the Doc and the tab (ticket 37).
+ * Splits a `gdocs:` ref into the Doc and the tab (#37).
  *
  * The id is one token everywhere it is stored — frontmatter, the index, a
  * manifest — and this is the one place that takes it apart, so that nothing
@@ -364,7 +364,7 @@ export interface CalendarTarget {
 }
 
 /**
- * Splits a `calendar:` ref into the event and the calendar (ticket 38).
+ * Splits a `calendar:` ref into the event and the calendar (#38).
  *
  * The id is one token everywhere it is stored, and this is the one place that
  * takes it apart, so that nothing else has to know that the separator is the

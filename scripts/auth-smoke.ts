@@ -1,6 +1,6 @@
 /**
  * Run the real sign-in flow for one source, before the `docsync auth` command
- * exists (that is ticket 10).
+ * exists (that is #10).
  *
  *   corepack pnpm build
  *   node scripts/auth-smoke.ts notion

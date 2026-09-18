@@ -254,7 +254,7 @@ async function assetsFolder(
 
 /**
  * Runs `insert` with every staged image world-readable, and takes it all back
- * (MANUAL §12 phase 2, the owner's condition on this ticket).
+ * (MANUAL §12 phase 2, the owner's condition on #14).
  *
  * The share is created immediately before the insert and removed immediately
  * after, in a `finally` that also trashes the Drive copy, so the exposure

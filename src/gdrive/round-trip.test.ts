@@ -3,19 +3,19 @@
  *
  * The property MANUAL §6 promises is that fetching a document and pushing it
  * unchanged leaves no diff on the next fetch. Here that is: every recorded Doc
- * becomes Markdown (ticket 07), the Markdown becomes the batch a push would
- * send (ticket 08), the batch is applied to a model of a Docs document
+ * becomes Markdown (#7), the Markdown becomes the batch a push would
+ * send (#8), the batch is applied to a model of a Docs document
  * (`docs-model.mock.ts`), and the model converts back to the same Markdown.
  *
  * Three things cannot survive, and are projected out of the *expected* text
  * rather than quietly tolerated in the comparison, so that adding a fourth is
  * a failing test and not a shrug:
  *
- * - a **horizontal rule**, which no Docs API request creates (ticket 08);
+ * - a **horizontal rule**, which no Docs API request creates (#8);
  * - a **placeholder**, `docsync:block` or `docsync:object` — an image, a
  *   merged-cell table — which phase-1 write-back does not recreate (MANUAL §7);
  * - a **checklist tick**, which `documents.get` never reports, so the dialect
- *   only ever writes `- [ ]` (ticket 07 Outcome). No fixture holds a `- [x]`,
+ *   only ever writes `- [ ]` (#7 Outcome). No fixture holds a `- [x]`,
  *   so this one is proved by a unit test rather than here.
  *
  * Colour, highlight, font, size and alignment need no projection: the read side
@@ -85,7 +85,7 @@ function pushed(markdown: string, documentId = 'model'): string {
 /**
  * Every body the fixtures hold, one per tab: a Doc with several tabs has one
  * body per tab and none of its own, and each of them round-trips on its own
- * (MANUAL §6, ticket 37).
+ * (MANUAL §6, #37).
  */
 const BODIES = DOC_IDS.flatMap((id) =>
   flattenTabs(fixtureDocument(id)).map((tab) => ({

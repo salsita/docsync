@@ -1,7 +1,7 @@
 /**
- * One tab becoming many, as git sees it (MANUAL §6, §7, ticket 37).
+ * One tab becoming many, as git sees it (MANUAL §6, §7, #37).
  *
- * The owner's condition on this ticket is that the transition is lossless in
+ * The owner's condition on #37 is that the transition is lossless in
  * both directions: nothing in the checkout is lost when a Doc gains a tab or
  * comes back down to one, and git's history follows the content across the
  * move. That is a claim about the *commits* a fetch writes, so this test runs
@@ -90,7 +90,7 @@ describe('a Doc that gains a tab', () => {
       'drive/Tabbed/Tabbed.md',
     ]);
     // The first tab's file is the old file moved: git pairs them, so
-    // `git log --follow` crosses the move (ticket 37).
+    // `git log --follow` crosses the move (#37).
     const renames = repo
       .run('diff-tree', '-M', '-r', '--name-status', first.commit, next.commit)
       .split('\n')

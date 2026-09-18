@@ -15,7 +15,7 @@
  * replacement is a deletion followed by an insertion at the same place and the
  * style of inserted text can only be set once the text is there.
  *
- * What is *not* written is the point of the ticket. An untouched paragraph is
+ * What is *not* written is the point of #16. An untouched paragraph is
  * never addressed, so its colour, font, size, alignment, inline images and
  * comment anchors are untouched. An edited one is addressed only over the
  * characters that changed, and `updateTextStyle` names only the attributes the
@@ -293,7 +293,7 @@ export function planPatch(
     // original text alone, around the words somebody else has proposed adding,
     // and the ids are named in the report so the push says whose paragraph it
     // landed beside (MANUAL §7). The paragraph used to be written over whole,
-    // the client's words with it — the first fault of ticket 41.
+    // the client's words with it — the first fault of #41.
     if (ranged.suggestions.length > 0 && plainOf(base.inline) !== plainOf(next.inline)) {
       suggestions.push(...ranged.suggestions);
     }
@@ -372,7 +372,7 @@ export function planPatch(
    * An image is not text: the run that stands for one is one object
    * replacement character in the span, and what goes out for it is
    * `insertInlineImage` at the index it reached — one code unit, the same
-   * width the character had (ticket 23).
+   * width the character had (#23).
    */
   function insertSpan(
     span: Span,
@@ -474,8 +474,8 @@ export function planPatch(
   /**
    * A stretch that has to go whole — a block deleted, a table rewritten —
    * cannot be written around anybody's pending suggested insertion: taking the
-   * paragraph takes their words with it. That is the one thing this ticket says
-   * a push may never do, on either kind of push, so it is refused by name
+   * paragraph takes their words with it. That is the one thing #41 says a
+   * push may never do, on either kind of push, so it is refused by name
    * before a single request goes out (MANUAL §7).
    */
   function refuseIfSuggested(found: Ranged, quote: string): void {
@@ -515,7 +515,7 @@ export function planPatch(
    * The text of a run of styled text, written at an index from nothing. An
    * image is not text and is not written here — a whole-block rewrite and a
    * fresh table cell both go through this — so it is dropped and named, never
-   * written as the character that stands for it (ticket 23).
+   * written as the character that stands for it (#23).
    */
   function runRequests(
     all: readonly StyledRun[],
@@ -589,7 +589,7 @@ export function planPatch(
    * Only a lone deletion followed by a lone insertion, and only when both are
    * one paragraph: two of either do not say which is which, and a delete and
    * an insert is the honest answer. Being the only pair in the hunk is the
-   * signal, the same one ticket 15 settled on for a rewritten paragraph.
+   * signal, the same one #15 settled on for a rewritten paragraph.
    */
   function restyled(ops: readonly BlockOp[], blocks: readonly Slot[], context: Level): BlockOp[] {
     if (context.table !== undefined) return [...ops];
@@ -639,7 +639,7 @@ export function planPatch(
       const joinsNext = flat && next?.block.type === kind;
       // A split lends the item before its newline, which in suggesting mode is
       // a suggestion of its own and an empty paragraph between the two for the
-      // reviewer to read — the fourth fault of ticket 41. There the new item
+      // reviewer to read — the fourth fault of #41. There the new item
       // goes in whole, at the start of the block that follows, with a bullet
       // of its own.
       const joinsPrevious =
@@ -684,7 +684,7 @@ export function planPatch(
       if (found === undefined) {
         // A base block the live document has no counterpart for: a kept block
         // needs nothing, and an edit to it has nowhere to go. Writing it
-        // somewhere else is the fault of ticket 41; dropping it in silence
+        // somewhere else is the fault of #41; dropping it in silence
         // would lose the edit. So it is refused by name.
         if (op.op === 'keep') {
           counts.kept += 1;
@@ -758,9 +758,9 @@ export function planPatch(
    * about the children of a block it deletes — they go with their parent, and
    * a child that survives elsewhere arrives there as an insertion (MANUAL §7).
    * Deleting only the parent's own range left the nested items behind, still
-   * bulleted and still indented, hanging under whatever came before (ticket
-   * 32). A footnote's body lives in a segment of its own, so it is no part of
-   * the stretch of the body a deletion cuts.
+   * bulleted and still indented, hanging under whatever came before (#32). A
+   * footnote's body lives in a segment of its own, so it is no part of the
+   * stretch of the body a deletion cuts.
    */
   function extent(found: Ranged): number {
     let end = found.end;

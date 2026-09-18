@@ -133,7 +133,7 @@ export interface NotionApi {
   /**
    * The comments on one block. Asking a page answers only the page-level ones,
    * so a block comment needs a request of its own — which is why a fetch makes
-   * one per block (MANUAL §6, ticket 17).
+   * one per block (MANUAL §6, #17).
    */
   comments(blockId: string): Promise<NotionComment[]>;
   /** The direct children of a block, paginated, without recursing. */

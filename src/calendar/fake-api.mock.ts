@@ -1,7 +1,7 @@
 /**
  * A calendar that lives in memory, for the fetch tests.
  *
- * A person's calendar is private and cannot be a fixture (ticket 38), so this
+ * A person's calendar is private and cannot be a fixture (#38), so this
  * is what the adapter is tested against: a series, its instances, and the
  * attachments on each one. The attachments carry the ids of files in a fake
  * Drive (`../gdrive/fake-api.mock.ts`), so an attachment resolves to a real
@@ -101,7 +101,7 @@ export function createFakeCalendar(seed: readonly FakeEvent[] = []): FakeCalenda
         event.instances
           .filter((one) => one.status !== 'cancelled')
           // `timeMax` is exclusive on an instance's start: the future has no
-          // notes, so it is never listed (MANUAL §7, ticket 38).
+          // notes, so it is never listed (MANUAL §7, #38).
           .filter(
             (one) => options.timeMax === undefined || startsAt(one) < Date.parse(options.timeMax),
           )

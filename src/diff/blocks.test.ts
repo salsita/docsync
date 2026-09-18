@@ -218,7 +218,7 @@ describe('diffBlocks', () => {
   });
 
   it('sees an empty-alt image added to a paragraph of text', () => {
-    // The alt is empty, so before ticket 23 the text of the block did not
+    // The alt is empty, so before #23 the text of the block did not
     // move and the paragraph was kept: the image was never written.
     const ops = diff('See the chart.\n', 'See the chart. ![](X.assets/chart.png)\n');
     expect(shape(ops)).toEqual(['update paragraph: See the chart. ￼']);

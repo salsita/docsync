@@ -59,7 +59,7 @@ describe('locate', () => {
     expect(found?.offset).toBe(body.indexOf('The word twice: once here.'));
   });
 
-  it('takes the second one when an anchor says to skip the first (ticket 40)', () => {
+  it('takes the second one when an anchor says to skip the first (#40)', () => {
     const found = locate(body, 'The word twice', { skip: 1 });
 
     expect(found?.quote).toBe('The word twice: and once there.');
@@ -135,7 +135,7 @@ describe('headingsOf', () => {
 
 /**
  * A selection can run over a block boundary, and then the quote is in no single
- * block (MANUAL §6, ticket 34).
+ * block (MANUAL §6, #34).
  */
 describe('locate over a run of blocks', () => {
   const two = ['# Head', '', 'The end of one paragraph.', '', 'The start of the next.', ''].join(
@@ -195,7 +195,7 @@ describe('locate over a run of blocks', () => {
   });
 });
 
-describe('occurrencesBefore (ticket 40)', () => {
+describe('occurrencesBefore (#40)', () => {
   const text = 'A pin here.\nAnd a pin there.\nOne more pin.\n';
 
   it('counts the occurrences that start before a position', () => {

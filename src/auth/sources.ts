@@ -16,7 +16,7 @@ export function labelOf(source: Source): string {
 }
 
 /**
- * Which credential a source signs its requests with (ticket 38).
+ * Which credential a source signs its requests with (#38).
  *
  * A calendar is Google: the Calendar scope is part of the Google sign-in
  * (`GOOGLE_SCOPES`), so there is no `docsync auth calendar` and no fourth

@@ -329,7 +329,7 @@ describe('a failed write', () => {
   });
 });
 
-describe('the tab a write lands in (MANUAL §7, ticket 37)', () => {
+describe('the tab a write lands in (MANUAL §7, #37)', () => {
   it('stamps every location and range of a patch with the tab', async () => {
     const { writer: write, calls } = writer([{ replies: [] }]);
 

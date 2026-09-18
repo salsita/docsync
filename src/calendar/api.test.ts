@@ -79,7 +79,7 @@ describe('instances', () => {
 });
 
 describe('a token that predates calendar support', () => {
-  it('says which command to run (ticket 38)', async () => {
+  it('says which command to run (#38)', async () => {
     const { api } = apiWith([
       {
         status: 403,

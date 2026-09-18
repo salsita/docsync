@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 14, Notion half: a file docsync uploaded is a
+ * The manual test for #14, Notion half: a file docsync uploaded is a
  * file Notion hosts, and the next fetch reads it back byte for byte.
  *
  * It never touches the fixture pages. It makes **one** new page, "Docsync

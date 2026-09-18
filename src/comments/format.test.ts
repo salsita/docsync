@@ -133,7 +133,7 @@ describe('formatSidecar', () => {
     );
   });
 
-  it('puts a suggestion’s summary on a line under the heading (ticket 40)', () => {
+  it('puts a suggestion’s summary on a line under the heading (#40)', () => {
     const summarised: Thread = {
       ...suggestion,
       summary: 'Replace: “this text” with “the paragraph”',
@@ -151,7 +151,7 @@ describe('formatSidecar', () => {
     );
   });
 
-  it('prints the discussion under a suggestion’s diff (ticket 40)', () => {
+  it('prints the discussion under a suggestion’s diff (#40)', () => {
     const discussed: Thread = {
       ...suggestion,
       summary: 'Replace: “this text” with “the paragraph”',

@@ -64,7 +64,7 @@ export interface SkippedObject {
   /**
    * `unsupported`: a Google type with no export. `ignored`: the ignore list.
    * `recording` and `gone` are the calendar adapter's, for a Meet recording and
-   * for an attachment whose file is no longer in Drive (ticket 38).
+   * for an attachment whose file is no longer in Drive (#38).
    */
   reason: 'unsupported' | 'ignored' | 'recording' | 'gone';
 }
@@ -81,7 +81,7 @@ export interface WalkResult {
  * same file even when a sibling appears or disappears.
  *
  * `tabbed` is the ids of the Docs the last fetch checked out as a *directory*,
- * because they hold more than one tab (MANUAL §6, ticket 37). Such a Doc is
+ * because they hold more than one tab (MANUAL §6, #37). Such a Doc is
  * named like a folder rather than like a file — `Notes`, not `Notes.md` — so
  * that it collides with a Drive folder of the same title as two files would,
  * and `index.ts` puts one file per tab inside it. The walk lists; only a read
@@ -138,7 +138,7 @@ export async function walkRoot(
       listing.map((file) => ({
         id: file.id,
         title: file.name,
-        // A tabbed Doc is a directory, so it is named like one (ticket 37).
+        // A tabbed Doc is a directory, so it is named like one (#37).
         ext:
           file.mimeType === FOLDER_MIME || tabbed.has(file.id)
             ? ''
@@ -165,7 +165,7 @@ export async function walkRoot(
       const kind = kinds.get(file.id);
       if (kind === undefined) {
         // A form, a site, a map, a shortcut: nothing to download and nothing to
-        // export (ticket 07).
+        // export (#7).
         skipped.push({ id: file.id, title: file.name, path, reason: 'unsupported' });
         continue;
       }
@@ -180,7 +180,7 @@ export async function walkRoot(
 /**
  * What one Drive file becomes, or undefined when it becomes nothing. Exported
  * for the calendar adapter, which walks attachments rather than folders but
- * decides what each one is by the same rule (ticket 38).
+ * decides what each one is by the same rule (#38).
  */
 export function kindOf(mimeType: string): DriveKind | undefined {
   if (mimeType === DOCUMENT_MIME) return 'doc';

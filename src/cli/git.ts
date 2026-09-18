@@ -1,5 +1,5 @@
 /**
- * Git, spawned in a working tree (ticket 09's rule: never reimplement git).
+ * Git, spawned in a working tree (#9's rule: never reimplement git).
  *
  * `src/helper/git.ts` is the object-store half — plumbing over one `GIT_DIR`,
  * with the work tree deliberately kept out of reach. This is the other half:

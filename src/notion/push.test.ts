@@ -270,7 +270,7 @@ describe('pushRoot', () => {
     expect(patchCalls(api)).toEqual(['delete:x1']);
   });
 
-  it('has nothing to push when the frontmatter url is all that changed (ticket 27)', async () => {
+  it('has nothing to push when the frontmatter url is all that changed (#27)', async () => {
     // docsync owns `url` and derives it from the id (MANUAL §6): an edited or
     // a deleted one is not a change, not a rename, and not an error.
     const api = fake();

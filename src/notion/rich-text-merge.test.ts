@@ -173,7 +173,7 @@ describe('mergeRichText', () => {
 
   it('writes a block holding an inline image whole, and never the object character', () => {
     // Notion has no inline image: the link's text is what it stores, while the
-    // diff counts one object character (ticket 23). The two do not line up, so
+    // diff counts one object character (#23). The two do not line up, so
     // the block is written whole rather than cut at offsets that do not mean
     // the same thing.
     const merged = mergeRichText(
@@ -185,7 +185,7 @@ describe('mergeRichText', () => {
     expect(JSON.stringify(merged)).not.toContain('￼');
   });
 
-  it('cuts the runs the converter merged and shed spaces from (ticket 28)', () => {
+  it('cuts the runs the converter merged and shed spaces from (#28)', () => {
     // The five runs Notion stores for one bold sentence around a link. The
     // converter merges the last three and moves the bold spaces outside the
     // emphasis, so the Markdown no longer stands one-to-one with the runs.
@@ -229,7 +229,7 @@ describe('mergeRichText', () => {
     // base does not say what Notion holds and the offsets cannot cut the live
     // runs: the block goes back from the new Markdown alone and the space is
     // gone with it. A line break dropped at that edge follows this precedent
-    // rather than inventing a rule of its own (ticket 42).
+    // rather than inventing a rule of its own (#42).
     for (const tail of [' ', '\n']) {
       const live = [run(`Edit me.${tail}`)];
       expect(shape(mergeRichText(live, phrasing('Edit me.'), phrasing('Edited.')))).toEqual([

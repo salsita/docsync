@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 14, Google Docs half: an image docsync inserted
+ * The manual test for #14, Google Docs half: an image docsync inserted
  * is in the document, and the exposure it took to put it there is gone.
  *
  * It never touches the fixture folder "Docsync test", which is READ ONLY. It
@@ -152,7 +152,7 @@ try {
     [PATH, { path: PATH, src: { source: 'gdocs', id: made.id }, type: 'gdoc', lastEditedTime: '' }],
   ]);
 
-  // 3. The push that puts the image in, which is the whole of this ticket's
+  // 3. The push that puts the image in, which is the whole of #14's
   //    Docs half: upload, share, insert, unshare, trash.
   const linked = `${BODY}\n![](Assets.assets/dot.png)\n`;
   const report = await pushRoot(

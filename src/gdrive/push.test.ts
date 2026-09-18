@@ -96,7 +96,7 @@ function file(id: string | undefined, title: string, body: string): string {
 }
 
 /**
- * One document of the fake Drive as the one tab it is (ticket 37): the reply
+ * One document of the fake Drive as the one tab it is (#37): the reply
  * carries the contents under `tabs`, as the real API does, and every Doc these
  * tests push to has exactly one tab.
  */
@@ -163,7 +163,7 @@ describe('a modified document', () => {
     expect(report[0]?.blocks).toEqual({ kept: 2, updated: 0, inserted: 2, deleted: 2 });
   });
 
-  it('has nothing to push when the frontmatter url is all that changed (ticket 27)', async () => {
+  it('has nothing to push when the frontmatter url is all that changed (#27)', async () => {
     // docsync owns `url` and derives it from the id (MANUAL §6): an edited or
     // a deleted one is not a change, not a rename, and not an error.
     const api = drive();
@@ -717,7 +717,7 @@ describe('progress (MANUAL §7)', () => {
   });
 });
 
-describe('a large rewrite (ticket 32)', () => {
+describe('a large rewrite (#32)', () => {
   const fixture = (name: string): string =>
     readFileSync(join(dirname(fileURLToPath(import.meta.url)), '__fixtures__', name), 'utf8');
 
@@ -743,7 +743,7 @@ describe('a large rewrite (ticket 32)', () => {
   });
 });
 
-describe('a Doc with several tabs (MANUAL §6, §7, ticket 37)', () => {
+describe('a Doc with several tabs (MANUAL §6, §7, #37)', () => {
   const TABBED_ID = 'doc-tabbed';
   const SECOND = 't.new1';
   const DIRECTORY = 'drive/Tabbed/';
@@ -796,7 +796,7 @@ describe('a Doc with several tabs (MANUAL §6, §7, ticket 37)', () => {
 
     expect(api.markdown(TABBED_ID, SECOND)).toBe('Two, rewritten.\n');
     // The other tab is untouched: a request with no `tabId` would have landed
-    // in it, which is the trap this ticket is about (MANUAL §7).
+    // in it, which is the trap #37 is about (MANUAL §7).
     expect(api.markdown(TABBED_ID, 't.0')).toBe('One.\n');
     expect(report).toEqual([
       {
@@ -873,7 +873,7 @@ describe('a Doc with several tabs (MANUAL §6, §7, ticket 37)', () => {
     );
 
     // A is the Doc's own tab; B is a new tab of the same Doc, and not a new
-    // Doc under a Drive folder named `Tabbed` (ticket 37).
+    // Doc under a Drive folder named `Tabbed` (#37).
     expect(api.calls.filter((one) => one.startsWith('create'))).toEqual([]);
     expect(api.calls.filter((one) => one.startsWith('addTab'))).toEqual([
       `addTab ${TABBED_ID} Two`,
@@ -920,7 +920,7 @@ describe('a Doc with several tabs (MANUAL §6, §7, ticket 37)', () => {
     ]);
 
     // The directory is the Doc: its name is the title, its place is the Drive
-    // folder. It is never created as a folder of its own (ticket 37).
+    // folder. It is never created as a folder of its own (#37).
     expect(api.calls).toEqual([
       `move ${TABBED_ID} ${ROOT_ID}->${SUB_ID}`,
       `rename ${TABBED_ID} Notes`,

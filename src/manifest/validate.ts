@@ -66,7 +66,7 @@ export function rootOf<T extends { path: string }>(
  *
  * `readonly: true` says so for a Drive or Notion root; a calendar root is one
  * whether it says so or not — there is nothing meaningful to write back to a
- * meeting's attachments, and the manifest refuses the field there (ticket 38).
+ * meeting's attachments, and the manifest refuses the field there (#38).
  */
 export function isReadOnlyRoot(root: { readOnly?: boolean; src: SourceRef }): boolean {
   return root.readOnly === true || root.src.source === 'calendar';

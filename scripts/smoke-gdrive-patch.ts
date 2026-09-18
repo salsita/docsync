@@ -1,8 +1,8 @@
 /**
- * The manual test for ticket 32: the Discovery Inputs rewrite, pushed for real.
+ * The manual test for #32: the Discovery Inputs rewrite, pushed for real.
  *
  * The fake Docs model (`src/gdrive/docs-model.mock.ts`) is only as good as what
- * it was checked against, and this ticket is about three defects a fake could
+ * it was checked against, and #32 is about three defects a fake could
  * easily agree with. So the same rewrite the reproduction test runs in memory
  * runs here against the real API: a Doc built from `push-discovery-base.md`,
  * a diff-based push of `push-discovery-next.md` over it, a fetch, and a diff
@@ -16,11 +16,11 @@
  *   corepack pnpm build
  *   node --experimental-strip-types scripts/smoke-gdrive-patch.ts
  *
- * With `--suggest` (ticket 33) the same rewrite is pushed under a root with
+ * With `--suggest` (#33) the same rewrite is pushed under a root with
  * `suggest: true`: the batch goes out in suggesting mode, and the script then
  * checks that the body did not move, that the sidecar makes exactly one thread
  * per distinct suggestion id however many paragraphs a suggestion spans
- * (ticket 34), and that what is waiting in the Doc says what the diff says.
+ * (#34), and that what is waiting in the Doc says what the diff says.
  * That needs the Google Workspace Developer Preview Program on the Cloud
  * project that owns the OAuth client; without it the API refuses the batch and
  * the push says so.
@@ -169,7 +169,7 @@ try {
     const threads = threadsOf(inline, [], body);
     const suggestions = threads.filter((one) => one.kind === 'suggestion');
     // A suggestion is one id and one card in Docs, so it is one thread whatever
-    // it spans: the counts have to agree (ticket 34).
+    // it spans: the counts have to agree (#34).
     const ids = new Set(suggestions.map((one) => one.id));
     const grouped = suggestions.length === ids.size;
     say(
@@ -216,7 +216,7 @@ try {
     say(ok ? 'ok' : 'FAILED', `${found.length} line(s) differ from what was pushed`);
     for (const line of found) console.log(`  ${line}`);
 
-    // The three defects of the ticket, named, so the output says which is which.
+    // The three defects of #32, named, so the output says which is which.
     const breaks = (text: string) => (text.match(/<!-- docsync:pagebreak -->/g) ?? []).length;
     say('breaks', `pushed ${breaks(next)}, fetched ${breaks(after)}`);
     say(

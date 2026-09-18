@@ -282,7 +282,7 @@ describe('deleteContentRange', () => {
   // A paragraph's style and its bullet hang off its newline, so deleting whole
   // paragraphs leaves the *following* paragraph's newline standing, and with it
   // that paragraph's style. Getting this backwards is what made the fake say a
-  // deleted list item hands its bullet to the paragraph after it (ticket 32);
+  // deleted list item hands its bullet to the paragraph after it (#32);
   // `scripts/smoke-gdrive-patch.ts` is where the real API said otherwise.
   it('gives the merged paragraph the style of the newline that survived', () => {
     const model = createDocsModel();
@@ -351,7 +351,7 @@ describe('a request the model does not know', () => {
 /**
  * A `SUGGEST` batch gives every request one suggestion id, and the id lands on
  * every run the request touched — which is what makes one suggestion one thread
- * however many paragraphs it reaches into (MANUAL §6, ticket 34).
+ * however many paragraphs it reaches into (MANUAL §6, #34).
  */
 describe('a suggesting batch across a paragraph break', () => {
   /** Every run of the inline view, as `content` and the ids it carries. */

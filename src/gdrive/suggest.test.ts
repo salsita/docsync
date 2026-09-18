@@ -1,6 +1,6 @@
 /**
  * A push under a root with `suggest: true`, end to end on the fake Drive
- * (ticket 33, MANUAL §4, §7).
+ * (#33, MANUAL §4, §7).
  *
  * The three halves of the feature meet here and nowhere else: the batch goes
  * out in suggesting mode, the body at the source is not written, and the fetch
@@ -27,7 +27,7 @@ import { footnoteRequests } from './write.js';
 
 const FOLDER_ID = 'folder-client';
 const BRIEF_ID = 'doc-brief';
-/** The one tab of a fake Doc, which is the whole Doc (ticket 37). */
+/** The one tab of a fake Doc, which is the whole Doc (#37). */
 function onlyTab(document: DocsDocument): DocsDocument {
   return flattenTabs(document)[0]?.doc ?? {};
 }
@@ -183,7 +183,7 @@ describe('a push under a suggest root', () => {
     expect(sidecar).toContain('Really.');
   });
 
-  it('places a comment thread by the anchor the preview answers (ticket 40)', async () => {
+  it('places a comment thread by the anchor the preview answers (#40)', async () => {
     const api = await drive();
     // Where "One." sits in the tab, as `commentAnchors` reports it.
     const body = onlyTab(await api.getDocument(BRIEF_ID, 'inline')).body?.content ?? [];
@@ -226,7 +226,7 @@ describe('a push under a suggest root', () => {
     expect(sidecar).toContain('**Jane Client** · 2026-09-14 08:51\nIs this still true?');
   });
 
-  it('carries a reply on a suggestion into the sidecar (ticket 40)', async () => {
+  it('carries a reply on a suggestion into the sidecar (#40)', async () => {
     const api = await drive();
     const first = await fetched(api);
 
@@ -392,8 +392,8 @@ describe('a suggesting push that the API will not take', () => {
 });
 
 /**
- * The rewrite the ticket 33 smoke pushed, on the fake: one thread per
- * suggestion id, whatever a suggestion spans (ticket 34).
+ * The rewrite the #33 smoke pushed, on the fake: one thread per
+ * suggestion id, whatever a suggestion spans (#34).
  *
  * The smoke against the real API turned 13 suggestion ids into 106 sidecar
  * threads, because the sidecar grouped by paragraph. The fake cuts the same

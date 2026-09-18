@@ -1,6 +1,6 @@
 /**
  * One authenticated request to a Google API, retried the way both adapters
- * retry (ticket 07, ticket 38).
+ * retry (#7, #38).
  *
  * The Drive adapter grew this first; the calendar adapter needs the same
  * policy — bearer token, retry a throttle or a backend failure, and an error

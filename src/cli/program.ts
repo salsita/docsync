@@ -26,7 +26,7 @@ import { status } from './commands/status.js';
 import type { Context } from './context.js';
 import { COMMAND_REFERENCE } from './print.js';
 
-/** An error as the one line the terminal gets (ticket 09's voice). */
+/** An error as the one line the terminal gets (#9's voice). */
 export function oneLine(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replaceAll(/\s*\n\s*/g, ' ').trim();

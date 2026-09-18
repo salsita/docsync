@@ -27,7 +27,7 @@ describe('createGit', () => {
     // fit in the pipe buffer, so the write lands on a pipe the child has
     // already closed. That is EPIPE on the child's stdin, and with nothing
     // listening for it there it became an unhandled 'error' event that killed
-    // the whole helper mid-protocol — git then reported exit 128 (ticket 22).
+    // the whole helper mid-protocol — git then reported exit 128 (#22).
     // The command's own exit code is the only answer that matters here; a
     // broken input pipe is the normal end of the race, not a failure of ours.
     const uncaught: unknown[] = [];

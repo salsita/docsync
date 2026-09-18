@@ -4,7 +4,7 @@
  * Everything a command needs is here: `signIn` runs the browser flow and puts
  * the result in the keychain, `signOut` takes it out, `whoAmI` reads it back,
  * and `createCredentialProvider` is what every other part of docsync uses to
- * get a token without knowing any of this happened. Ticket 10 wires the CLI
+ * get a token without knowing any of this happened. #10 wires the CLI
  * over the top.
  *
  * Every one of them takes an optional `deps` bag (`AuthDeps`) holding the

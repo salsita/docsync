@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 37: tabs against the real Docs API.
+ * The manual test for #37: tabs against the real Docs API.
  *
  * The fake model and the recorded fixtures prove the *reading* of tabs; only
  * Google can say whether the three tab requests and a `tabId` on every
@@ -9,7 +9,7 @@
  *
  * 1. `addDocumentTab` makes a tab and answers its id,
  * 2. a batch whose locations carry `tabId` lands in *that* tab, and the first
- *    tab is left exactly as it was — which is the whole bug of this ticket,
+ *    tab is left exactly as it was — which is the whole bug of #37,
  *    since a request with no `tabId` goes to the first tab,
  * 3. `updateDocumentTabProperties` with `fields: title` retitles a tab,
  * 4. a nested tab (`parentTabId`) comes back nested, and

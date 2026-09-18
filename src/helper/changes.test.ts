@@ -15,14 +15,14 @@ const LEAF: Root = {
   path: 'notes/roadmap.md',
   ignore: [],
 };
-/** A folder pulled for context and never pushed to (MANUAL §4, ticket 25). */
+/** A folder pulled for context and never pushed to (MANUAL §4, #25). */
 const INPUTS: Root = {
   src: { source: 'gdocs', id: '1InputsFolderIdXXXXXXXXX' },
   path: 'Inputs/',
   ignore: [],
   readOnly: true,
 };
-/** A client's folder: every edit under it is pushed as a suggestion (ticket 33). */
+/** A client's folder: every edit under it is pushed as a suggestion (#33). */
 const CLIENT: Root = {
   src: { source: 'gdocs', id: '1ClientFolderIdXXXXXXXXX' },
   path: 'Client/',
@@ -30,7 +30,7 @@ const CLIENT: Root = {
   comments: true,
   suggest: true,
 };
-/** A recurring call: read-only by nature, with no `readonly` to say so (ticket 38). */
+/** A recurring call: read-only by nature, with no `readonly` to say so (#38). */
 const CALLS: Root = {
   src: { source: 'calendar', id: '0gce3vkvut6cj027fb86qrtc2a' },
   path: 'Calls/',
@@ -79,7 +79,7 @@ const index = new Map(
 
 /**
  * A Google Doc of two tabs, checked out as a directory of one file per tab,
- * with an entry for the directory itself (MANUAL §6, ticket 37).
+ * with an entry for the directory itself (MANUAL §6, #37).
  */
 const TABBED = '1IdTabbedDocXXXXXXXXXXXX';
 for (const one of [
@@ -159,7 +159,7 @@ const readBase = async (path: string): Promise<Uint8Array | undefined> => {
 const planned = (...diff: DiffEntry[]) => planChanges(diff, ROOTS, index, read, readBase);
 /** The per-root plan alone, which is what most of these tests are about. */
 const plan = async (...diff: DiffEntry[]) => (await planned(...diff)).roots;
-/** Every message this push would be refused with, in diff order (ticket 31). */
+/** Every message this push would be refused with, in diff order (#31). */
 const refusals = async (...diff: DiffEntry[]) =>
   (await planned(...diff)).refusals.map((one) => one.message);
 /** The first of them: what `docsync push` fails with. */
@@ -220,7 +220,7 @@ describe('planChanges', () => {
     ]);
   });
 
-  describe('everything outside a root is local (MANUAL §7 step 3, ticket 35)', () => {
+  describe('everything outside a root is local (MANUAL §7 step 3, #35)', () => {
     it('plans an addition, an edit and a deletion under no root as local, refusing none', async () => {
       const {
         roots,
@@ -468,7 +468,7 @@ describe('planChanges', () => {
       );
     });
 
-    it('says why in the short form `docsync status` prints (ticket 31)', async () => {
+    it('says why in the short form `docsync status` prints (#31)', async () => {
       const { refusals: found } = await planned(M('Inputs/Brief.md'));
       expect(found).toEqual([
         {
@@ -479,7 +479,7 @@ describe('planChanges', () => {
       ]);
     });
 
-    it('refuses a change under a calendar root, which says no `readonly` (ticket 38)', async () => {
+    it('refuses a change under a calendar root, which says no `readonly` (#38)', async () => {
       const path = 'Calls/2026-09-01 09-00 Review/Notes.md';
       expect(await refusal(M(path))).toBe(
         `${path} is under a read-only root (Calls/); nothing under it is pushed. ` +
@@ -629,7 +629,7 @@ describe('planChanges', () => {
     });
   });
 
-  describe('every refusal is collected, so status can list them (ticket 31)', () => {
+  describe('every refusal is collected, so status can list them (#31)', () => {
     it('answers all of them in diff order, and push fails on the first', async () => {
       const {
         roots,
@@ -654,7 +654,7 @@ describe('planChanges', () => {
       expect(roots[0]?.changes[0]?.path).toBe('Specs/Auth.md');
     });
 
-    it('says a deletion outside every root is local, not refused (ticket 35)', async () => {
+    it('says a deletion outside every root is local, not refused (#35)', async () => {
       const { roots, refusals: found, local } = await planned(D('README.md'));
       expect(roots).toEqual([]);
       expect(found).toEqual([]);
@@ -677,7 +677,7 @@ describe('planChanges', () => {
   });
 });
 
-describe('a Google Doc of several tabs (MANUAL §6, §8, ticket 37)', () => {
+describe('a Google Doc of several tabs (MANUAL §6, §8, #37)', () => {
   const REFUSAL =
     'Files/Tabbed/Two.md is a tab of Files/Tabbed/; deleting a tab is permanent, ' +
     'so docsync does not do it. Delete it in Docs, or restore it with ' +
@@ -746,7 +746,7 @@ describe('a Google Doc of several tabs (MANUAL §6, §8, ticket 37)', () => {
 
   it('is a plain addition when a new file appears in the directory', async () => {
     // A new `.md` with frontmatter inside a tabbed Doc's directory is a new
-    // tab; the adapter is what knows that (ticket 37).
+    // tab; the adapter is what knows that (#37).
     expect(await plan(A('Files/Tabbed/Three.md'))).toEqual([
       { root: DRIVE, changes: [{ kind: 'added', path: 'Files/Tabbed/Three.md', text: FRONT }] },
     ]);

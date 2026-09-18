@@ -7,7 +7,7 @@
  * file that looks modified is really one object trashed and another made —
  * frontmatter added to a plain file or removed from a document. A path under
  * no root is nobody's document: it is local, listed as such and sent nowhere
- * (ticket 35). It refuses, by path, what the manual refuses: anything under a
+ * (#35). It refuses, by path, what the manual refuses: anything under a
  * read-only root, a touch of the index, an edit to a read-only export, a copy
  * of a document, a plain file under Notion. Pure over an injected blob reader.
  */
@@ -33,7 +33,7 @@ export interface PlannedPush {
  *
  * `message` is the sentence `docsync push` fails with; `reason` is the short
  * half `docsync status` prints after the path, so the preview and the refusal
- * say the same thing in the room each has (ticket 31).
+ * say the same thing in the room each has (#31).
  */
 export interface Refusal {
   path: string;
@@ -47,7 +47,7 @@ export interface Refusal {
  *
  * Refusals are collected rather than thrown, because `docsync status` previews
  * a push and a preview that stopped at the first problem would not be one.
- * `push` fails on the first refusal, which is what it always did (ticket 31).
+ * `push` fails on the first refusal, which is what it always did (#31).
  */
 export interface PushPlan {
   /** Per-root changes, in manifest order. */
@@ -55,7 +55,7 @@ export interface PushPlan {
   /** Every refused path, in the order the diff holds them. */
   refusals: Refusal[];
   /**
-   * Changed under no root: a local file (MANUAL §7 step 3, ticket 35). It is
+   * Changed under no root: a local file (MANUAL §7 step 3, #35). It is
    * committed and pushed like any file of the branch, and no request is made
    * for it — the pushed commit is the parent of the post-push fetch, which
    * carries it over untouched.
@@ -147,7 +147,7 @@ export async function planChanges(
   const rootOf = (path: string): Root | undefined => rootIn(roots, path);
 
   /**
-   * What a change to a tab file means (MANUAL §6, §8, ticket 37).
+   * What a change to a tab file means (MANUAL §6, §8, #37).
    *
    * A Google Doc with several tabs is a directory of one `.md` per tab, and
    * three of the things that can happen to such a directory are not what they
@@ -306,7 +306,7 @@ export async function planChanges(
 
     if (kind === 'D') {
       // A local file is deleted from the branch and nowhere else: nothing was
-      // ever at a source to trash (MANUAL §8, ticket 35).
+      // ever at a source to trash (MANUAL §8, #35).
       if (root === undefined) local.push(entry.path);
       else add(root, { kind: 'deleted', path: entry.path });
       continue;

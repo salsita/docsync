@@ -1,5 +1,5 @@
 /**
- * A Google Doc that lives in memory, for the round trip (ticket 08).
+ * A Google Doc that lives in memory, for the round trip (#8).
  *
  * `documents.batchUpdate` is the only part of a push that cannot be checked
  * against a recorded fixture: the fixtures say what Google *answers*, not what
@@ -99,7 +99,7 @@ export interface DocsModel {
 
 const NORMAL = 'NORMAL_TEXT';
 
-/** The glyphs `documents.get` reports for each preset (ticket 07 Outcome). */
+/** The glyphs `documents.get` reports for each preset (#7 Outcome). */
 const BULLET_SYMBOLS = ['●', '○', '■'];
 const NUMBER_TYPES = ['DECIMAL', 'ALPHA', 'ROMAN'];
 const LEVELS = 9;
@@ -384,7 +384,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
    * A run somebody **already** proposes deleting keeps the id it has: the real
    * API absorbs the second proposal rather than stacking a second id on the
    * run, so a competing suggestion over the same word shows the reviewer one
-   * strike and not two (probed on the live API 2026-09-16, ticket 41). The
+   * strike and not two (probed on the live API 2026-09-16, #41). The
    * field is still a list, because one suggestion can reach across runs.
    */
   function markDeleted(request: Record<string, unknown>, id: string): void {
@@ -565,7 +565,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
     footnoteCount += 1;
     const id = `kix.fn${footnoteCount}`;
     // Docs seeds a new footnote with a space, which is why a body replaces the
-    // segment rather than being inserted in front of it (ticket 08 Outcome).
+    // segment rather than being inserted in front of it (#8 Outcome).
     footnotes.set(id, [{ items: [{ kind: 'text', text: ' ', style: {} }], named: NORMAL }]);
 
     const { slot, offset } = locate(location.index);
@@ -584,7 +584,7 @@ export function createDocsModel(documentId = 'model', title = 'Model'): DocsMode
    * the second paragraph with the first's text in front of it. The model used
    * to keep the first one's, which is why it said a deleted list item handed
    * its bullet to the paragraph after it and left that paragraph's own nesting
-   * behind — a defect the real API does not have (ticket 32).
+   * behind — a defect the real API does not have (#32).
    */
   function absorb(into: Para, para: Para): void {
     into.items.push(...para.items);

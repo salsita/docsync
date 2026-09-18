@@ -6,7 +6,7 @@
  * the lines it wanted, and everything docsync still had to say then raises
  * EPIPE. Without an 'error' listener that is an unhandled event: the process
  * dies with a stack trace and a non-zero code over output the user
- * deliberately truncated. The helper has needed this since ticket 22
+ * deliberately truncated. The helper has needed this since #22
  * (`createLineWriter`, which is this writer plus a newline); the front end
  * needs the same, one text chunk at a time, because a command writes its own
  * newlines.

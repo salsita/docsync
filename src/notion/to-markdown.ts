@@ -4,7 +4,7 @@
  * Pure: it is handed the block tree `api.ts` recorded and a map of which pages
  * are in the checkout, and answers text. Everything it cannot express becomes a
  * placeholder carrying the block id, so that nothing is silently lost and
- * ticket 06 can put the block back where it found it.
+ * #6 can put the block back where it found it.
  *
  * The output goes through the one pipeline in `markdown.ts`: this module builds
  * mdast and never concatenates Markdown by hand, which is what keeps escaping
@@ -289,7 +289,7 @@ function callout(block: NotionBlock, options: ToMarkdownOptions): RootContent[] 
 
 /**
  * A fenced block. Notion's `plain text` is a fence with no language, which is
- * canonical in both directions (ticket 05 decisions). A language that carries a
+ * canonical in both directions (#5 decisions). A language that carries a
  * space is split into the fence's info word and its meta, so that the text
  * still says what Notion said.
  */
@@ -389,7 +389,7 @@ export function inline(
  * with this same code, so a trimmed base never reads as an edit, and
  * `mergeRichText` compares plain text, so the space at the source survives.
  *
- * At the end a **line break** goes the same way (ticket 42). Markdown has no
+ * At the end a **line break** goes the same way (#42). Markdown has no
  * spelling for one there: `text\` at the end of a paragraph is a literal
  * backslash, in a heading the break becomes a trailing space and the heading
  * prints as setext, and in a table cell it pads the cell — so what a fetch
@@ -591,7 +591,7 @@ function base(part: RichText, options: ToMarkdownOptions): PhrasingContent[] {
  * nothing and still tells the serializer that no line just began, so `# x`
  * after a break would go out unescaped and re-parse as a heading — and an item
  * that ends in a newline with another item behind it, which is what Notion
- * stores wherever an edit or a comment began, is the ordinary shape (ticket 42).
+ * stores wherever an edit or a comment began, is the ordinary shape (#42).
  */
 function textNodes(text: string): PhrasingContent[] {
   return text

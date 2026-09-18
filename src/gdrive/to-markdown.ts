@@ -15,7 +15,7 @@
  *
  * What Docs stores and the dialect does not carry — colour, highlight, font,
  * size, alignment, indentation — is dropped here (MANUAL §6, §7). Comments
- * never arrive. Suggestions do, since ticket 16: a push asks for the document
+ * never arrive. Suggestions do, since #16: a push asks for the document
  * with them inline, and the body this module describes is the one they were
  * suggested against (see `convertDocument`).
  *
@@ -48,7 +48,7 @@ import type {
 
 /**
  * A run in one of these fonts is inline code. It is the only signal Docs has
- * for code: there is no character style for it (ticket 07 decisions). Compared
+ * for code: there is no character style for it (#7 decisions). Compared
  * case-insensitively, because an imported document spells them in lower case.
  */
 export const CODE_FONTS = [
@@ -64,7 +64,7 @@ const CODE_FONT_SET = new Set(CODE_FONTS.map((font) => font.toLowerCase()));
 /** A soft line break inside a paragraph, which Docs stores as a vertical tab. */
 const VERTICAL_TAB = '\u000B';
 
-/** The characters a run can hold and still be styling nothing (ticket 30). */
+/** The characters a run can hold and still be styling nothing (#30). */
 const WHITESPACE = new Set([' ', '\n', VERTICAL_TAB]);
 
 /** Whether a run is nothing but spaces and line breaks, and not empty. */
@@ -99,7 +99,7 @@ interface FlatItem {
   level: number;
   kind: ListKind;
   content: PhrasingContent[];
-  /** The paragraph the item is, for the patch (ticket 16). */
+  /** The paragraph the item is, for the patch (#16). */
   origin: Omit<Origin, 'segmentId'>;
 }
 
@@ -126,7 +126,7 @@ interface Context {
 
 /**
  * Where a node came from in the live document, in the UTF-16 code units both
- * `documents.get` and `batchUpdate` count in (ticket 16).
+ * `documents.get` and `batchUpdate` count in (#16).
  *
  * Recorded under `data.gdocs`, which nothing in the Markdown pipeline reads,
  * and only when the caller asks: a fetch has no use for it.
@@ -210,7 +210,7 @@ export function documentToMdast(doc: DocsDocument, options: ConvertOptions = {})
  * the one the suggestions were made *against*: a suggested insertion is
  * dropped, a suggested deletion is kept, and the indices stay the live ones
  * either way — so a patch computed from this text addresses the document as it
- * really is (ticket 16, MANUAL §7).
+ * really is (#16, MANUAL §7).
  */
 export function convertDocument(doc: DocsDocument, options: ConvertOptions = {}): Converted {
   const context: Context = {
@@ -508,7 +508,7 @@ function blockPlaceholder(context: Context, element: StructuralElement, type: st
   });
 }
 
-/** Which of the three lists a `bullet` belongs to (ticket 07 decisions). */
+/** Which of the three lists a `bullet` belongs to (#7 decisions). */
 function kindOf(list: DocsList | undefined, bullet: NonNullable<Paragraph['bullet']>): ListKind {
   const level = list?.listProperties?.nestingLevels?.[bullet.nestingLevel ?? 0];
   return glyphKind(level);
@@ -519,7 +519,7 @@ function kindOf(list: DocsList | undefined, bullet: NonNullable<Paragraph['bulle
  * numbered list has a glyph type and a format with punctuation in it, and a
  * checklist is Docs' odd one out — no symbol, no type, and a bare `%0`.
  *
- * A list that says none of this (an HTML-imported document: see the ticket 07
+ * A list that says none of this (an HTML-imported document: see the #7
  * Outcome) is drawn as a bullet, which is what Docs itself defaults to.
  */
 function glyphKind(level: NestingLevel | undefined): ListKind {
@@ -573,7 +573,7 @@ function listsFrom(
         type: 'listItem',
         spread: false,
         // The Docs API does not report which box is ticked, so a checklist
-        // item is always unchecked (ticket 07 Outcome).
+        // item is always unchecked (#7 Outcome).
         checked: kind === 'checklist' ? false : null,
         children,
       };
@@ -604,7 +604,7 @@ const MERGEABLE: ReadonlySet<string> = new Set(['strong', 'emphasis', 'delete', 
  * the same emphasis. Left apart they would print as `**a****b**`, which is not
  * Markdown for two bold runs but four asterisks the parser turns into text,
  * and a base text four characters longer than the live one shifts every edit
- * a push makes to that paragraph (ticket 33 follow-up).
+ * a push makes to that paragraph (#33 follow-up).
  */
 function mergeAdjacent(nodes: PhrasingContent[]): PhrasingContent[] {
   const out: PhrasingContent[] = [];
@@ -640,9 +640,9 @@ function mergeAdjacent(nodes: PhrasingContent[]): PhrasingContent[] {
  * the link's. The characters that go are characters of the document all the
  * same, so the run's origin moves with them, exactly as `trimLeading` does it
  * for a footnote's leading space; a patch addresses the document through those
- * origins (ticket 16).
+ * origins (#16).
  *
- * At the end a **line break** goes the same way (ticket 42). Markdown has no
+ * At the end a **line break** goes the same way (#42). Markdown has no
  * spelling for one there: `text\` at the end of a paragraph is a literal
  * backslash, in a heading the break becomes a trailing space and the heading
  * prints as setext, and in a table cell it pads the cell — so what a fetch
@@ -779,7 +779,7 @@ function inlineObject(element: ParagraphElement, context: Context): PhrasingCont
       end: element.endIndex ?? (element.startIndex ?? 0) + 1,
       // One object is one character of the block's plain text, the object
       // replacement character: what `plain` and `inlineRuns` count
-      // (`src/diff/`), and what the document counts here too (ticket 23).
+      // (`src/diff/`), and what the document counts here too (#23).
       text: 1,
       atomic: true,
     });
@@ -974,7 +974,7 @@ function textNodes(
     // A run that *ends* in a vertical tab — what Docs stores whenever the style
     // changes or an edit began after the break — would leave an empty text node
     // behind the break, and an empty node tells the serializer that no line
-    // just began (ticket 42). It carries no characters, so nothing is lost.
+    // just began (#42). It carries no characters, so nothing is lost.
     if (line !== '') {
       out.push(
         mark({ type: 'text', value: line }, context, {

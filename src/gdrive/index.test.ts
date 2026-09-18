@@ -12,7 +12,7 @@ import { documentToMarkdown } from './to-markdown.js';
 
 const ELEMENTS = '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4';
 const TEXT = '1oiqaDywxRX2qqjSpAlu2gZjS-0BWcqfr';
-/** The recorded Doc with two tabs (ticket 37). */
+/** The recorded Doc with two tabs (#37). */
 const TABBED = '1IkA6kWgvIw_TWy0_xm73kHt16aRoAf9JuXnFuxJg1ng';
 const SECOND_TAB = 't.bq5s9c5xq0db';
 
@@ -42,7 +42,7 @@ describe('fetchRoot', () => {
     const result = await fetchRoot(root, provider, new Map(), options);
 
     // Ten documents — one of them a Doc of two tabs, which is two files
-    // (ticket 37) — the one image the Elements Doc holds, and no sidecar:
+    // (#37) — the one image the Elements Doc holds, and no sidecar:
     // comments are off unless the root asks for them (MANUAL §4, §12 phase 2).
     expect(result.files).toHaveLength(13);
     expect(result.files.filter((file) => file.entry?.type === 'asset')).toHaveLength(1);
@@ -198,7 +198,7 @@ describe('fetchRoot', () => {
         progress: (line) => lines.push(line),
       });
       // One line per Doc downloaded: a Doc of several tabs is one download,
-      // however many files it becomes (ticket 37).
+      // however many files it becomes (#37).
       const total = new Set(
         documents(second.files)
           .filter((file) => file.entry.type !== 'asset')
@@ -432,7 +432,7 @@ describe('the `comments` option (MANUAL §4, §7)', () => {
     const second = await fetchRoot(root, provider, previous, { ...at, api: counted.api });
 
     // The listing of the root and of its one subfolder, and the root's own
-    // metadata: nothing else, exactly as before ticket 17.
+    // metadata: nothing else, exactly as before #17.
     expect(counted.requests).toEqual([
       `getFile:${ROOT_ID}`,
       `listFolder:${ROOT_ID}`,
@@ -484,7 +484,7 @@ describe('changedSince', () => {
 
     // Documents only: an image moves with the Doc that holds it (§12 phase 2).
     // A Doc the index has never seen is named as the walk names it, since only
-    // a read of it could say that it has tabs (ticket 37).
+    // a read of it could say that it has tabs (#37).
     expect(await changedSince(root, provider, new Map(), options)).toEqual(
       [
         ...documents(first.files)
@@ -592,7 +592,7 @@ describe('progress (MANUAL §7)', () => {
   });
 });
 
-describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
+describe('a Doc with several tabs (MANUAL §6, #37)', () => {
   /** Where the recorded two-tab Doc lands, tab by tab. */
   const FIRST = 'drive/Tabbed/First tab.md';
   const SECOND = 'drive/Tabbed/Second tab.md';
@@ -634,7 +634,7 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
     const directory = result.entries.find((one) => one.path === 'drive/Tabbed/');
 
     // A nested tab's depth varies, so the paths alone cannot say where the
-    // Doc's directory starts: the index says (ticket 37).
+    // Doc's directory starts: the index says (#37).
     expect(directory).toMatchObject({
       path: 'drive/Tabbed/',
       type: 'gdoc',
@@ -648,7 +648,7 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
     const result = await fetchRoot(root, provider, new Map(), options);
     const elements = result.files.find((file) => file.path === 'drive/Elements.md');
 
-    // The "One tab" row of ticket 37: `<title>.md`, `id: gdocs:<docId>`, a URL
+    // The "One tab" row of #37: `<title>.md`, `id: gdocs:<docId>`, a URL
     // without a tab. Nothing to migrate for nearly every Doc there is.
     expect(elements?.entry?.src).toEqual({ source: 'gdocs', id: ELEMENTS });
     expect(elements?.text).toContain(`url: https://docs.google.com/document/d/${ELEMENTS}/edit\n`);
@@ -671,7 +671,7 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
 
   it('moves the file, its sidecar and its assets when a Doc gains a tab', async () => {
     // The checkout of yesterday: one file, its sidecar and its image, because
-    // the Doc had one tab (ticket 37, "Fetch, one → many at the source").
+    // the Doc had one tab (#37, "Fetch, one → many at the source").
     const previous = new Map<string, IndexEntry>([
       ['drive/Tabbed.md', entry({ path: 'drive/Tabbed.md', src: { source: 'gdocs', id: TABBED } })],
     ]);
@@ -813,7 +813,7 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
 
   it('comes back to one file when the Doc comes back down to one tab', () => {
     // The reverse of the move above: the surviving tab is the Doc again, its id
-    // loses the tab, and the other tab files go (ticket 37).
+    // loses the tab, and the other tab files go (#37).
     const oneTab: DocsDocument = {
       documentId: TABBED,
       title: 'Tabbed',
@@ -877,7 +877,7 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
     );
 
     // Object ids and indexes are per tab body, so an asset belongs to the tab
-    // file it sits in and to no other (ticket 37).
+    // file it sits in and to no other (#37).
     const asset = result.files.find(
       (file) => file.entry?.type === 'asset' && file.path.startsWith('drive/Tabbed'),
     );
@@ -892,9 +892,9 @@ describe('a Doc with several tabs (MANUAL §6, ticket 37)', () => {
 /**
  * The read that builds a sidecar asks for the discussions too, and a project
  * outside the Developer Preview gets that read again without them
- * (MANUAL §6, §7, ticket 40).
+ * (MANUAL §6, §7, #40).
  */
-describe('the discussions on the sidecar read (ticket 40)', () => {
+describe('the discussions on the sidecar read (#40)', () => {
   const at = { now: () => new Date('2026-09-03T16:31:07Z') };
   const on: Root = { ...root, comments: true };
   const ELEMENTS_SUGGESTION = 'suggest.r73ve12ed25a';
@@ -977,7 +977,7 @@ describe('the discussions on the sidecar read (ticket 40)', () => {
     await fetchRoot(on, provider, previous, { ...options, ...at, api: counted.api });
 
     // Three for the walk, one `comments.list` per Doc, and the one body read
-    // the sidecar needs — the number ticket 17 pinned (MANUAL §7).
+    // the sidecar needs — the number #17 pinned (MANUAL §7).
     expect(counted.requests).toHaveLength(3 + DOC_IDS.length + 1);
   });
 

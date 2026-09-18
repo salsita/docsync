@@ -4,7 +4,7 @@
  * `fetchRoot` is the whole public surface. It walks the root (`walk.ts`),
  * converts each page (`to-markdown.ts`), and puts the frontmatter on
  * (`../frontmatter.ts`), answering the files to write and the index entries
- * ticket 09 records. Nothing here decides what to do with them: no disk, no
+ * #9 records. Nothing here decides what to do with them: no disk, no
  * git, no commit.
  */
 import type { CredentialProvider } from '../auth/index.js';
@@ -176,7 +176,7 @@ async function toFiles(
   // right, so it rides along with the page it belongs to.
   const own = assets.files;
 
-  // With comments off, a page costs what it did before ticket 17: the walk and
+  // With comments off, a page costs what it did before #17: the walk and
   // nothing more (MANUAL §7).
   if (!comments) return [file, ...own];
 

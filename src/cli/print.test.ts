@@ -239,7 +239,7 @@ describe('formatPushReport', () => {
   });
 });
 
-describe('formatResolved on a calendar event (ticket 38)', () => {
+describe('formatResolved on a calendar event (#38)', () => {
   it('calls it what it is, and counts the calls that left a file behind', () => {
     expect(
       formatResolved({
@@ -307,7 +307,7 @@ describe('formatStatusLine', () => {
     );
   });
 
-  it('says `read-only` for a calendar root, which never says so itself (ticket 38)', () => {
+  it('says `read-only` for a calendar root, which never says so itself (#38)', () => {
     const calls: Root = {
       ...root,
       src: { source: 'calendar', id: '0gce3vkvut6cj027fb86qrtc2a' },

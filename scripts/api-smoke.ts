@@ -1,6 +1,6 @@
 /**
  * Prove that an adapter can reach a real API knowing nothing but
- * `createCredentialProvider()` — the "ten-line sketch adapter" of ticket 04's
+ * `createCredentialProvider()` — the "ten-line sketch adapter" of #4's
  * Done-when. Plain `fetch`, no SDKs.
  *
  *   corepack pnpm build

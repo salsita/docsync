@@ -54,7 +54,7 @@ const threeTabs: DocsDocument = {
 describe('flattenTabs', () => {
   it('reads a document with no tabs field as the one tab it is', () => {
     // Every recorded fixture predates `includeTabsContent`, and so does every
-    // checkout made before this ticket: the body is the document (MANUAL §6).
+    // checkout made before #37: the body is the document (MANUAL §6).
     const doc: DocsDocument = { documentId: 'd', title: 'Elements', body: { content: [] } };
     const tabs = flattenTabs(doc);
 
@@ -80,7 +80,7 @@ describe('flattenTabs', () => {
     const [, full] = flattenTabs(threeTabs);
 
     // The tab is the unit: its body, its lists, its inline objects and its
-    // footnotes, under a documentId that still names the Doc (ticket 37).
+    // footnotes, under a documentId that still names the Doc (#37).
     expect(full?.doc.documentId).toBe('doc1');
     expect(full?.doc.title).toBe('Full notes');
     expect(full?.doc.body?.content?.[0]?.paragraph?.elements?.[0]?.textRun?.content).toBe(
@@ -93,7 +93,7 @@ describe('flattenTabs', () => {
     expect(full?.doc.tabs).toBeUndefined();
   });
 
-  it('carries a tab’s comment anchors with it (ticket 40)', () => {
+  it('carries a tab’s comment anchors with it (#40)', () => {
     const anchors = { 'kix.a1': { anchorId: 'kix.a1', ranges: [{ startIndex: 1, endIndex: 5 }] } };
     const one = tab('t.0', 'Quick notes');
     const withAnchors: DocsDocument = {

@@ -1,5 +1,5 @@
 /**
- * The skill file, verified by a real agent (ticket 11, MANUAL §10).
+ * The skill file, verified by a real agent (#11, MANUAL §10).
  *
  * A checkout is built from the fake source and the fake helper — no network,
  * no credential, no real document anywhere — and Claude Code is asked to make
@@ -30,7 +30,7 @@ const SPECS = fakeId('notion', 1);
 const AUTH = fakeId('notion', 2);
 const ADA = { id: 'ada', name: 'Ada Lovelace', email: 'ada@example.com' };
 
-/** The prompt of the ticket, and the fact it is meant to put in the document. */
+/** The prompt of #11, and the fact it is meant to put in the document. */
 const PROMPT = 'update the Auth spec to say sessions expire after 30 days';
 const DOCUMENT = 'Product Specs/Auth.md';
 
@@ -71,7 +71,7 @@ function seed(): FakeState {
     body: 'The specs.\n',
     editor: ADA,
   });
-  // The document the prompt names. The fake source of ticket 10 has no
+  // The document the prompt names. The fake source of #10 has no
   // "Auth spec" of any other name; this is the one every command test uses.
   addObject(state, {
     id: AUTH,

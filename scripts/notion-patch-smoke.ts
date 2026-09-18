@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 15: a diff-based push against the real Notion API.
+ * The manual test for #15: a diff-based push against the real Notion API.
  *
  * It never touches the fixture pages' content. It makes **one** new page,
  * "Docsync patch test", as a child of `Docsync test`, puts a comment on one of
@@ -45,7 +45,7 @@ The second paragraph. The push edits one word of this one, and no other.
 A <span data-color="red">red run</span> inside a paragraph the push edits at the end.
 `;
 
-/** The comments API, which the adapter does not wrap until ticket 17. */
+/** The comments API, which the adapter does not wrap until #17. */
 interface CommentsClient {
   comments: {
     create(args: {

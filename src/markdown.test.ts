@@ -108,7 +108,7 @@ describe('the markdown pipeline', () => {
 
   it('leaves an underscore inside a word unescaped, since it opens nothing', () => {
     // What the owner types is what the fetch after the push writes back
-    // (ticket 32): no `ALUMINUM\\_FENCE`, a change nobody made.
+    // (#32): no `ALUMINUM\\_FENCE`, a change nobody made.
     const line = 'A file (ALUMINUM_FENCE-25-26-WEB-150dpi.pdf) and snake_case_name.\n';
     expect(stringifyMarkdown(parseMarkdown(line))).toBe(line);
   });
@@ -135,7 +135,7 @@ describe('the markdown pipeline', () => {
 });
 
 /**
- * Ticket 42. A source splits a run wherever an edit or a style change began, so
+ * #42. A source splits a run wherever an edit or a style change began, so
  * a run that *ends* in a line break leaves an empty text node behind it. The
  * serializer takes `before` from the last thing it wrote, the empty node makes
  * that `''`, and every escape that depends on knowing a line just began stops

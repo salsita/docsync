@@ -98,7 +98,7 @@ describe('fetchRoot', () => {
   it('names a bot editor too, without an email', async () => {
     const { files } = await fetch();
     // The root page was last touched by the docsync integration itself, when
-    // ticket 06's smoke test created a page under it.
+    // #6's smoke test created a page under it.
     expect(files[0]?.editor).toEqual({
       id: '3cf715cb-eb08-81a6-ba7b-0027692af2c9',
       name: 'docsync',
@@ -392,7 +392,7 @@ describe('the `comments` option (MANUAL §4, §7)', () => {
     const second = await fetchRoot(root, provider, previous, { api: counted.api, ...at });
 
     // The walk of the nine recorded pages and nothing else, exactly as before
-    // ticket 17. The two user lookups are cached and counted apart.
+    // #17. The two user lookups are cached and counted apart.
     expect(counted.requests).toHaveLength(19);
     expect(counted.requests.filter((one) => one.startsWith('comments:'))).toEqual([]);
     expect(counted.users).toHaveLength(2);

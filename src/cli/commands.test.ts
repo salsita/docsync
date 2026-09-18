@@ -87,7 +87,7 @@ function seed(): FakeState {
     body: 'Later.\n',
     editor: ADA,
   });
-  // The client's own folder: pulled for context, never pushed to (ticket 25).
+  // The client's own folder: pulled for context, never pushed to (#25).
   addObject(state, { id: INPUTS, source: 'gdocs', kind: 'folder', title: 'Inputs' });
   addObject(state, {
     id: BRIEF,
@@ -98,7 +98,7 @@ function seed(): FakeState {
     body: 'What they want.\n',
     editor: ADA,
   });
-  // A recurring call and the notes one of its instances left behind (ticket 38).
+  // A recurring call and the notes one of its instances left behind (#38).
   addObject(state, { id: CALLS, source: 'calendar', kind: 'folder', title: 'Contracts review' });
   addObject(state, {
     id: CALL_NOTES,
@@ -220,7 +220,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.read(co, '.docsync.yaml')).toContain('path: notes/Roadmap.md');
       expect(w.read(co, '.docsync.yaml')).toContain('path: specs/product.md');
       expect(w.read(co, '.docsync.yaml')).toContain('path: filed/');
-      // `--no-fetch` stops at the manifest (ticket 10).
+      // `--no-fetch` stops at the manifest (#10).
       expect(w.files(co)).toEqual(['.docsync/index.yaml']);
     });
 
@@ -353,7 +353,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(shown.out.split('\n').filter((one) => one.includes('suggest'))).toHaveLength(1);
     });
 
-    it('add of a calendar event pulls the calls, read-only (ticket 38)', async () => {
+    it('add of a calendar event pulls the calls, read-only (#38)', async () => {
       const w = world();
       const co = await checkout(w, `notion:${SPECS}`);
 
@@ -571,7 +571,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(run.code).toBe(0);
       expect(run.out).toContain('Product Specs/Auth.md  by Ada Lovelace');
       expect(w.read(co, 'Product Specs/Auth.md')).toContain('Log in twice.');
-      // On main there is nothing to say about main (ticket 29).
+      // On main there is nothing to say about main (#29).
       expect(run.out).not.toContain('main is now at');
     });
 
@@ -680,7 +680,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(run.code).toBe(0);
       expect(run.out).toContain('No documents changed at the source.');
       expect(w.git(co, 'rev-parse', 'origin/main')).toBe(before);
-      // Every document was downloaded, so every one was counted (ticket 24).
+      // Every document was downloaded, so every one was counted (#24).
       expect(run.err).toContain('1 Product Specs.md');
       expect(run.err).toContain('2 Product Specs/Auth.md');
     });
@@ -769,7 +769,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.read(co, 'Product Specs/Auth.md')).toBe('still editing\n');
     });
 
-    it('add refuses a root over files that are already in the checkout (ticket 35)', async () => {
+    it('add refuses a root over files that are already in the checkout (#35)', async () => {
       const w = world();
       const co = await checkout(w);
       // The local files a person keeps where the root would land: for a Notion

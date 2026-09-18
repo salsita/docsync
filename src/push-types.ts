@@ -1,9 +1,9 @@
 /**
  * What a push takes and what it answers, for every adapter (MANUAL §7, §8).
  *
- * These four types and the error started in `src/notion/push.ts` (ticket 06);
- * ticket 08 gave Drive a `pushRoot` of the same shape, so both adapters import
- * them from here. Ticket 09 moved the types themselves next to the `Source`
+ * These four types and the error started in `src/notion/push.ts` (#6);
+ * #8 gave Drive a `pushRoot` of the same shape, so both adapters import
+ * them from here. #9 moved the types themselves next to the `Source`
  * interface they are part of (`src/source.ts`); this module stays as the door
  * the adapters already use, and keeps `PushError`, which is a value.
  */

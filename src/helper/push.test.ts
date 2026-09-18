@@ -197,7 +197,7 @@ describe('pushRef', () => {
     expect(store.load().pushes).toEqual([]);
   });
 
-  it('sends no request for a file under no root, and the post-push fetch keeps it (ticket 35)', async () => {
+  it('sends no request for a file under no root, and the post-push fetch keeps it (#35)', async () => {
     await serve();
     write('notes/a.md', 'hi\n');
     const pushed = commit('notes');

@@ -47,7 +47,7 @@ export interface FakeTab {
   model: DocsModel;
   /**
    * Where the tab's comments sit, by anchor id, as the preview answers them
-   * (MANUAL §6, ticket 40). Empty unless a test seeds one.
+   * (MANUAL §6, #40). Empty unless a test seeds one.
    */
   anchors: Record<string, CommentAnchor>;
 }
@@ -69,7 +69,7 @@ export interface FakeDrive extends GDriveApi {
   /** Comment threads by file id, for a test of a root with `comments: true`. */
   threads: Map<string, DriveComment[]>;
   /**
-   * What the preview's `commentsViewMode` answers, by file id (ticket 40).
+   * What the preview's `commentsViewMode` answers, by file id (#40).
    * Empty unless a test seeds it, which is a Doc outside the preview — and a
    * Doc with nothing to say, since the API leaves both fields out for one.
    */
@@ -84,7 +84,7 @@ export interface FakeDrive extends GDriveApi {
   calls: string[];
   /**
    * One document's body as Markdown, for asserting what a push wrote. A Doc
-   * with several tabs is asked one tab at a time (ticket 37); with none named,
+   * with several tabs is asked one tab at a time (#37); with none named,
    * it is the first tab, which is the whole Doc when there is only one.
    */
   markdown(id: string, tabId?: string): string;
@@ -95,7 +95,7 @@ const DOCUMENT = 'application/vnd.google-apps.document';
 /** A Drive holding the files given, with an empty document behind each Doc. */
 export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDrive {
   const files = new Map<string, FakeFile>();
-  // A Doc is its tabs (MANUAL §6, ticket 37): one of them for a Doc as most
+  // A Doc is its tabs (MANUAL §6, #37): one of them for a Doc as most
   // Docs are, and the model of a body behind each.
   const documents = new Map<string, FakeTab[]>();
   let nextTab = 0;
@@ -306,13 +306,13 @@ export function createFakeDrive(seed: readonly Partial<FakeFile>[] = []): FakeDr
     },
 
     async getDocument(id, mode = 'preview', options = {}): Promise<DocsDocument> {
-      // As the real API answers with `includeTabsContent=true` (ticket 37):
+      // As the real API answers with `includeTabsContent=true` (#37):
       // the contents are under `tabs` and there is no top-level body at all.
       // Inline is the view a push and a comment sidecar read: the pending
       // suggestions are on the runs they touch (MANUAL §6, §7).
       const asked = options.comments === true;
       // The discussions and the anchors come only when asked for, and a Doc
-      // with none leaves the fields out, exactly as the API does (ticket 40).
+      // with none leaves the fields out, exactly as the API does (#40).
       const held = asked ? (discussions.get(id) ?? {}) : {};
       return {
         documentId: id,

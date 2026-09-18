@@ -64,7 +64,7 @@ export function mergeRichText(
   const runs = inline(base, options) as unknown as RichText[];
   // The spans below are offsets into the *diff's* text, and they are used to
   // cut the live runs: the merge is only sound while the two agree. An inline
-  // image is where they part — one object character in the diff (ticket 23),
+  // image is where they part — one object character in the diff (#23),
   // its link's text in Notion, which has no inline image (MANUAL §6) — so a
   // block holding one is written whole, as phase 1 wrote everything.
   if (plain(live) !== plain(runs) || plain(runs) !== plainOf(base)) {

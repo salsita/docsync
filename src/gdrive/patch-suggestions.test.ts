@@ -1,8 +1,8 @@
 /**
- * A push onto a Doc that already carries pending suggestions (ticket 41).
+ * A push onto a Doc that already carries pending suggestions (#41).
  *
  * The four faults of 2026-09-16, each rebuilt on the fake as the layout the
- * report recorded around it, and the rules the ticket settled on: an edit
+ * report recorded around it, and the rules #41 settled on: an edit
  * beside somebody else's suggestion is a **competing suggestion** against the
  * original text alone, never a rewrite of their words and never a
  * whole-paragraph replacement, and what cannot be expressed that way is refused
@@ -318,7 +318,7 @@ describe('a list item appended at the end of a list', () => {
 
   it('still lends the item before its newline on a plain push', () => {
     // Nothing about a plain push changes: it keeps the bullet of the item it
-    // continues, which is what the split is for (ticket 32).
+    // continues, which is what the split is for (#32).
     const written = insertions(plan(built(BASE), NEXT));
     expect(written.map((one) => one.text)).toContain('\n');
   });

@@ -4,7 +4,7 @@
  *   corepack pnpm build
  *   node --experimental-strip-types scripts/record-gdrive-fixtures.ts
  *
- * Walks the folder "Docsync test" (ticket 07) and writes the raw API responses
+ * Walks the folder "Docsync test" (#7) and writes the raw API responses
  * to `src/gdrive/__fixtures__/`, which is what every test above `api.ts` runs
  * on: one listing per folder, the Docs API document JSON per Google Doc, the
  * small binaries as bytes, and the Sheet's `.xlsx` export.
@@ -15,21 +15,21 @@
  *
  * Per Google Doc it records the document twice — without suggestions, which is
  * what a fetch reads, and with them inline and the discussions included, which
- * is what a push and the comment sidecar read (tickets 16, 17 and 40) — and
+ * is what a push and the comment sidecar read (#16, #17 and #40) — and
  * the open comment threads as Drive answers them.
  * The inline copy is written only when it differs from the plain one, so a
  * document with no pending suggestion costs no second fixture.
  *
  * An inline image of a Google Doc is recorded twice as well: the document's
  * JSON, whose `contentUri` is good for about half an hour, and the *bytes*
- * behind it, saved as `asset-<objectId><ext>` (ticket 14). The bytes are what
+ * behind it, saved as `asset-<objectId><ext>` (#14). The bytes are what
  * the fetch tests compare against, so a stale URI costs nothing.
  *
  * Every `documents.get` asks with `includeTabsContent=true`, which is how the
- * adapter asks (ticket 37): without it the API answers the first tab as the
+ * adapter asks (#37): without it the API answers the first tab as the
  * legacy `body` and says nothing about the rest. The fixtures recorded before
- * this ticket were taken without the flag and are deliberately left as they
- * are — a document with no `tabs` field is a shape the adapter still reads, and
+ * #37 were taken without the flag and are deliberately left as they are — a
+ * document with no `tabs` field is a shape the adapter still reads, and
  * those recordings are what proves it.
  *
  * Re-run only deliberately.
@@ -167,7 +167,7 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
  */
 async function recordImages(docId: string, document: unknown): Promise<void> {
   // With `includeTabsContent=true` the inline objects are per tab and there is
-  // no top-level `inlineObjects` at all (ticket 37); both shapes are read, so
+  // no top-level `inlineObjects` at all (#37); both shapes are read, so
   // a recording made before the flag still yields its images.
   const reply = document as {
     inlineObjects?: Record<string, Record<string, never>>;
@@ -217,7 +217,7 @@ async function record(folderId: string, path: string): Promise<void> {
         `https://docs.googleapis.com/v1/documents/${file.id}` +
           `?suggestionsViewMode=PREVIEW_WITHOUT_SUGGESTIONS&includeTabsContent=true`,
       );
-      // With the discussions, which is how the sidecar read asks (ticket 40):
+      // With the discussions, which is how the sidecar read asks (#40):
       // the reply gains `comments[]`, `suggestions[]` and, per tab,
       // `commentAnchors`. A Developer Preview parameter; a project outside the
       // preview cannot record this and the fixtures stay as they are.

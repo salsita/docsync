@@ -38,7 +38,7 @@ export interface FetchDeps {
   /**
    * Where a run's two report files go, so that `docsync fetch`, `pull` and
    * `push` can print what happened rather than parse git's relayed stderr
-   * (ticket 10). Absent in a test that does not care.
+   * (#10). Absent in a test that does not care.
    */
   report?: ReportWriter;
   /**
@@ -93,7 +93,7 @@ export async function fetchCommit(
 
   // Everything the last commit holds under no root comes along untouched: a
   // local file is ours, and a fetch is not allowed to lose it (MANUAL §7,
-  // ticket 35). The roots write over what follows, so a path that is under one
+  // #35). The roots write over what follows, so a path that is under one
   // is the source's answer, not the parent's. The index is written below.
   const files = new Map<string, TreeFile>();
   for (const [path, file] of previousTree) {

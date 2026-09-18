@@ -49,12 +49,12 @@ export interface Thread {
   /**
    * What the source says the thread is, in one line, printed under the heading:
    * a suggestion's `summaryText`, "Replace: “one” with “three”" (MANUAL §6,
-   * ticket 40). Absent when the source did not say.
+   * #40). Absent when the source did not say.
    */
   summary?: string;
   /**
    * A suggestion's blocks as they stand, one entry per block: the first and the
-   * last block it touches and everything between them (ticket 34).
+   * last block it touches and everything between them (#34).
    */
   before?: readonly string[];
   /**
@@ -67,7 +67,7 @@ export interface Thread {
    * What was written in the thread, in creation order. A suggestion has its
    * own discussion — the replies under its card in Docs — and the head post is
    * not one of them, since it is the suggestion itself and carries no text
-   * (MANUAL §6, ticket 40).
+   * (MANUAL §6, #40).
    */
   entries: Entry[];
 }

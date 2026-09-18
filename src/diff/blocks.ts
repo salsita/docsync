@@ -92,7 +92,7 @@ const PLACEHOLDER_COMMENT = /^<!--\s*docsync:(?:block|object)\b.*?\btype=(\S+?)\
  * block's identity, so an insertion in front of that block would land in front
  * of the break, deleting the block would take the break with it, and a new
  * break would only ever be written as part of a block that was inserted
- * anyway — which is exactly what ticket 32 found.
+ * anyway — which is exactly what #32 found.
  */
 const PAGE_BREAK_COMMENT = /^<!--\s*docsync:pagebreak\s*-->$/;
 const DETAILS_OPEN = /^<details\b/;

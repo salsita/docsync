@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 08: every write operation once, against the real
+ * The manual test for #8: every write operation once, against the real
  * Drive and Docs APIs.
  *
  * It never touches the fixture folder "Docsync test", which is READ ONLY. It
@@ -41,7 +41,7 @@ say('copy doc', `${doc.name} ${doc.id}`);
 const plain = await api.copyFile(PLAIN_ID, { name: 'plain copy.txt', parents: [folder.id] });
 say('copy file', `${plain.name} ${plain.id}`);
 
-// 3. The copy's own Markdown, written back over it: the whole of ticket 08 in
+// 3. The copy's own Markdown, written back over it: the whole of #8 in
 //    three lines, and the one honest measure of what a push loses.
 const before = documentToMarkdown(await api.getDocument(doc.id));
 const result = await writer.replaceBody(doc.id, parseMarkdown(before));

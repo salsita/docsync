@@ -1,6 +1,6 @@
 /**
  * The two report files a run leaves behind: `$GIT_DIR/docsync/last-fetch.json`
- * and `$GIT_DIR/docsync/last-push.json` (ticket 10).
+ * and `$GIT_DIR/docsync/last-push.json` (#10).
  *
  * Git relays the helper's stderr to the user line by line, which is right for
  * progress and useless for a structured report: by the time `docsync push`

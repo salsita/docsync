@@ -113,7 +113,7 @@ export function createCommands(options: HelperOptions): Commands {
       if (verbosity > 0) options.stderr(line);
     },
     now: options.now ?? (() => new Date()),
-    // What `docsync fetch`, `pull` and `push` print afterwards (ticket 10).
+    // What `docsync fetch`, `pull` and `push` print afterwards (#10).
     report: options.report ?? createReportWriter(gitDir),
     // Every document again, because the user asked for it (MANUAL §7).
     ...((options.env[FETCH_ALL_ENV] ?? '') === '' ? {} : { all: true }),

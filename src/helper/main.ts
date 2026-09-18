@@ -36,7 +36,7 @@ export interface LineWriter {
  * reply of a batch, on a push it has decided to reject, or simply by exiting
  * first — and anything the helper still had to say then raises EPIPE. Without
  * an 'error' listener that is an unhandled event and the helper dies, which
- * git reports as exit 128 (ticket 22). There is nobody left to tell, so the
+ * git reports as exit 128 (#22). There is nobody left to tell, so the
  * writer goes quiet instead and lets the run end on its own terms.
  *
  * The guard itself is `src/stdio.ts`, which the front end uses as well; the

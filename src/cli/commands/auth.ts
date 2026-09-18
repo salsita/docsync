@@ -16,7 +16,7 @@ import { CliError, type Context, say } from '../context.js';
  * The source names `docsync auth` takes, `google` included (MANUAL §2).
  *
  * Only the sources that own a credential: a calendar is signed in to as Google,
- * so `docsync auth calendar` is not a command (ticket 38).
+ * so `docsync auth calendar` is not a command (#38).
  */
 export function parseSourceName(text: string): SourceName {
   const name = text.toLowerCase() === 'google' ? 'gdocs' : text.toLowerCase();

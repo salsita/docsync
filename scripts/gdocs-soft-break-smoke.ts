@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 42: a Doc whose paragraphs hold a soft line break
+ * The manual test for #42: a Doc whose paragraphs hold a soft line break
  * where Markdown has trouble with one, against the real Docs API.
  *
  * The fake model proves the converter. Only Google can say that it really

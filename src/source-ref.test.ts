@@ -50,10 +50,10 @@ const LITERAL: Array<[string, SourceRef]> = [
   [`  notion:${NID}  `, notion],
   [`gdocs:${GID}`, gdocs],
   [`\tgdocs:${GID}\n`, gdocs],
-  // One tab of a Google Doc (MANUAL §6, ticket 37). The id stays one token.
+  // One tab of a Google Doc (MANUAL §6, #37). The id stays one token.
   [`gdocs:${GID}#${TAB}`, gdocsTab],
   // A calendar event, on the user's primary calendar or on another one, split
-  // at the first `@` — the rest is an address and carries one (ticket 38).
+  // at the first `@` — the rest is an address and carries one (#38).
   [`calendar:${EVENT}`, event],
   [`calendar:${EVENT}@${CALENDAR}`, elsewhere],
   [`calendar:${EVENT}@primary`, event],
@@ -92,14 +92,14 @@ const URLS: Array<[string, SourceRef]> = [
   [`https://docs.google.com/document/u/0/d/${GID}/edit`, gdocs],
   [`https://docs.google.com/document/d/${GID}/edit?usp=sharing`, gdocs],
   [`https://docs.google.com/document/d/${GID}/edit#heading=h.abc`, gdocs],
-  // A tab's own URL names the whole Doc: `docsync add` adds all of it (ticket 37).
+  // A tab's own URL names the whole Doc: `docsync add` adds all of it (#37).
   [`https://docs.google.com/document/d/${GID}/edit?tab=${TAB}`, gdocs],
   [`https://drive.google.com/drive/folders/${GID}`, gdocs],
   [`https://drive.google.com/drive/u/2/folders/${GID}`, gdocs],
   [`https://drive.google.com/file/d/${GID}/view`, gdocs],
   [`https://drive.google.com/open?id=${GID}`, gdocs],
   [`https://drive.google.com/open?id=${GID}&usp=sharing`, gdocs],
-  // Calendar. The one place the UI shows an event id is the `eid` (ticket 38).
+  // Calendar. The one place the UI shows an event id is the `eid` (#38).
   [`https://calendar.google.com/calendar/u/0/r/eventedit/${EID}`, elsewhere],
   [`https://calendar.google.com/calendar/r/eventedit/${EID}`, elsewhere],
   [`https://calendar.google.com/calendar/event?eid=${EID}`, elsewhere],
@@ -130,7 +130,7 @@ const REJECTED: string[] = [
   `notion:${NID}/child`,
   `drive:${GID}`,
   // A fragment is a tab and nothing else: every tab id starts with `t.`, which
-  // is what keeps `#<n>` (an object anchor) out of an id (ticket 37).
+  // is what keeps `#<n>` (an object anchor) out of an id (#37).
   `gdocs:${GID}#`,
   `gdocs:${GID}#heading`,
   `gdocs:${GID}#3`,
@@ -138,7 +138,7 @@ const REJECTED: string[] = [
   `gdocs:1AbCdE#${TAB}`,
   `notion:${NID}#${TAB}`,
   // A calendar event id is base32hex and at least five characters, and the
-  // calendar after the `@` is not empty (ticket 38).
+  // calendar after the `@` is not empty (#38).
   'calendar:',
   'calendar:abc',
   'calendar:zzzzzz',
@@ -249,7 +249,7 @@ describe('round trip', () => {
       expect(parseSourceRef(canonical)).toEqual(expected);
       expect(parseSourceRefOrUrl(canonical)).toEqual(expected);
       expect(formatSourceRef(parseSourceRef(canonical) as SourceRef)).toBe(canonical);
-      // Ticket 02's ignore lists need a ref entry to be slash-free.
+      // #2's ignore lists need a ref entry to be slash-free.
       expect(canonical).not.toContain('/');
     });
   }
@@ -291,7 +291,7 @@ describe('sourceRefEquals', () => {
 });
 
 describe('splitGDocsRef', () => {
-  it('splits a tab ref into the Doc and the tab (ticket 37)', () => {
+  it('splits a tab ref into the Doc and the tab (#37)', () => {
     expect(splitGDocsRef(gdocsTab)).toEqual({ docId: GID, tabId: TAB });
   });
 
@@ -306,7 +306,7 @@ describe('splitGDocsRef', () => {
 });
 
 describe('splitCalendarRef', () => {
-  it('splits a calendar ref into the event and the calendar (ticket 38)', () => {
+  it('splits a calendar ref into the event and the calendar (#38)', () => {
     expect(splitCalendarRef(elsewhere)).toEqual({ eventId: EVENT, calendarId: CALENDAR });
   });
 
@@ -364,7 +364,7 @@ describe('sourceUrl', () => {
     );
   });
 
-  it('a Google Doc tab, which opens on that tab (ticket 37)', () => {
+  it('a Google Doc tab, which opens on that tab (#37)', () => {
     expect(sourceUrl(gdocsTab, 'application/vnd.google-apps.document')).toBe(
       `https://docs.google.com/document/d/${GID}/edit?tab=${TAB}`,
     );
@@ -375,7 +375,7 @@ describe('sourceUrl', () => {
     expect(parseSourceRefOrUrl(sourceUrl(gdocsTab))).toEqual(gdocs);
   });
 
-  it('a calendar event, as the `eid` the UI shows (ticket 38)', () => {
+  it('a calendar event, as the `eid` the UI shows (#38)', () => {
     expect(sourceUrl(elsewhere)).toBe(`https://calendar.google.com/calendar/event?eid=${EID}`);
     // With no calendar in the ref the event is on the primary one, which is
     // what the token has to say, since Calendar reads the pair back out of it.

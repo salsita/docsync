@@ -91,7 +91,7 @@ export async function appendRoots(
       throw new CliError(`${spec.input}: --suggest is only for Google Drive roots`);
     }
     // A calendar root is read-only whatever the manifest says, and the manifest
-    // refuses the field there, so the flag is a mistake worth naming (ticket 38).
+    // refuses the field there, so the flag is a mistake worth naming (#38).
     if (options.readOnly === true && spec.ref.source === 'calendar') {
       throw new CliError(
         `${spec.input}: --readonly is not needed here; a calendar root is always read-only`,
@@ -133,7 +133,7 @@ export async function appendRoots(
 }
 
 /**
- * A root is added over an empty path (MANUAL §5, ticket 35).
+ * A root is added over an empty path (MANUAL §5, #35).
  *
  * Everything under no root is a local file, and every fetch writes the root's
  * territory from the source: adding a root over files that are already there
@@ -221,7 +221,7 @@ export async function add(
     readOnly: options.readOnly === true,
     suggest: options.suggest === true,
     // A root writes its territory on every fetch, so it goes over an empty
-    // path: whatever is there now is a local file (MANUAL §5, ticket 35).
+    // path: whatever is there now is a local file (MANUAL §5, #35).
     worktree: repo.root,
   });
 

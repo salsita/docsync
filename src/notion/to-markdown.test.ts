@@ -571,7 +571,7 @@ describe('inline runs', () => {
     );
   });
 
-  it('the bold sentence Notion splits around a link (ticket 28)', () => {
+  it('the bold sentence Notion splits around a link (#28)', () => {
     const url = 'https://example.com/asset-request';
     expect(
       inlineMarkdown([
@@ -584,7 +584,7 @@ describe('inline runs', () => {
     ).toBe(`**Send the** [**info / asset request**](${url}) **early.**`);
   });
 
-  it('a styled run of nothing but whitespace goes out unstyled (ticket 30)', () => {
+  it('a styled run of nothing but whitespace goes out unstyled (#30)', () => {
     // A bold newline is not a thing: the newline is a line break, and a line
     // break carries no emphasis.
     expect(inlineMarkdown([text('a'), text('\n', { bold: true }), text('b')])).toBe('a\\\nb');
@@ -594,7 +594,7 @@ describe('inline runs', () => {
   });
 });
 
-describe('the edges of a block (ticket 30)', () => {
+describe('the edges of a block (#30)', () => {
   it('trims a space at the very start and the very end of a block', () => {
     expect(
       inlineMarkdown([text('Next step: '), linked('Contract', 'Contract.md'), text(' ')]),
@@ -629,7 +629,7 @@ describe('the edges of a block (ticket 30)', () => {
   });
 });
 
-describe('a line break beside a run boundary (ticket 42)', () => {
+describe('a line break beside a run boundary (#42)', () => {
   // Notion cuts a run wherever an edit or a comment began, so an item that
   // ends in a newline with another item behind it is the ordinary shape.
   it('escapes what follows a line break at a run boundary', () => {

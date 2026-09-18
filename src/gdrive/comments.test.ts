@@ -13,7 +13,7 @@ import { flattenTabs } from './tabs.js';
 import { documentToMarkdown } from './to-markdown.js';
 
 const ELEMENTS = '1zmLwMqzDV8cy1B-IZe5C76FNjrdIcZzW5MLVX5prQY4';
-/** The Elements Doc's one tab, which is the whole Doc (ticket 37). */
+/** The Elements Doc's one tab, which is the whole Doc (#37). */
 const elements = (): DocsDocument => flattenTabs(fixtureInlineDocument(ELEMENTS))[0]?.doc ?? {};
 const body = documentToMarkdown(elements());
 
@@ -118,7 +118,7 @@ describe('commentThreads', () => {
     ]);
   });
 
-  it('anchors a comment whose selection ran over a paragraph break (ticket 34)', () => {
+  it('anchors a comment whose selection ran over a paragraph break (#34)', () => {
     const across: DriveComment = {
       id: 'AAAacross',
       createdTime: '2026-01-01T00:00:00.000Z',
@@ -217,7 +217,7 @@ describe('suggestionThreads', () => {
 
 /**
  * A suggestion is one id over however many paragraphs its runs sit in, and one
- * thread over the span of them (MANUAL §6, ticket 34).
+ * thread over the span of them (MANUAL §6, #34).
  */
 describe('a suggestion that spans paragraphs', () => {
   it('is one thread whose `+` side has a line per paragraph it made', () => {
@@ -307,7 +307,7 @@ describe('a suggestion that spans paragraphs', () => {
   });
 });
 
-describe('placeThreads (MANUAL §6, ticket 37)', () => {
+describe('placeThreads (MANUAL §6, #37)', () => {
   /** Two tabs, each one paragraph, as a Doc with several tabs answers. */
   const tabs = [
     {
@@ -330,7 +330,7 @@ describe('placeThreads (MANUAL §6, ticket 37)', () => {
 
   it('puts a thread in the first tab whose body holds its quote', () => {
     // Drive comments are per file and their anchors carry no tab, so the
-    // quoted text is what says which tab a thread belongs to (ticket 37).
+    // quoted text is what says which tab a thread belongs to (#37).
     const placed = placeThreads(tabs, [comment('c1', 'says that'), comment('c2', 'says this')]);
 
     expect(placed[0]?.map((one) => one.id)).toEqual(['c2']);
@@ -377,9 +377,9 @@ describe('placeThreads (MANUAL §6, ticket 37)', () => {
 
 /**
  * The Docs API answers the discussions the Drive comments API has no idea
- * about, and exact anchors with them (MANUAL §6, ticket 40).
+ * about, and exact anchors with them (MANUAL §6, #40).
  */
-describe('threads from the Docs reply (ticket 40)', () => {
+describe('threads from the Docs reply (#40)', () => {
   /** A tab body of whole paragraphs, with the indices the API counts in. */
   function tabDocument(
     paragraphs: readonly string[],

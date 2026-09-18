@@ -2,7 +2,7 @@
  * The Google Drive adapter, read half: one root in, files out.
  *
  * `fetchRoot` is the whole public surface, and it answers the same shape as the
- * Notion adapter's `fetchRoot` so that ticket 09 treats both alike. It walks
+ * Notion adapter's `fetchRoot` so that #9 treats both alike. It walks
  * the root (`walk.ts`), converts each Google Doc (`to-markdown.ts`), puts the
  * frontmatter on (`../frontmatter.ts`), and downloads the bytes of everything
  * that is not a Doc. Nothing here decides what to do with them: no disk, no
@@ -96,7 +96,7 @@ export async function fetchRoot(
 }
 
 /**
- * What the index remembers about the Drive files of a checkout (ticket 37).
+ * What the index remembers about the Drive files of a checkout (#37).
  *
  * Their paths, which keep filenames stable across fetches, the directories the
  * tabbed Docs among them were checked out as, and the entries themselves, which
@@ -134,7 +134,7 @@ export function driveMemory(previous: ReadonlyMap<string, IndexEntry>): {
  * The files one walk becomes: the whole read half of a Drive fetch, minus the
  * walk itself.
  *
- * Exported for the calendar adapter (ticket 38), which builds its own
+ * Exported for the calendar adapter (#38), which builds its own
  * `WalkedFile` list — an event's attachments rather than a folder's children —
  * and needs tabs, assets, comments and sidecars to come out exactly as a Drive
  * root's do. Nothing here knows where the list came from.
@@ -172,10 +172,10 @@ export async function convertWalk(
     walked.files.map((one) => one.path.slice(0, one.path.lastIndexOf('/') + 1)),
   );
   // A tabbed Doc's directory has no file of its own, so its entry cannot come
-  // from one (ticket 37).
+  // from one (#37).
   const directoryEntries: IndexEntry[] = [];
   // Shared by every document of this root: the first refusal of the preview's
-  // `commentsViewMode` is the last time it is asked for (MANUAL §7, ticket 40).
+  // `commentsViewMode` is the last time it is asked for (MANUAL §7, #40).
   const preview = { available: true };
 
   for (const file of walked.files) {
@@ -288,7 +288,7 @@ export async function changedSince(
   const api = options.api ?? (await gdriveApi(provider, options.fetch));
   // Files only: an asset has no listing of its own and moves with its document
   // (MANUAL §12 phase 2). Tab files only move with theirs: what the walk names
-  // is the Doc, which the index holds as a file or as a directory (ticket 37).
+  // is the Doc, which the index holds as a file or as a directory (#37).
   const known = [...previous.values()].filter(
     (entry) =>
       entry.src.source === 'gdocs' &&
@@ -318,7 +318,7 @@ export async function changedSince(
       (file.md5Checksum !== undefined && was.md5 !== file.md5Checksum)
     ) {
       // A tabbed Doc is reported as its directory, which is what it is on
-      // disk: every tab file inside it is written again (ticket 37).
+      // disk: every tab file inside it is written again (#37).
       changed.push(tabbed.has(file.id) ? `${file.path}/` : file.path);
     }
   }
@@ -339,7 +339,7 @@ function extensionOf(mimeType: string, name: string): string {
   return dot > 0 ? name.slice(dot) : '';
 }
 
-/** What a tabbed Doc needs beyond the walk to become files (ticket 37). */
+/** What a tabbed Doc needs beyond the walk to become files (#37). */
 interface DocContext {
   /** Under a suggest root every Doc is read on every fetch (MANUAL §7). */
   suggest: boolean;
@@ -353,7 +353,7 @@ interface DocContext {
   occupied: ReadonlySet<string>;
   /**
    * Whether the Developer Preview's `commentsViewMode` is still worth asking
-   * for (MANUAL §7, ticket 40). One refusal turns it off for the rest of the
+   * for (MANUAL §7, #40). One refusal turns it off for the rest of the
    * root, so a project that is not enrolled pays for one refused read and
    * hears one line about it, not one per document.
    */
@@ -365,13 +365,13 @@ interface DocContext {
 /** One walked file as the files it becomes, and the entries no file carries. */
 interface ToFiles {
   files: FetchedFile[];
-  /** A tabbed Doc’s directory entry, which has no file (ticket 37). */
+  /** A tabbed Doc’s directory entry, which has no file (#37). */
   entries: IndexEntry[];
 }
 
 /**
  * One walked file as the files it becomes: the document itself — one file per
- * tab when the Doc has several (MANUAL §6, ticket 37) — and, on a root with
+ * tab when the Doc has several (MANUAL §6, #37) — and, on a root with
  * `comments: true`, a comment sidecar per tab file that has an open thread or a
  * pending suggestion (MANUAL §4, §6).
  */
@@ -443,7 +443,7 @@ async function toFiles(
     return { files, entries: [directoryEntry(context.directory, file)] };
   };
 
-  // With comments off, a Doc costs what it did before ticket 17: its body when
+  // With comments off, a Doc costs what it did before #17: its body when
   // it changed, and not one request more (MANUAL §7).
   if (!comments) {
     // A document that did not change downloads nothing at all, images
@@ -462,7 +462,7 @@ async function toFiles(
   return tabbedFiles(await readWithDiscussions(), threadList);
 
   /**
-   * The read a sidecar is built from (MANUAL §6, §7, ticket 40).
+   * The read a sidecar is built from (MANUAL §6, §7, #40).
    *
    * The discussion on a suggestion and the exact comment anchors come with the
    * body, under the Developer Preview's `commentsViewMode`, so this costs no
@@ -488,7 +488,7 @@ async function toFiles(
    * One tab and no children is what it always was: `<title>.md`, `id:
    * gdocs:<docId>`, one sidecar, one assets directory. Several tabs is a
    * directory of tab files, each of them a document in its own right — its own
-   * id, title, URL, sidecar and assets (MANUAL §6, ticket 37).
+   * id, title, URL, sidecar and assets (MANUAL §6, #37).
    */
   async function tabbedFiles(
     document: DocsDocument,
@@ -506,7 +506,7 @@ async function toFiles(
     const read = [];
     for (const tab of tabs) {
       const path = multi ? (places.get(tab.id ?? '') ?? file.path) : documentPath(file.path);
-      // A tab file names its tab; a Doc of one tab is the Doc (ticket 37).
+      // A tab file names its tab; a Doc of one tab is the Doc (#37).
       const ref = multi ? tabRef(file.id, tab.id) : file.ref;
       // A document nobody edited keeps the files it has: it is read for its
       // anchors and its suggestions, not for its images (MANUAL §12 phase 2).
@@ -526,7 +526,7 @@ async function toFiles(
           threadList,
           // What the preview answered, when it did: the threads under the same
           // ids Drive gives them, and the discussions on the suggestions
-          // (MANUAL §6, ticket 40).
+          // (MANUAL §6, #40).
           document,
         )
       : read.map((): Thread[] => []);
@@ -577,7 +577,7 @@ async function toFiles(
 }
 
 /**
- * The index entry of a tabbed Doc's directory (ticket 37).
+ * The index entry of a tabbed Doc's directory (#37).
  *
  * A nested tab's depth varies, so the paths alone cannot say where the Doc's
  * directory starts; this is what a push reads to find the Doc, its title and

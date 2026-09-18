@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 40: suggestion discussions and comment anchors
+ * The manual test for #40: suggestion discussions and comment anchors
  * against the real Docs API.
  *
  * The fake model and the recorded fixtures prove the *reading*; only Google can
@@ -90,7 +90,7 @@ try {
   say('write', `the body into tab ${tabId}`);
 
   // A suggestion, exactly as a push under a suggest root makes one: the same
-  // requests, with `writeControl.writeMode: SUGGEST` (MANUAL §7, ticket 33).
+  // requests, with `writeControl.writeMode: SUGGEST` (MANUAL §7, #33).
   const written = onlyTab(await api.getDocument(made.id, 'inline'));
   const at = indexOf(written, FROM);
   await api.batchUpdate(

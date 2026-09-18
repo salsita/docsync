@@ -1,6 +1,6 @@
 /**
  * The Google Calendar adapter: one event in, the files attached to it out
- * (MANUAL §1, §6, ticket 38).
+ * (MANUAL §1, §6, #38).
  *
  * A calendar root is a recurring meeting. What it checks out is not the event —
  * there is no Markdown in a calendar — but the Drive files the calls leave
@@ -176,7 +176,7 @@ async function calendarApi(
 /**
  * The event a ref names and the instances to check out: every occurrence that
  * has already started for a series, and the event itself for one that happens
- * once (ticket 38). Oldest first, so the directories sort by date.
+ * once (#38). Oldest first, so the directories sort by date.
  */
 async function readEvent(
   api: CalendarApi,
@@ -188,7 +188,7 @@ async function readEvent(
   if (event.recurrence === undefined || event.recurrence.length === 0) {
     return { event, instances: [event] };
   }
-  // Past calls only: the future has no notes (ticket 38).
+  // Past calls only: the future has no notes (#38).
   const instances = await withRef(ref, () =>
     api.instances(calendarId, eventId, { timeMax: at.toISOString() }),
   );
@@ -249,7 +249,7 @@ async function walkEvent(
         continue;
       }
       if (isRecording(file.mimeType) || isRecording(attachment.mimeType)) {
-        // Meet recordings are hundreds of megabytes and not text (ticket 38).
+        // Meet recordings are hundreds of megabytes and not text (#38).
         skipped.push({
           id,
           title: file.name,
@@ -269,7 +269,7 @@ async function walkEvent(
         id: one.id,
         title: one.file.name,
         // A Doc of several tabs is a directory, so it is named like one, as it
-        // is under a Drive root (MANUAL §6, ticket 37).
+        // is under a Drive root (MANUAL §6, #37).
         ext: directories.has(one.id) ? '' : extensionFor(one.file, kinds.get(one.id)),
       })),
       namesIn(paths, `${base}${directory}/`),
@@ -307,7 +307,7 @@ function isRecording(mimeType: string | undefined): boolean {
 
 /**
  * What one call's directory is called: when it started, in the event's own time
- * zone, and the instance's title (MANUAL §6, ticket 38). The stamp sorts the
+ * zone, and the instance's title (MANUAL §6, #38). The stamp sorts the
  * calls by date; an all-day call has no time to print.
  */
 function instanceName(instance: CalendarEvent, event: CalendarEvent): string {
@@ -352,7 +352,7 @@ function namesIn(
 /**
  * The ref as the source canonicalises it: the calendar is dropped when it is
  * the signed-in identity's own, since that is what `primary` means and what
- * keeps the ref short (ticket 38).
+ * keeps the ref short (#38).
  */
 async function canonicalRef(ref: SourceRef, provider: CredentialProvider): Promise<SourceRef> {
   const { eventId, calendarId } = splitCalendarRef(ref);
@@ -363,7 +363,7 @@ async function canonicalRef(ref: SourceRef, provider: CredentialProvider): Promi
   return calendarRef(eventId, calendarId === email ? 'primary' : calendarId);
 }
 
-/** Whatever the API said, with the ref it was asked about (ticket 38). */
+/** Whatever the API said, with the ref it was asked about (#38). */
 async function withRef<T>(ref: SourceRef, run: () => Promise<T>): Promise<T> {
   try {
     return await run();

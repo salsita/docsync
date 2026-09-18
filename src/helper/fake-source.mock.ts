@@ -50,7 +50,7 @@ export interface FakeObject {
   /** A page's or Doc's Markdown body, canonical. */
   body?: string;
   /**
-   * A Google Doc's tabs (MANUAL §6, ticket 37). With more than one, the Doc is
+   * A Google Doc's tabs (MANUAL §6, #37). With more than one, the Doc is
    * a directory holding one `.md` per tab instead of a file of its own, and
    * `body` is not used. The naming and the paths come from the adapter's own
    * `tabs.ts`, so this is a store with tabs in it and not a second layout.
@@ -267,7 +267,7 @@ export function createFakeSource(store: FakeStore): Source {
       const ref: SourceRef = { source: object.source, id: object.id };
       const bytes = object.bytes === undefined ? undefined : Buffer.from(object.bytes, 'base64');
 
-      // A Doc of several tabs is a directory of one file per tab (ticket 37).
+      // A Doc of several tabs is a directory of one file per tab (#37).
       if ((object.tabs ?? []).length > 1) {
         const tabs: DocTab[] = (object.tabs ?? []).map((tab) => ({
           id: tab.id,
@@ -464,7 +464,7 @@ export function createFakeSource(store: FakeStore): Source {
     return report;
   }
 
-  /** What one object is, as `docsync resolve` and `docsync add` ask (ticket 10). */
+  /** What one object is, as `docsync resolve` and `docsync add` ask (#10). */
   async function describe(
     ref: SourceRef,
     provider: CredentialProvider,

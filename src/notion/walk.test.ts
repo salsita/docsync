@@ -23,7 +23,7 @@ async function walk(overrides: Partial<Root> = {}, previous?: Map<string, string
 
 describe('walkRoot', () => {
   // A directory root is no longer what `docsync add` writes for a page, but a
-  // manifest written by hand or by an earlier version still has one (ticket 20).
+  // manifest written by hand or by an earlier version still has one (#20).
   it('puts the root page inside a directory root and the children beside it', async () => {
     const { root: page, pages } = await walk();
 
@@ -91,7 +91,7 @@ describe('walkRoot', () => {
     expect(page.id).toBe(ROOT_ID);
     expect(page.ref).toEqual({ source: 'notion', id: ROOT_ID });
     expect(page.lastEditedTime).toMatch(/^\d{4}-\d\d-\d\dT/);
-    // The integration itself, since ticket 06's smoke test created a page here.
+    // The integration itself, since #6's smoke test created a page here.
     expect(page.lastEditedBy).toBe('3cf715cb-eb08-81a6-ba7b-0027692af2c9');
   });
 

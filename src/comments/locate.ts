@@ -21,7 +21,7 @@
  * and the start of the next — and then no single block holds the quote. So a
  * second pass matches a run of consecutive blocks, their plain text joined by a
  * space, and answers those blocks joined by a blank line as the quote, with the
- * mark running from inside the first block to inside the last (ticket 34).
+ * mark running from inside the first block to inside the last (#34).
  * Single blocks are tried first, so a quote that fits in one is anchored to it,
  * and the pass is off for Notion, whose comments belong to one block by
  * construction.
@@ -56,7 +56,7 @@ export interface LocateOptions {
   spans?: boolean;
   /**
    * How many occurrences of the quoted text to step over before taking one
-   * (MANUAL §6, ticket 40).
+   * (MANUAL §6, #40).
    *
    * Drive says only what a comment quotes, so the first block holding that text
    * wins; the Docs API says exactly where the anchor is, and the count of
@@ -289,7 +289,7 @@ function match(
 
 /**
  * How many times `quoted` occurs in `text` before the character at `at`
- * (MANUAL §6, ticket 40).
+ * (MANUAL §6, #40).
  *
  * This is the `skip` an exact anchor turns into: the source says which
  * characters of its own body the comment is on, and the body on disk is the
@@ -355,7 +355,7 @@ export function locate(
 
   // An anchored thread knows which occurrence is its own, so the blocks are
   // walked with a budget of occurrences to step over rather than stopping at
-  // the first one (MANUAL §6, ticket 40).
+  // the first one (MANUAL §6, #40).
   const skip = options.skip ?? 0;
   let left = skip;
   for (const block of blocks) {
@@ -370,7 +370,7 @@ export function locate(
 
   // Nothing holds the whole quote, so the selection ran over a block boundary.
   // The needle is looked for once in the text of every block joined by a
-  // space, and the run is exactly the blocks the match covers (ticket 34):
+  // space, and the run is exactly the blocks the match covers (#34):
   // one pass over the body, however long it is and however many threads ask.
   const found = joined.text.indexOf(needle);
   if (found < 0) return undefined;

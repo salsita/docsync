@@ -210,7 +210,7 @@ export function formatPushPreview(plan: PushPlan, uncommitted: number): string {
     }
   }
   // Under no root: a local file. The push lands it on `main` and sends nothing
-  // to any source (§7 step 3, ticket 35).
+  // to any source (§7 step 3, #35).
   for (const path of plan.local) rows.push(['local', path]);
   for (const one of plan.refusals) rows.push(['refused', `${one.path}: ${one.reason}`]);
 
@@ -266,7 +266,7 @@ export function formatResolved(resolved: SourceDescription): string {
   return columns([
     ['ref', formatSourceRef(resolved.ref)],
     // A calendar root is a container, but calling it a folder would be a lie:
-    // what it holds is the calls of one event (ticket 38).
+    // what it holds is the calls of one event (#38).
     [
       'type',
       resolved.ref.source === 'calendar'

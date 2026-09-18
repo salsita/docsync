@@ -187,7 +187,7 @@ describe('createFakeCredentialProvider', () => {
     expect(await provider.accessToken('gdocs')).toBe('ya29.old');
   });
 
-  it('serves a calendar from the Google credential (ticket 38)', async () => {
+  it('serves a calendar from the Google credential (#38)', async () => {
     const provider = createFakeCredentialProvider({ gdocs: google() });
 
     expect(await provider.accessToken('calendar')).toBe('ya29.old');
@@ -198,7 +198,7 @@ describe('createFakeCredentialProvider', () => {
 describe('credentialSourceOf', () => {
   it('maps a calendar to the Google credential, and leaves the others alone', () => {
     // There is no `docsync auth calendar`: one token, one consent screen, and
-    // the Google sign-in covers both (MANUAL §2, ticket 38).
+    // the Google sign-in covers both (MANUAL §2, #38).
     expect(credentialSourceOf('calendar')).toBe('gdocs');
     expect(credentialSourceOf('gdocs')).toBe('gdocs');
     expect(credentialSourceOf('notion')).toBe('notion');

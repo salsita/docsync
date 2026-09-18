@@ -17,7 +17,7 @@ import { blocksToMarkdown } from './notion/to-markdown.js';
 
 /**
  * Prettier's defaults, with `proseWrap` spelled out because it is the one
- * option `docsync init` writes into `.prettierrc` (ticket 10) and the one whose
+ * option `docsync init` writes into `.prettierrc` (#10) and the one whose
  * default we cannot afford to have change under us.
  */
 async function format(markdown: string): Promise<string> {

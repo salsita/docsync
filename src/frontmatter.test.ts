@@ -11,7 +11,7 @@ describe('serializeDocument', () => {
     );
   });
 
-  it('writes url after title when there is one (ticket 27)', () => {
+  it('writes url after title when there is one (#27)', () => {
     expect(
       serializeDocument(
         { id: REF, title: 'Auth', url: 'https://www.notion.so/3cf715cbeb088035b511f0b4f06efbd5' },
@@ -59,7 +59,7 @@ describe('parseDocument', () => {
     expect(parseDocument('Text.\n\n---\nid: notion:x\n---\n').frontmatter).toBeUndefined();
   });
 
-  it('reads url and ignores it: docsync owns it, and writes it again (ticket 27)', () => {
+  it('reads url and ignores it: docsync owns it, and writes it again (#27)', () => {
     const text = serializeDocument(
       { id: REF, title: 'Auth', url: 'https://www.notion.so/3cf715cbeb088035b511f0b4f06efbd5' },
       'Hello.\n',

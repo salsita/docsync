@@ -9,13 +9,13 @@
  * once — so a suggestion becomes the paragraph as it stands and the paragraph
  * as it would read accepted, which is the diff the sidecar prints.
  *
- * Asked with `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED` as well (ticket
- * 40), that same response answers three things Drive cannot: the comment
- * threads under the ids Drive gives them, the *discussion* on each suggestion —
- * the replies under its card, which `comments.list` does not return at all —
- * and, per tab, where each comment is anchored, to the character. It is a
- * Developer Preview parameter, so every one of them is optional here and the
- * Drive threads are what a checkout without the preview is built from.
+ * Asked with `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED` as well (#40), that
+ * same response answers three things Drive cannot: the comment threads under
+ * the ids Drive gives them, the *discussion* on each suggestion — the replies
+ * under its card, which `comments.list` does not return at all — and, per tab,
+ * where each comment is anchored, to the character. It is a Developer Preview
+ * parameter, so every one of them is optional here and the Drive threads are
+ * what a checkout without the preview is built from.
  *
  * Pure: recorded JSON and a body in, threads out. No requests, no clock.
  */
@@ -193,7 +193,7 @@ function acceptedIn(block: Block, id: string): string {
 
 /**
  * The pending suggestions of a document, one thread per suggestion id
- * (MANUAL §6, ticket 34).
+ * (MANUAL §6, #34).
  *
  * A suggestion is one id in the Docs API and one card in Docs, tagged on every
  * run it inserted or deleted — and those runs can sit in several paragraphs.
@@ -292,7 +292,7 @@ export function threadsOf(
 
 /**
  * What one read with `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED` adds
- * (MANUAL §6, ticket 40).
+ * (MANUAL §6, #40).
  *
  * A `DocsDocument` is one of these; the fields are absent when the read did not
  * ask for them, and absent when the document has none — which is why every
@@ -324,11 +324,11 @@ function postsOf(posts: readonly (CommentPost | undefined)[]): Entry[] {
 
 /**
  * One tab's text as the Markdown body has it, with the live indices kept
- * (MANUAL §6, ticket 40).
+ * (MANUAL §6, #40).
  *
  * A comment anchor's ranges are indices into the tab as the API answers it,
  * suggested insertions and all; the body on disk is the same text *without*
- * them (ticket 16). So the inserted runs are left out here and the runs that
+ * them (#16). So the inserted runs are left out here and the runs that
  * remain carry where they start in the document and where they land in this
  * string, which is what turns a range into a piece of the body.
  */
@@ -454,14 +454,14 @@ function discussed(thread: Thread, discussion: SuggestionThread | undefined): Th
   };
 }
 
-/** One tab of a Doc, as a sidecar is built for it (MANUAL §6, ticket 37). */
+/** One tab of a Doc, as a sidecar is built for it (MANUAL §6, #37). */
 export interface TabBody {
   doc: DocsDocument;
   body: string;
 }
 
 /**
- * The threads of a Doc, split across its tabs (MANUAL §6, tickets 37 and 40).
+ * The threads of a Doc, split across its tabs (MANUAL §6, #37 and #40).
  *
  * With the preview's `comments[]` in hand, a thread is placed by its anchor:
  * the tab whose `commentAnchors` holds the id, and inside it the exact

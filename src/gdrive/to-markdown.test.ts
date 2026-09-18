@@ -179,7 +179,7 @@ describe('text runs', () => {
       documentToMarkdown(doc([para([run('a'), run(' b ', { italic: true }), run('c\n')])])),
     ).toBe('a _b_ c\n');
     // The spaces the run sheds are at the block's edge, so they go too
-    // (ticket 30).
+    // (#30).
     expect(documentToMarkdown(doc([para([run('   ', { bold: true }), run('x\n')])]))).toBe('x\n');
     // Inside the block they are the block's own text.
     expect(
@@ -196,7 +196,7 @@ describe('text runs', () => {
     expect(documentToMarkdown(doc([para([{ textRun: {} }, run('after\n')])]))).toBe('after\n');
   });
 
-  it('a styled run of nothing but whitespace goes out unstyled (ticket 30)', () => {
+  it('a styled run of nothing but whitespace goes out unstyled (#30)', () => {
     // A bold line break is not a thing: `**\n**` is what the edge-space rule
     // used to leave behind, and the writer then escaped it.
     expect(
@@ -216,7 +216,7 @@ describe('text runs', () => {
   });
 });
 
-describe('the edges of a block (ticket 30)', () => {
+describe('the edges of a block (#30)', () => {
   it('trims a space at the very start and the very end of a block', () => {
     expect(
       documentToMarkdown(
@@ -259,7 +259,7 @@ describe('the edges of a block (ticket 30)', () => {
   });
 });
 
-describe('a line break beside a run boundary (ticket 42)', () => {
+describe('a line break beside a run boundary (#42)', () => {
   // Docs splits a run wherever an edit or a style change began, so a run that
   // ends in a vertical tab is the ordinary shape, not an exotic one.
   it('escapes what follows a line break at a run boundary', () => {
@@ -374,7 +374,7 @@ describe('lists', () => {
 
   it('writes a checklist as unchecked task items', () => {
     const document = doc([item('Unchecked'), item('Checked')], { lists: list(CHECKLIST) });
-    // The Docs API does not report which box is ticked (ticket 07 Outcome), so
+    // The Docs API does not report which box is ticked (#7 Outcome), so
     // every checklist item comes back unchecked.
     expect(documentToMarkdown(document)).toBe('- [ ] Unchecked\n- [ ] Checked\n');
   });
@@ -604,7 +604,7 @@ describe('the recorded documents', () => {
   //
   // The unit is the tab, not the reply: a Doc with several tabs carries no
   // top-level body at all, and each of its tabs converts on its own (MANUAL
-  // §6, ticket 37). A Doc with one tab has the snapshot it always had.
+  // §6, #37). A Doc with one tab has the snapshot it always had.
   for (const id of DOC_IDS) {
     for (const tab of flattenTabs(fixtureDocument(id))) {
       it(`converts ${id}${tab.id === undefined ? '' : ` tab ${tab.title}`}`, () => {

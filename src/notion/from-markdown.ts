@@ -486,7 +486,7 @@ function calloutMarker(
 }
 
 /**
- * A fence. No language means Notion's `plain text` (ticket 05); a fence whose
+ * A fence. No language means Notion's `plain text` (#5); a fence whose
  * info line carries meta puts it back together, since that is what the
  * language was called on the way out.
  */

@@ -1,7 +1,7 @@
 /**
  * The only part of the calendar adapter that talks to Google Calendar.
  *
- * Two methods of one endpoint (ticket 38): `events.get` reads the object a root
+ * Two methods of one endpoint (#38): `events.get` reads the object a root
  * names, and `events.instances` lists the occurrences of a recurring one. That
  * is all a calendar root needs, because what it checks out is not the event but
  * the Drive files attached to it, and those are the Drive adapter's business.
@@ -18,7 +18,7 @@ export const CALENDAR_ENDPOINT = 'https://www.googleapis.com/calendar/v3';
 const PAGE_SIZE = 250;
 
 /**
- * What a Google sign-in made before ticket 38 turns into: the stored token
+ * What a Google sign-in made before #38 turns into: the stored token
  * carries the Drive and Docs scopes and not the Calendar one, and Google says
  * so with a 403. The message is the one thing to do about it (MANUAL §2).
  */
@@ -90,7 +90,7 @@ export type CalendarApiOptions = GoogleHttpOptions;
 /**
  * The API a real fetch talks to. `accessToken` is the *Google* token: the
  * Calendar scope is part of the Google sign-in, so there is no calendar
- * credential (MANUAL §2, ticket 38).
+ * credential (MANUAL §2, #38).
  */
 export function createCalendarApi(
   accessToken: string,

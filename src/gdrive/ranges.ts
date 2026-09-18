@@ -1,5 +1,5 @@
 /**
- * Where each block of the base version lives in the live document (ticket 16).
+ * Where each block of the base version lives in the live document (#16).
  *
  * A Google Doc has no block ids. What it has is indices — UTF-16 code units,
  * counted from the start of a segment — and every `batchUpdate` request names
@@ -115,7 +115,7 @@ export function readLive(doc: DocsDocument, options: ConvertOptions = {}): LiveD
  * a line CommonMark takes for an HTML block and the flattening drops, so the
  * live list gains a block the base list has not, and from there on every block
  * is addressed one place early. That is the two-and-three-paragraph jump of
- * ticket 41; `hoist` below is an earlier, narrower patch on the same wound.
+ * #41; `hoist` below is an earlier, narrower patch on the same wound.
  *
  * So the mapping is made rather than assumed: a longest common subsequence
  * over the two lists' identities, and a base block with nothing to match is

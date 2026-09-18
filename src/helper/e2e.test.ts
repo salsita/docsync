@@ -387,7 +387,7 @@ describe.skipIf(process.platform === 'win32')(
       w.git(co, 'pull', '--quiet');
       // Nothing claims `Files/` any more, so its files are local: they stay
       // until someone deletes them, which is what `docsync remove` does
-      // (MANUAL §5, ticket 35). Only the index lost the three documents.
+      // (MANUAL §5, #35). Only the index lost the three documents.
       expect(w.files(co)).toEqual([
         '.docsync/index.yaml',
         'Files/Plan.md',
@@ -624,7 +624,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(w.files(co)).toContain('Files/Plan.md');
 
       // The Doc gains a second tab, as a Gemini notes Doc always has
-      // (MANUAL §6, ticket 37).
+      // (MANUAL §6, #37).
       const state = w.store.load();
       editObject(state, PLAN, {
         tabs: [

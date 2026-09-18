@@ -4,7 +4,7 @@
  * helper exactly as it does for `fetch`.
  *
  * On a branch other than `main` there is no merge: `runFetching` fetches,
- * fast-forwards `main`, and says how to bring it into the branch (ticket 29).
+ * fast-forwards `main`, and says how to bring it into the branch (#29).
  */
 import type { Context } from '../context.js';
 import { type FetchOptions, runFetching } from './fetch.js';

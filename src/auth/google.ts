@@ -11,7 +11,7 @@
  * access token and no way to renew it.
  *
  * The Drive scope is the full one: `drive.file` only ever sees files the app
- * itself created, which cannot list a folder the user picked (ticket 04).
+ * itself created, which cannot list a folder the user picked (#4).
  */
 import * as client from 'openid-client';
 import { AuthError } from './errors.js';
@@ -19,14 +19,14 @@ import type { AuthDeps, Credential, Identity, OAuthApp } from './types.js';
 
 export const GOOGLE_ISSUER = 'https://accounts.google.com';
 
-/** Exactly the scopes docsync needs, and no more (ticket 04). */
+/** Exactly the scopes docsync needs, and no more (#4). */
 export const GOOGLE_SCOPES = [
   'openid',
   'email',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/documents',
   // A calendar root checks out the Drive files attached to an event, so reading
-  // events is all it needs and all it asks for (MANUAL §2, ticket 38).
+  // events is all it needs and all it asks for (MANUAL §2, #38).
   'https://www.googleapis.com/auth/calendar.events.readonly',
 ].join(' ');
 

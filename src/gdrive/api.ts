@@ -1,7 +1,7 @@
 /**
  * The only part of the Drive adapter that talks to Google.
  *
- * Two endpoints, plain `fetch`, no SDK (ticket 07): Drive v3 lists, downloads
+ * Two endpoints, plain `fetch`, no SDK (#7): Drive v3 lists, downloads
  * and exports files, Docs v1 reads a Google Doc's document model. Everything
  * above it (`walk.ts`, `to-markdown.ts`) sees plain recorded JSON, which is why
  * those modules are tested entirely on the fixtures in `__fixtures__/` and
@@ -31,7 +31,7 @@ export const FOLDER_MIME = 'application/vnd.google-apps.folder';
 export const DEFAULT_UPLOAD_MIME = 'application/octet-stream';
 
 /**
- * The `files.list` field mask (ticket 07 decisions): identity, the change
+ * The `files.list` field mask (#7 decisions): identity, the change
  * detection metadata, and who to credit the fetch commit to. Asking for less
  * than `*` keeps the listing small and the fixtures readable.
  */
@@ -49,7 +49,7 @@ export interface DriveFile {
   id: string;
   name: string;
   mimeType: string;
-  /** ISO 8601. The change detector (ticket 07 decisions). */
+  /** ISO 8601. The change detector (#7 decisions). */
   modifiedTime?: string;
   lastModifyingUser?: DriveUser;
   /** Binaries only; Google's own types have no checksum. */
@@ -174,7 +174,7 @@ export interface InlineObject {
 }
 
 /**
- * What one tab is called and where it sits (MANUAL §6, ticket 37).
+ * What one tab is called and where it sits (MANUAL §6, #37).
  *
  * `tabId` is immutable and always starts with `t.`; `index` orders a tab among
  * its siblings, and `parentTabId` is empty on a root-level tab.
@@ -188,7 +188,7 @@ export interface TabProperties {
 }
 
 /**
- * Where one comment sits in a tab, exactly (MANUAL §6, ticket 40).
+ * Where one comment sits in a tab, exactly (MANUAL §6, #40).
  *
  * `comments[].anchorId` names one of these, and the ranges are indices into
  * *this* tab's body — which is what says both which tab a thread belongs to and
@@ -222,7 +222,7 @@ export interface PostAuthor {
 }
 
 /**
- * One post of a comment or a suggestion discussion (MANUAL §6, ticket 40).
+ * One post of a comment or a suggestion discussion (MANUAL §6, #40).
  *
  * `content` is the plain text docsync prints; `contentHtml` says the same thing
  * in markup docsync has no use for. A post that only resolved a thread or
@@ -258,7 +258,7 @@ export interface CommentThread {
 }
 
 /**
- * One suggestion's discussion (MANUAL §6, ticket 40): the replies under its
+ * One suggestion's discussion (MANUAL §6, #40): the replies under its
  * card in Docs, which the Drive comments API does not return at all.
  *
  * The head post is the suggestion itself and has no content; `summaryText` is
@@ -284,8 +284,8 @@ export interface Tab {
 /**
  * A Google Doc, as `documents.get` answers it.
  *
- * With `includeTabsContent=true` — which is how docsync always asks (ticket
- * 37) — the contents are under `tabs` and `body` is absent. The top-level
+ * With `includeTabsContent=true` — which is how docsync always asks (#37) —
+ * the contents are under `tabs` and `body` is absent. The top-level
  * fields are still spelled here because a document *view* of one tab has the
  * same shape (`tabs.ts`), and because recorded fixtures taken before the flag
  * carry them.
@@ -301,7 +301,7 @@ export interface DocsDocument {
   tabs?: Tab[];
   /**
    * The document's comment threads, only with
-   * `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED` (MANUAL §6, ticket 40). A
+   * `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED` (MANUAL §6, #40). A
    * document with none leaves the field out, which is also what a read that
    * did not ask for them looks like.
    */
@@ -321,7 +321,7 @@ export type DocsWriteRequest = Record<string, unknown>;
  */
 export interface DocsWriteReply {
   createFootnote?: { footnoteId?: string };
-  /** The tab `addDocumentTab` made, which is where its id comes from (ticket 37). */
+  /** The tab `addDocumentTab` made, which is where its id comes from (#37). */
   addDocumentTab?: { tabProperties?: TabProperties };
   /**
    * The suggestion this request became, in suggesting mode (MANUAL §7). A
@@ -400,7 +400,7 @@ export interface DriveComment {
 /** What `documents.get` does with pending suggestions. */
 export type SuggestionsMode = 'preview' | 'inline';
 
-/** What else one `documents.get` asks for (MANUAL §7, ticket 40). */
+/** What else one `documents.get` asks for (MANUAL §7, #40). */
 export interface GetDocumentOptions {
   /**
    * `commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED`: the comment threads, the
@@ -412,7 +412,7 @@ export interface GetDocumentOptions {
 
 /**
  * The line a fetch prints, once, when the preview refused the parameter and the
- * sidecar fell back to Drive's comment threads (MANUAL §7, ticket 40).
+ * sidecar fell back to Drive's comment threads (MANUAL §7, #40).
  */
 export const COMMENTS_PREVIEW_HINT =
   'the discussion on a suggestion and exact comment anchors need the Google Workspace Developer Preview Program on the project that owns the OAuth client; falling back to Drive comment threads';
@@ -454,10 +454,10 @@ export interface GDriveApi {
    * A Google Doc's document model. `mode` is what to do with pending
    * suggestions: leave them out, which is what a fetch wants, or bring them
    * inline, which is what a push needs to derive the version it diffs from
-   * (MANUAL §7, ticket 16).
+   * (MANUAL §7, #16).
    *
    * `options.comments` adds the discussions and the anchors a sidecar is built
-   * from, in the same reply and at no extra request (MANUAL §6, ticket 40).
+   * from, in the same reply and at no extra request (MANUAL §6, #40).
    */
   getDocument(
     id: string,
@@ -522,7 +522,7 @@ export type GDriveApiOptions = GoogleHttpOptions;
  */
 export function createGDriveApi(accessToken: string, options: GDriveApiOptions = {}): GDriveApi {
   // Bearer token, retries and the error text are the same for every Google
-  // API, and the calendar adapter signs its requests the same way (ticket 38).
+  // API, and the calendar adapter signs its requests the same way (#38).
   const { call, json, bytes } = createGoogleHttp(accessToken, options);
 
   /** A request whose body is JSON, which is every write but an upload. */
@@ -550,7 +550,7 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
           q: `'${id}' in parents and trashed=false`,
           fields: `nextPageToken,files(${FILE_FIELDS})`,
           pageSize: '100',
-          // Shared drives must work from day one (ticket 07 decisions).
+          // Shared drives must work from day one (#7 decisions).
           supportsAllDrives: 'true',
           includeItemsFromAllDrives: 'true',
         });
@@ -573,13 +573,13 @@ export function createGDriveApi(accessToken: string, options: GDriveApiOptions =
       // Suggestions are never part of the body (MANUAL §6), so a fetch leaves
       // them out at the source rather than filtering them out afterwards. A
       // push asks for them inline: it has to know they are there, and it has
-      // to see the document as it is to address it (ticket 16).
+      // to see the document as it is to address it (#16).
       const view = mode === 'inline' ? 'SUGGESTIONS_INLINE' : 'PREVIEW_WITHOUT_SUGGESTIONS';
-      // Always with the tabs (ticket 37): asked without the flag, the API
+      // Always with the tabs (#37): asked without the flag, the API
       // answers the first tab as the legacy `body` and says nothing about the
       // rest, so a Gemini notes Doc would arrive as its "Quick notes" alone.
       // The discussions and the anchors ride on the read a sidecar already
-      // makes (MANUAL §6, ticket 40); the default is
+      // makes (MANUAL §6, #40); the default is
       // `COMMENTS_VIEW_MODE_OMITTED`, so nothing is asked for unless it is
       // needed, and a project outside the preview never sees the parameter.
       const discussions =

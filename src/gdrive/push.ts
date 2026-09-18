@@ -2,7 +2,7 @@
  * One root's diff, applied to Drive (MANUAL §7, §8).
  *
  * The mirror of `fetchRoot`, and the same shape as the Notion `pushRoot` so
- * that ticket 09 treats both alike: files in, a report out, no disk and no git.
+ * that #9 treats both alike: files in, a report out, no disk and no git.
  * What is Drive's own is the shape of the tree — a root is a folder, a path is
  * a place in it — so this module resolves the folder a new file belongs in,
  * creating the ones the path implies and saying so, and turns a path change
@@ -110,7 +110,7 @@ async function pushWith(
   }
 
   /**
-   * The directories that are a Doc (MANUAL §6, ticket 37), by the Doc's id.
+   * The directories that are a Doc (MANUAL §6, #37), by the Doc's id.
    *
    * The index says so — a tabbed Doc has an entry for its directory — and so
    * does this push, when after its own renames a file directly in a directory
@@ -226,7 +226,7 @@ async function pushWith(
 
   /**
    * Pass zero: the tabs of a Doc with several of them, and the directory that
-   * *is* that Doc (MANUAL §6, §7, ticket 37).
+   * *is* that Doc (MANUAL §6, §7, #37).
    *
    * Nothing here touches the Drive folder tree: a tab is inside the Doc, so a
    * new tab file is `addDocumentTab` and not a new Doc, a retitle is
@@ -254,7 +254,7 @@ async function pushWith(
 
     if (ref === undefined) {
       // A new `.md` with frontmatter and no id inside a tabbed Doc's directory
-      // is a new tab; the id arrives with the post-push fetch (ticket 37).
+      // is a new tab; the id arrives with the post-push fetch (#37).
       if (change.text === undefined) {
         throw new PushError(
           'a Google Doc holds tabs, not files; only a .md file with frontmatter is a tab of it',
@@ -319,7 +319,7 @@ async function pushWith(
   }
 
   /**
-   * A tabbed Doc's directory: it is the Doc (ticket 37). Renaming it retitles
+   * A tabbed Doc's directory: it is the Doc (#37). Renaming it retitles
    * the Doc, moving it moves the Doc between Drive folders, and deleting the
    * whole of it — every tab file gone — trashes the Doc (MANUAL §8).
    */
@@ -463,7 +463,7 @@ async function pushWith(
     if (document === undefined) continue;
 
     // The object lives in one tab, and so do the indices that address it
-    // (ticket 37): the Doc is read, and the tab the document file names is the
+    // (#37): the Doc is read, and the tab the document file names is the
     // one the two requests below are sent to.
     const { docId, tabId } = splitGDocsRef(document.src);
     const live = await api.getDocument(docId, 'inline');
@@ -516,7 +516,7 @@ async function pushWith(
  *
  * The insert's own failure comes first, with what was left behind appended to
  * it: a push that leaves a file shared on Drive has to say so, in the one
- * message somebody will read (the owner's condition on this ticket).
+ * message somebody will read (the owner's condition on #14).
  */
 function refuseIfLeftBehind(
   outcome: { leftBehind: string[]; error?: unknown },
@@ -554,7 +554,7 @@ async function patchDocument(
   progress: Progress,
   suggest = false,
   // The tab this patch is addressed to, when the caller has already read the
-  // document to find it (ticket 37). Absent for a Doc that is one file, whose
+  // document to find it (#37). Absent for a Doc that is one file, whose
   // one tab is read here.
   tab?: { document: DocsDocument; id: string | undefined },
 ): Promise<{
@@ -580,7 +580,7 @@ async function patchDocument(
     }
   }
   // The document as one tab, which is what the dialect describes and what
-  // every request addresses (MANUAL §6, ticket 37). A Doc of one tab still has
+  // every request addresses (MANUAL §6, #37). A Doc of one tab still has
   // a tab id, and the push names it: a request without one lands in the first
   // tab, which is only the right tab by accident.
   const document = tab?.document ?? (await api.getDocument(id, 'inline'));

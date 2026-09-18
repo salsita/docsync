@@ -1,8 +1,8 @@
 /**
  * `.docsync/index.yaml`: what is checked out, by path (MANUAL §6).
  *
- * Only the type for now. Ticket 09 writes and reads the file; ticket 05 and
- * ticket 07 produce the entries, which is why the shape lives here rather than
+ * Only the type for now. #9 writes and reads the file; #5 and
+ * #7 produce the entries, which is why the shape lives here rather than
  * inside either adapter.
  */
 import type { SourceRef } from './source-ref.js';

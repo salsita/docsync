@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 06: create, replace, rename and archive, against
+ * The manual test for #6: create, replace, rename and archive, against
  * the real Notion API.
  *
  * It never touches the fixture pages. It makes **one** new page, "Docsync write
@@ -46,7 +46,7 @@ const api = createNotionApi(createNotionClient(await provider.accessToken('notio
 const writer = createNotionWriter(api);
 
 // The body to create the page with: the Blocks page, converted to Markdown and
-// straight back, which is the whole of ticket 06 in one line.
+// straight back, which is the whole of #6 in one line.
 const source = await api.blockTree(BLOCKS_ID);
 const markdown = blocksToMarkdown(source, {});
 const blocks = markdownToBlocks(markdown);

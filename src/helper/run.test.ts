@@ -174,7 +174,7 @@ describe('createCommands', () => {
   it('answers ok, a refusal and an error per refspec', async () => {
     const served = (await repo.git.revParse('refs/docsync/origin/main')) ?? '';
     repo.run('checkout', '--quiet', '-B', 'main', served);
-    // A file under no root is local and pushes fine (ticket 35); the index is
+    // A file under no root is local and pushes fine (#35); the index is
     // the one path the helper still refuses to take from a commit.
     writeFileSync(join(repo.root, '.docsync', 'index.yaml'), '[]\n');
     repo.run('add', '.docsync/index.yaml');

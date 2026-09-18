@@ -1,11 +1,11 @@
 /**
- * The manual test for ticket 41: a suggesting push onto a Doc that already
+ * The manual test for #41: a suggesting push onto a Doc that already
  * carries pending suggestions, against the real Docs API.
  *
  * The fake model proves the planner. Only Google can say what the API does with
  * two suggestions over one word, and what it does when a suggested deletion is
- * asked to cover somebody else's suggested insertion — the request this ticket
- * says the planner must never send, and which nobody had ever tried. So this
+ * asked to cover somebody else's suggested insertion — the request #41 says
+ * the planner must never send, and which nobody had ever tried. So this
  * makes a Doc of its own inside the fixture folder "Docsync test" — nothing
  * that is already there is written or renamed — and checks:
  *
@@ -23,7 +23,7 @@
  *
  * **One identity.** The script signs in once, so the "other author" is this
  * same account suggesting in an earlier batch. That is not a shortcut around
- * the case: ticket 41 settled that an edit over text the same account already
+ * the case: #41 settled that an edit over text the same account already
  * suggested is the same case as somebody else's — a second competing
  * suggestion, not a rewrite of the first — so one identity is a faithful
  * stand-in, and the API stacks ids by suggestion, not by author.
@@ -233,8 +233,8 @@ try {
       struck.map((text) => JSON.stringify(text)).join(' '),
     ) && ok;
   // The client's own words are still exactly what they were: a suggested
-  // insertion, proposed and not struck. That is the fault this ticket is
-  // about — they used to be deleted with the paragraph around them.
+  // insertion, proposed and not struck. That is the fault #41 is about —
+  // they used to be deleted with the paragraph around them.
   const theirWords = runs(after).find((run) => run.text === 'three');
   ok =
     check(
@@ -251,8 +251,8 @@ try {
       words.includes('three') && words.some((word) => word.startsWith('two (2) years')),
       words.join(' | '),
     ) && ok;
-  // Whose id each half ends up under is the API's business, and it is not the
-  // ticket's guess: Docs neither stacks a second deletion id on a run somebody
+  // Whose id each half ends up under is the API's business, and it is not
+  // #41's guess: Docs neither stacks a second deletion id on a run somebody
   // already proposes deleting nor keeps this push's deletion under its own id
   // — it folds a suggestion that touches an existing one into that one
   // (probed 2026-09-16, and printed below so the run says what it did).
@@ -283,7 +283,7 @@ try {
 
   /* --- 6. the probe ------------------------------------------------------ */
 
-  // What this ticket says the planner may never send, sent by hand once so the
+  // What #41 says the planner may never send, sent by hand once so the
   // answer is on the record: a suggested deletion over another suggestion's
   // inserted words.
   const target = runs(onlyTab(await api.getDocument(made.id, 'inline'))).find(

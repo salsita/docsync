@@ -1,5 +1,5 @@
 /**
- * The manual test for ticket 16: a diff-based push against the real Docs API.
+ * The manual test for #16: a diff-based push against the real Docs API.
  *
  * It never touches the fixture folder "Docsync test", which is READ ONLY. It
  * makes one folder of its own beside it, in the Drive root, and one Doc in
@@ -105,7 +105,7 @@ const token = await provider.accessToken('gdocs');
 const api = createGDriveApi(token);
 const writer = createGDriveWriter(api);
 
-/** The comments endpoint, which the adapter does not wrap until ticket 17. */
+/** The comments endpoint, which the adapter does not wrap until #17. */
 async function comments(fileId: string, body?: unknown) {
   const response = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}/comments?fields=*`,

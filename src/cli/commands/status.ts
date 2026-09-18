@@ -6,7 +6,7 @@
  * much of it has moved at the source since. The last part is `changedSince`,
  * which reads metadata and downloads nothing.
  *
- * Then `To push:`, the preview of ticket 31: the committed diff `docsync push`
+ * Then `To push:`, the preview of #31: the committed diff `docsync push`
  * would send, run through the very code the push uses to sort it, so that a
  * person can see what a push would do to real documents — refusals included —
  * before running one. It costs no network at all.

@@ -112,7 +112,7 @@ describe('getDocument', () => {
 
   it('always asks for the tabs, since asking is the only way to hear of them', async () => {
     // Without the flag the API answers the first tab as the legacy `body` and
-    // says nothing about the rest, which is the bug of ticket 37 (MANUAL §6).
+    // says nothing about the rest, which is the bug of #37 (MANUAL §6).
     const { api, calls } = apiWith([{ body: { documentId: 'd' } }, { body: { documentId: 'd' } }]);
 
     await api.getDocument('d');
@@ -120,7 +120,7 @@ describe('getDocument', () => {
     for (const call of calls) expect(call).toContain('includeTabsContent=true');
   });
 
-  it('asks for the discussions when the sidecar needs them (ticket 40)', async () => {
+  it('asks for the discussions when the sidecar needs them (#40)', async () => {
     const { api, calls } = apiWith([{ body: { documentId: 'd' } }]);
 
     await api.getDocument('d', 'inline', { comments: true });
@@ -140,7 +140,7 @@ describe('getDocument', () => {
     for (const call of calls) expect(call).not.toContain('commentsViewMode');
   });
 
-  it('answers the discussions and the anchors the reply carries (ticket 40)', async () => {
+  it('answers the discussions and the anchors the reply carries (#40)', async () => {
     const answer = {
       documentId: 'd',
       comments: [
@@ -206,7 +206,7 @@ describe('getDocument', () => {
   });
 });
 
-describe('commentsRefused (ticket 40)', () => {
+describe('commentsRefused (#40)', () => {
   it('is true for the refusal a project outside the preview gets', async () => {
     const { api } = apiWith([
       { status: 400, body: { error: { message: 'Invalid value at commentsViewMode' } } },

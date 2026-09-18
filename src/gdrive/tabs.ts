@@ -1,5 +1,5 @@
 /**
- * A Google Doc's tabs, flattened (MANUAL §6, ticket 37).
+ * A Google Doc's tabs, flattened (MANUAL §6, #37).
  *
  * A Doc can hold several tabs, nested up to three levels, and each one is a
  * full document body with its own lists, inline objects and footnotes — Gemini
@@ -93,13 +93,13 @@ function viewOf(doc: DocsDocument, tab: Tab): DocsDocument {
     ...(content.footnotes === undefined ? {} : { footnotes: content.footnotes }),
     ...(content.inlineObjects === undefined ? {} : { inlineObjects: content.inlineObjects }),
     // A comment anchor's ranges are indices into *this* tab's body, so they
-    // travel with the tab (MANUAL §6, ticket 40).
+    // travel with the tab (MANUAL §6, #40).
     ...(content.commentAnchors === undefined ? {} : { commentAnchors: content.commentAnchors }),
   };
 }
 
 /**
- * One tab of a document, as a document (MANUAL §6, ticket 37).
+ * One tab of a document, as a document (MANUAL §6, #37).
  *
  * `undefined` is the whole document, which is what a Doc of one tab is; an id
  * no tab has answers the document too, rather than nothing, so that a read of

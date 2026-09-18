@@ -90,7 +90,7 @@ describe('every recorded Doc', () => {
       // The derived body is the body the fetch writes: no suggestions in these.
       expect(live.markdown).toBe(documentToMarkdown(doc));
       // Base block n is live block n: the guarantee the whole module exists
-      // for, and the one ticket 41 made a fact rather than an assumption.
+      // for, and the one #41 made a fact rather than an assumption.
       expect(shape(live.blocks.map((one) => one?.block as never))).toEqual(
         shape(flattenBlocks(parseMarkdown(live.markdown))),
       );

@@ -56,7 +56,7 @@ const INTRAWORD_UNDERSCORE = /(?<=[\p{L}\p{N}])\\_(?=[\p{L}\p{N}])/gu;
  * `mdast-util-to-markdown` escapes every `_` it writes in phrasing. That is
  * safe but not canonical: the owner pushes `ALUMINUM_FENCE-25-26-WEB.pdf`, the
  * fetch after the push writes `ALUMINUM\_FENCE-25-26-WEB.pdf`, and a change
- * nobody made lands in the diff (ticket 32). Both spellings parse to the same
+ * nobody made lands in the diff (#32). Both spellings parse to the same
  * text and both are stable under Prettier, so only the churn goes.
  *
  * The escape stays wherever the underscore is *not* unambiguously inside a
@@ -147,7 +147,7 @@ function isEmptyText(node: unknown): boolean {
  * after a line break goes out unescaped and re-parses as a heading. A source
  * hands us the shape constantly, since it splits a run wherever an edit or a
  * style change began, so a run ending in a line break leaves an empty node
- * behind it (ticket 42). The adapters do not emit one any more; this is the net
+ * behind it (#42). The adapters do not emit one any more; this is the net
  * under them and under whatever adapter comes next.
  *
  * The copy is not politeness: `readLive` (`gdrive/ranges.ts`) stringifies a

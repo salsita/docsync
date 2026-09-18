@@ -53,7 +53,7 @@ async function createDrive(): Promise<FakeDrive> {
       modifiedTime: '2026-09-01T11:00:00Z',
     },
   ]);
-  // The notes Doc is what Gemini writes: several tabs (ticket 37).
+  // The notes Doc is what Gemini writes: several tabs (#37).
   const writer = createGDriveWriter(api);
   await writer.writeTab(NOTES, 't.0', parseMarkdown('The quick notes.\n'));
   const full = await writer.addTab(NOTES, 'Full notes');
@@ -123,7 +123,7 @@ describe('fetchRoot', () => {
 
     // The tabbed notes Doc is a directory of tabs inside the call's directory,
     // and the brief is a file; the call with nothing to pull has no directory
-    // at all, and the call still to come is not listed (ticket 38).
+    // at all, and the call still to come is not listed (#38).
     expect(result.files.map((file) => file.path).sort()).toEqual([
       `${FIRST}/Contracts review - Notes by Gemini/Contracts review - Notes by Gemini.md`,
       `${FIRST}/Contracts review - Notes by Gemini/Full notes.md`,
@@ -139,7 +139,7 @@ describe('fetchRoot', () => {
     expect(notes?.text).toContain(`id: gdocs:${NOTES}#`);
     expect(notes?.text).toContain('The full notes.');
     // The Doc's directory has an entry of its own, as under a Drive root
-    // (ticket 37): no entry names the instance, whose name is derived.
+    // (#37): no entry names the instance, whose name is derived.
     expect(result.entries.map((entry) => entry.path)).toContain(
       `${FIRST}/Contracts review - Notes by Gemini/`,
     );

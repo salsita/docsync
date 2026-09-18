@@ -66,7 +66,7 @@ export interface GDriveWriter {
   /** A new Doc under a folder, with its body. Answers the new file's id. */
   createDoc(parentId: string, name: string, tree: Root): Promise<CreatedDoc>;
   /**
-   * A new tab of a Doc (MANUAL §6, ticket 37). `parentTabId` is the tab whose
+   * A new tab of a Doc (MANUAL §6, #37). `parentTabId` is the tab whose
    * directory the new file sits in. Answers the id the API gave the tab, which
    * is the only place it comes from.
    */
@@ -93,7 +93,7 @@ export interface GDriveWriter {
 export interface PatchOptions {
   suggest?: boolean;
   /**
-   * The tab the patch is addressed to (MANUAL §6, ticket 37). The API's rule is
+   * The tab the patch is addressed to (MANUAL §6, #37). The API's rule is
    * that a request with no `tabId` lands in the *first* tab, so a push names
    * the tab on every location and range it sends, single-tab Docs included.
    */
@@ -164,7 +164,7 @@ export function createGDriveWriter(api: GDriveApi): GDriveWriter {
     return { dropped: plan.dropped, batches: 2 };
   }
 
-  /** A batch, addressed to a tab when the caller named one (ticket 37). */
+  /** A batch, addressed to a tab when the caller named one (#37). */
   function send(requests: readonly DocsWriteRequest[], tabId: string | undefined) {
     return tabId === undefined ? [...requests] : inTab(requests, tabId);
   }

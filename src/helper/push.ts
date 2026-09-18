@@ -1,5 +1,5 @@
 /**
- * A push, as the six steps of MANUAL §7 (ticket 09's decisions table).
+ * A push, as the six steps of MANUAL §7 (#9's decisions table).
  *
  * 1. A forced push is refused. 2. A pre-flight fetch: if the source moved
  * since the served commit, the push is refused as if someone had pushed
@@ -80,7 +80,7 @@ export async function pushRef(deps: FetchDeps, request: PushRequest): Promise<Pu
     },
   );
   // A push stops at the first refused path, as it always has; `docsync status`
-  // is what lists them all, without a push (ticket 31).
+  // is what lists them all, without a push (#31).
   const refused = plan.refusals[0];
   if (refused !== undefined) throw new Error(refused.message);
   const documents: PushedDocument[] = [];
@@ -104,7 +104,7 @@ export async function pushRef(deps: FetchDeps, request: PushRequest): Promise<Pu
   await git.updateRef(request.ref, after.commit);
   // The report file is the CLI's only channel: by the time `docsync push`
   // prints, git has interleaved the progress lines above with its own output
-  // (ticket 10).
+  // (#10).
   await deps.report?.push({ at: after.report.at, documents, skipped: after.report.skipped });
   return { ok: true };
 }

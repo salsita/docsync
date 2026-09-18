@@ -13,7 +13,7 @@
  * any test file starts. It used to happen once per test file, into a cache
  * directory per caller, because two builds into one directory would race —
  * which meant `tsc` ran twice and the two real-git files were the slowest
- * things in CI, slow enough to time out under load (ticket 22). A single build
+ * things in CI, slow enough to time out under load (#22). A single build
  * ahead of the workers costs one compile and needs no cache name: `HELPER_BIN`
  * is where it lands, and every caller reads it from there.
  *
@@ -52,7 +52,7 @@ export function buildFakeHelper(): string {
   // What `refreshSkillFiles` reads, at the place it looks for it.
   cpSync(join(PACKAGE_ROOT, 'skill'), join(BUILD, 'skill'), { recursive: true });
   mkdirSync(HELPER_BIN, { recursive: true });
-  // Windows needs .cmd shims and is ticket 12; here a shim is a shell script.
+  // Windows needs .cmd shims and is #12; here a shim is a shell script.
   shim('git-remote-docsync', join(OUT, 'helper', 'fake-helper.mock.js'));
   shim('docsync', join(OUT, 'cli', 'fake-cli.mock.js'));
   return HELPER_BIN;

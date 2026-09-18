@@ -4,8 +4,8 @@
  * Every test here starts from a document the *generator* wrote (the model in
  * `docs-model.mock.ts` applying `from-markdown.ts`), so the indices the patch
  * addresses are the indices a real document would have, and ends at the
- * requests themselves: what is sent, in what order, and — the point of the
- * whole ticket — what is not.
+ * requests themselves: what is sent, in what order, and — the whole point of
+ * #16 — what is not.
  */
 import { describe, expect, it } from 'vitest';
 import { diffBlocks } from '../diff/blocks.js';
@@ -319,7 +319,7 @@ describe('a table', () => {
 
   it('gets a new block before it by splitting the paragraph before it', () => {
     // Docs inserts nothing at a table's own index: the paragraph before the
-    // table lends its newline, as at the end of the body (ticket 33 follow-up).
+    // table lends its newline, as at the end of the body (#33 follow-up).
     const before = `One.\n\n${base}`;
     const next = `One.\n\nTwo.\n\n${base}`;
     const patch = plan(before, next);
@@ -399,7 +399,7 @@ describe('what the API cannot write', () => {
     // The suggestion is named in the report, and the paragraph is patched over
     // the word that changed: the text somebody proposed deleting is still
     // there, so there is nothing here that has to be written around. The
-    // paragraph used to go whole (ticket 41, MANUAL §7).
+    // paragraph used to go whole (#41, MANUAL §7).
     expect(patch.suggestions).toEqual(['suggest.1']);
     expect(kinds(patch.requests)).toEqual(['insertText', 'deleteContentRange']);
   });
@@ -574,7 +574,7 @@ describe('a deleted list item', () => {
   });
 });
 
-describe('a document holding a line break the dialect cannot write (ticket 42)', () => {
+describe('a document holding a line break the dialect cannot write (#42)', () => {
   // Written straight into the model: these paragraphs are exactly the ones no
   // Markdown says, a vertical tab beside a marker and one at a paragraph's end.
   const TEXT = 'text# not a heading\ntext1. not a list\nEdit me.\nends in a break';

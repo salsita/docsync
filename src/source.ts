@@ -2,7 +2,7 @@
  * What a document store looks like from the outside: two functions, and a
  * table from a source name to them.
  *
- * The remote helper (ticket 09) and the CLI (ticket 10) drive Notion and Drive
+ * The remote helper (#9) and the CLI (#10) drive Notion and Drive
  * through this one vocabulary and never learn which is which. The shared
  * shapes — what a fetch answers, what a push takes — live here rather than in
  * either adapter, so that neither module has to import the other and a third
@@ -176,7 +176,7 @@ export interface PushedDocument {
    * Pending suggestions on the paragraphs the push edited, by id (MANUAL §7).
    * Google Docs only: the edit went in beside them as a competing suggestion,
    * so the reviewer has both proposals and picks one. They used to be written
-   * over, which is the first fault ticket 41 fixed.
+   * over, which is the first fault #41 fixed.
    */
   suggestions?: string[];
   /**
@@ -287,7 +287,7 @@ export const sources: SourceRegistry = {
     changedSince: driveChangedSince,
   },
   // A calendar checks out the Drive files attached to an event, through the
-  // Drive adapter's own conversion, and is read-only (ticket 38).
+  // Drive adapter's own conversion, and is read-only (#38).
   calendar: {
     fetchRoot: fetchCalendarRoot,
     pushRoot: pushCalendarRoot,

@@ -170,7 +170,7 @@ describe('fetchCommit', () => {
     const fewer: Manifest = { version: 1, roots: manifest.roots.slice(0, 1) };
     const second = await fetchCommit(deps, fewer, first.commit);
     // Nothing writes `Contracts/` any more, and a file under no root is local:
-    // a fetch never loses one (ticket 35). `docsync remove` is what deletes
+    // a fetch never loses one (#35). `docsync remove` is what deletes
     // them, in a commit of its own (MANUAL §5).
     const tree = await readTree(repo.git, second.commit);
     expect([...tree.keys()].sort()).toEqual([
@@ -187,7 +187,7 @@ describe('fetchCommit', () => {
     expect(index.has('Contracts/logo.png')).toBe(false);
   });
 
-  describe('local files (MANUAL §7, ticket 35)', () => {
+  describe('local files (MANUAL §7, #35)', () => {
     /** A commit that adds one file on top of a fetch, as a push would. */
     const withFile = async (parent: string, path: string, body: string): Promise<string> => {
       const tree = await readTree(repo.git, parent);
@@ -438,7 +438,7 @@ describe('fetchCommit', () => {
 
       expect(second).toMatchObject({ commit: first.commit, changed: false });
       expect(second.report.changed).toEqual([]);
-      // Every document was downloaded, so every one is counted (ticket 24).
+      // Every document was downloaded, so every one is counted (#24).
       expect(logged).toEqual([
         'listing Specs.md',
         '1 Specs.md',

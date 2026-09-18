@@ -42,7 +42,7 @@ describe('parseSpec', () => {
     expect(spec.alias).toBe('process');
   });
 
-  it('resolves the Calendar URL of the Done-when, alias and all (ticket 38)', () => {
+  it('resolves the Calendar URL of the Done-when, alias and all (#38)', () => {
     const spec = parseSpec(
       'https://calendar.google.com/calendar/u/0/r/eventedit/' +
         'MGdjZTN2a3Z1dDZjajAyN2ZiODZxcnRjMmEgamlyaXN0QHNhbHNpdGFzb2Z0LmNvbQ=calls/',

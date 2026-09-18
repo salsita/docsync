@@ -1,5 +1,5 @@
 /**
- * A calendar root as git sees it (MANUAL §6, §7, ticket 38).
+ * A calendar root as git sees it (MANUAL §6, §7, #38).
  *
  * The fetch tests next door stop at the files a fetch answers. This one runs
  * the whole read path — the real calendar adapter over a fake calendar and a
@@ -105,7 +105,7 @@ describe('a recurring call with notes on it', () => {
       'calls/2026-09-01 09-00 Contracts review/Contracts review - Notes by Gemini/Full notes.md',
     ]);
     // The index keeps the Drive identity of the attachment, tab by tab: every
-    // rule about a Drive file holds under a calendar root too (ticket 38).
+    // rule about a Drive file holds under a calendar root too (#38).
     const index = blob(repo, first.commit ?? '', '.docsync/index.yaml');
     expect(index).toContain(`src: gdocs:${NOTES}#t.0`);
     expect(index).not.toContain('calendar:');

@@ -167,7 +167,7 @@ export function countingApi(backing: GDriveApi = fixtureApi()): CountedApi {
       getFile: (id) => count('getFile', id, backing.getFile(id)),
       // The discussions ride on a read a sidecar already makes, so the counter
       // says which read asked for them rather than counting a request of its
-      // own (MANUAL §7, ticket 40).
+      // own (MANUAL §7, #40).
       getDocument: (id, mode, options) =>
         count(
           'getDocument',

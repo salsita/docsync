@@ -12,11 +12,11 @@
  *
  * Comments are recorded per page as one map from block id to the comments on
  * that block, because `GET /v1/comments?block_id=<page>` answers only the
- * page-level ones: a block comment needs a request of its own (ticket 17).
+ * page-level ones: a block comment needs a request of its own (#17).
  *
  * A file Notion hosts is recorded twice: the block's JSON, whose signed URL
  * expires within the hour, and the *bytes* behind it, saved as
- * `asset-<blockId><ext>` (ticket 14). The bytes are what the fetch tests
+ * `asset-<blockId><ext>` (#14). The bytes are what the fetch tests
  * compare against, so a stale URL costs nothing.
  *
  * Re-run only deliberately.
@@ -159,7 +159,7 @@ async function record(id) {
   await write(`page-${id}`, page);
   await write(`blocks-${id}`, blocks);
 
-  // One request per block, plus one for the page itself (ticket 17).
+  // One request per block, plus one for the page itself (#17).
   const comments = {};
   for (const blockId of [id, ...commentable(blocks)]) {
     const found = await commentsOn(blockId);
@@ -168,7 +168,7 @@ async function record(id) {
   }
   await write(`comments-${id}`, comments);
 
-  // The bytes of everything this page hosts itself (ticket 14).
+  // The bytes of everything this page hosts itself (#14).
   for (const block of media(blocks)) await recordAsset(block);
 
   for (const block of blocks) {
