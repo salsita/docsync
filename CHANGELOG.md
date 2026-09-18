@@ -12,6 +12,8 @@ version, commits, tags and pushes.
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-09-18
+
 ### Added
 
 - The discussion under a Google Docs suggestion, and the line Docs prints
