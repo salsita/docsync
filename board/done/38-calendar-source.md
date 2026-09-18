@@ -58,8 +58,7 @@ The live check is the Done-when.
 
 ## Done when
 
-`pnpm check` green. In the ramnex checkout, `docsync add
-https://calendar.google.com/calendar/u/0/r/eventedit/MGdjZTN2a3Z1dDZjajAyN2ZiODZxcnRjMmEgamlyaXN0QHNhbHNpdGFzb2Z0LmNvbQ=calls/`
+`pnpm check` green. In a checkout, `docsync add <the event's eventedit URL>=calls/`
 followed by `docsync pull` (after `docsync auth google`) checks out one
 directory per past call that has notes, each holding the Gemini notes as a
 directory of tabs, and a second `docsync pull` reports nothing changed.
@@ -94,8 +93,8 @@ fix and the wording commit. `pnpm check` green, 1754 tests (+108).
   would have turned an expired token into a deletion of every attachment;
   only a 404 is gone now, anything else fails the fetch, with two tests.
 - Done-when: not yet run. It needs the owner's `docsync auth google` first,
-  since the stored token predates the calendar scope; the add and pull in
-  ramnex follow.
+  since the stored token predates the calendar scope; the add and pull
+  follow.
 - Follow-ups: a trashed attachment file is still checked out (the field
   mask carries no `trashed`); `status` on a calendar root costs one
   `files.get` per attachment; two calls deriving to the same directory name

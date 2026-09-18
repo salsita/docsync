@@ -11,8 +11,7 @@ answers the tabs only when asked with `includeTabsContent=true`; asked as
 docsync asks today, it answers the first tab as the legacy `body` and says
 nothing about the rest, and a write request without a `tabId` lands in the
 first tab. So the owner's checkout of a Gemini notes Doc holds "Quick
-notes" alone, with no hint that two tabs are missing (ramnex,
-`1IL1vcxHB-p8WX0jr5hmsi0ewcOu2el_EkW6Ixb0Yct0`).
+notes" alone, with no hint that two tabs are missing.
 
 The owner's condition: the transitions between one tab and many, in both
 directions, are lossless. Nothing in the checkout is lost when a Doc gains
@@ -67,8 +66,8 @@ model carries the tests; the live check is the Done-when.
 
 ## Done when
 
-`pnpm check` green. In the ramnex checkout, `docsync pull` turns
-`contracts review - … - Notes by Gemini.md` into a directory of `Quick
+`pnpm check` green. In the owner's checkout, `docsync pull` turns
+the Gemini notes file into a directory of `Quick
 notes.md`, `Full notes.md` (with its image under `Full notes.assets/`) and
 `Transcript.md`, git shows the first as a rename of the old file, and an
 edit to `Full notes.md` pushed as a suggestion lands in that tab.
@@ -102,7 +101,7 @@ mid-ticket, both times the owner's laptop asleep; resumed from the tree.
   each tab.
 - Live: `scripts/gdocs-tabs-smoke.ts` made its own Doc in the fixture
   folder, added, filled, nested and retitled tabs, verified and trashed it.
-  Done-when in ramnex: `docsync pull --all` turned the Gemini notes file into
+  Done-when in the owner's checkout: `docsync pull --all` turned the Gemini notes file into
   the directory, git paired it with `Quick notes.md` as a 98% rename,
   `--follow` crosses it, the image is under `Full notes.assets/`. The
   suggestion push into "Full notes" is left to the owner.

@@ -12,8 +12,7 @@ suggestions and had been pushed to as suggestions before:
    three pending suggestions by the client, two of them on exactly those
    words (`one`→`three`, `(1)`→`(3)`) and one elsewhere. docsync's
    suggestion deleted the entire paragraph, the client's suggested
-   insertions included, and inserted the whole new text (`suggest.k5m9301fxk5r`
-   over `suggest.vv1glubeyq1b`, `suggest.frjnz76h4q08`, `suggest.y6inzl6rlffl`;
+   insertions included, and inserted the whole new text (one suggestion id over the client's three;
    the paragraph's runs carry all four ids). Expected: one small suggestion
    on the changed words, or a refusal saying the words are under someone
    else's suggestion.

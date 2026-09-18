@@ -645,7 +645,7 @@ describe('threads from the Docs reply (ticket 40)', () => {
           // The head post is the suggestion itself and carries no text.
           headPost: {
             postId: 'h',
-            author: { displayName: 'Nazarii Makhovyk' },
+            author: { displayName: 'The Client' },
             createTime: '2026-09-14T08:51:14.902Z',
             suggestionAction: 'NO_SUGGESTION_ACTION_CHANGE',
           },

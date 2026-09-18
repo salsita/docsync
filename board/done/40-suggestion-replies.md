@@ -7,7 +7,7 @@ Phase 4. Manual §6 comments and suggestions, §7 fetch.
 A suggestion in Google Docs carries a discussion of its own: replies under
 the "Replace: one with three" card. The sidecar shows the suggestion's diff
 and nothing of the discussion, so the owner's negotiation over the price
-lock (three replies on `suggest.frjnz76h4q08` in the ramnex license Doc) is
+lock (three replies on one suggestion in a client's Doc) is
 invisible in the checkout.
 
 The Drive comments API, which is where docsync reads threads today, does
