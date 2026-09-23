@@ -45,11 +45,11 @@ describe('parseSpec', () => {
   it('resolves the Calendar URL of the Done-when, alias and all (#38)', () => {
     const spec = parseSpec(
       'https://calendar.google.com/calendar/u/0/r/eventedit/' +
-        'MGdjZTN2a3Z1dDZjajAyN2ZiODZxcnRjMmEgamlyaXN0QHNhbHNpdGFzb2Z0LmNvbQ=calls/',
+        'MGFiYzFkZWYyZ2hpM2prbDRtbm81cHFyNnMgb3duZXJAZXhhbXBsZS5jb20=calls/',
     );
     expect(spec.ref).toEqual({
       source: 'calendar',
-      id: '0gce3vkvut6cj027fb86qrtc2a@jirist@salsitasoft.com',
+      id: '0abc1def2ghi3jkl4mno5pqr6s@owner@example.com',
     });
     expect(spec.alias).toBe('calls/');
   });

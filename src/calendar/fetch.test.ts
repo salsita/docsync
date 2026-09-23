@@ -19,7 +19,7 @@ import type { FetchOptions, SourceRegistry } from '../source.js';
 import { createFakeCalendar, type FakeCalendar } from './fake-api.mock.js';
 import { fetchRoot } from './index.js';
 
-const EVENT = '0gce3vkvut6cj027fb86qrtc2a';
+const EVENT = '0abc1def2ghi3jkl4mno5pqr6s';
 const NOTES = '1GeminiNotesDocIdXXXXXXX';
 
 const manifest: Manifest = {

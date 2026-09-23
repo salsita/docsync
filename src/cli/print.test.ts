@@ -243,7 +243,7 @@ describe('formatResolved on a calendar event (#38)', () => {
   it('calls it what it is, and counts the calls that left a file behind', () => {
     expect(
       formatResolved({
-        ref: { source: 'calendar', id: '0gce3vkvut6cj027fb86qrtc2a' },
+        ref: { source: 'calendar', id: '0abc1def2ghi3jkl4mno5pqr6s' },
         title: 'Contracts review',
         kind: 'container',
         childCount: 7,
@@ -251,7 +251,7 @@ describe('formatResolved on a calendar event (#38)', () => {
       }),
     ).toBe(
       [
-        'ref       calendar:0gce3vkvut6cj027fb86qrtc2a',
+        'ref       calendar:0abc1def2ghi3jkl4mno5pqr6s',
         'type      calendar event',
         'title     Contracts review',
         'children  7',
@@ -310,11 +310,11 @@ describe('formatStatusLine', () => {
   it('says `read-only` for a calendar root, which never says so itself (#38)', () => {
     const calls: Root = {
       ...root,
-      src: { source: 'calendar', id: '0gce3vkvut6cj027fb86qrtc2a' },
+      src: { source: 'calendar', id: '0abc1def2ghi3jkl4mno5pqr6s' },
       path: 'calls/',
     };
     expect(formatStatusLine(calls, '2026-09-03T10:12:00Z', 0)).toBe(
-      'calendar:0gce…  calls/  fetched 2026-09-03 10:12  up to date  read-only',
+      'calendar:0abc…  calls/  fetched 2026-09-03 10:12  up to date  read-only',
     );
   });
 

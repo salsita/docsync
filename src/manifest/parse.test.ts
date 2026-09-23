@@ -210,13 +210,13 @@ roots:
     ],
     [
       'readonly on a calendar root, which is read-only by nature',
-      'version: 1\nroots:\n  - src: calendar:0gce3vkvut6cj027fb86qrtc2a\n    path: calls/\n    readonly: true\n',
+      'version: 1\nroots:\n  - src: calendar:0abc1def2ghi3jkl4mno5pqr6s\n    path: calls/\n    readonly: true\n',
       '"readonly" is not a field a calendar root takes',
       5,
     ],
     [
       'suggest on a calendar root, which pushes nothing at all',
-      'version: 1\nroots:\n  - src: calendar:0gce3vkvut6cj027fb86qrtc2a\n    path: calls/\n    comments: true\n    suggest: true\n',
+      'version: 1\nroots:\n  - src: calendar:0abc1def2ghi3jkl4mno5pqr6s\n    path: calls/\n    comments: true\n    suggest: true\n',
       '"suggest" is only for Google Drive roots',
       6,
     ],

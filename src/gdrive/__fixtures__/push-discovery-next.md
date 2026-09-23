@@ -1,6 +1,6 @@
 <!-- docsync: style=title -->
 
-# Umakov 3D Gates & Fences Configurator
+# Acme 3D Gates & Fences Configurator
 
 <!-- docsync: style=subtitle -->
 
@@ -110,7 +110,7 @@ We reviewed the STEP files provided so far and they are a good starting point. A
 
 **Integration**
 
-- For each of the 7 Shopify stores (umakov.sk, umakov.cz, umakov.pl, umakov.hu, umakovshop.com, alwinox.at, umakovshop.it):
+- For each of the 7 Shopify stores (acme.example, acme-cz.example, acme-pl.example, acme-hu.example, acmeshop.example, brand-b.example, acmeshop-it.example):
   - the Shopify collection containing all configurator product variants, with the `sku` property of each variant matching the SKU list above
   - confirmation that the existing Storefront API access from the railing configurator can be reused, or new access
 - **Terminology** — the names of the families, designs, colors, materials, gate types, and all other product terms in the 8 languages (English, Czech, Slovak, Hungarian, Polish, German, French, Italian).

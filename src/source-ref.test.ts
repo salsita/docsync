@@ -29,11 +29,11 @@ const GID = '1AbCdEfGhIjKlMnOpQrStUvWxYz-_012';
 const TAB = 't.tnk7m8xbx5t9';
 
 /** A Calendar event id: base32hex, which is lowercase a-v and the digits. */
-const EVENT = '0gce3vkvut6cj027fb86qrtc2a';
+const EVENT = '0abc1def2ghi3jkl4mno5pqr6s';
 /** A calendar id, which is an address and therefore holds an `@` of its own. */
-const CALENDAR = 'jirist@salsitasoft.com';
+const CALENDAR = 'owner@example.com';
 /** Calendar's own `eid`: unpadded base64url of `<eventId> <calendarId>`. */
-const EID = 'MGdjZTN2a3Z1dDZjajAyN2ZiODZxcnRjMmEgamlyaXN0QHNhbHNpdGFzb2Z0LmNvbQ';
+const EID = 'MGFiYzFkZWYyZ2hpM2prbDRtbm81cHFyNnMgb3duZXJAZXhhbXBsZS5jb20';
 
 const notion: SourceRef = { source: 'notion', id: NID };
 const gdocs: SourceRef = { source: 'gdocs', id: GID };
@@ -105,7 +105,7 @@ const URLS: Array<[string, SourceRef]> = [
   [`https://calendar.google.com/calendar/event?eid=${EID}`, elsewhere],
   [`https://calendar.google.com/calendar/u/0/r/eventedit/${EID}?pli=1`, elsewhere],
   // The padded spelling of the same token, which some clients produce.
-  [`https://calendar.google.com/calendar/event?eid=${EID}%3D%3D`, elsewhere],
+  [`https://calendar.google.com/calendar/event?eid=${EID}%3D`, elsewhere],
 ];
 
 const ACCEPTED = [...LITERAL, ...URLS];
@@ -380,7 +380,7 @@ describe('sourceUrl', () => {
     // With no calendar in the ref the event is on the primary one, which is
     // what the token has to say, since Calendar reads the pair back out of it.
     expect(sourceUrl(event)).toBe(
-      'https://calendar.google.com/calendar/event?eid=MGdjZTN2a3Z1dDZjajAyN2ZiODZxcnRjMmEgcHJpbWFyeQ',
+      'https://calendar.google.com/calendar/event?eid=MGFiYzFkZWYyZ2hpM2prbDRtbm81cHFyNnMgcHJpbWFyeQ',
     );
   });
 

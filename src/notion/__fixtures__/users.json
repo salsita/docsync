@@ -6,7 +6,7 @@
     "avatar_url": "https://lh3.googleusercontent.com/a-/AOh14GjyED420qmT6Qrf2FBNdKj_Bf4ATcUiI9W38Qw=s100",
     "type": "person",
     "person": {
-      "email": "jirist@salsitasoft.com",
+      "email": "owner@example.com",
       "email_verified": true
     },
     "request_id": "8191bebd-59c4-484a-955e-5f23163d63a9"
@@ -27,7 +27,7 @@
           "avatar_url": "https://lh3.googleusercontent.com/a-/AOh14GjyED420qmT6Qrf2FBNdKj_Bf4ATcUiI9W38Qw=s100",
           "type": "person",
           "person": {
-            "email": "jirist@salsitasoft.com",
+            "email": "owner@example.com",
             "email_verified": true
           }
         }

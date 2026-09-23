@@ -70,7 +70,7 @@ describe('walkRoot over the recorded tree', () => {
       kind: 'doc',
       modifiedTime: '2026-09-03T16:20:48.431Z',
     });
-    expect(elements?.lastModifyingUser?.emailAddress).toBe('jirist@salsitasoft.com');
+    expect(elements?.lastModifyingUser?.emailAddress).toBe('owner@example.com');
 
     const pdf = result.files.find((file) => file.title === 'dummy.pdf');
     expect(pdf?.md5Checksum).toBe('65e948bea799b9c3a6d7861313eef348');

@@ -27,12 +27,12 @@ describe('getEvent', () => {
   it('reads one event off the calendar named', async () => {
     const { api, calls } = apiWith([{ body: { id: 'ev1', summary: 'Contracts review' } }]);
 
-    expect(await api.getEvent('jirist@salsitasoft.com', 'ev1')).toMatchObject({
+    expect(await api.getEvent('owner@example.com', 'ev1')).toMatchObject({
       summary: 'Contracts review',
     });
     // The calendar id is an address, so it goes through the path encoder.
     expect(calls[0]).toBe(
-      `${CALENDAR_ENDPOINT}/calendars/jirist%40salsitasoft.com/events/ev1?maxAttendees=1`,
+      `${CALENDAR_ENDPOINT}/calendars/owner%40example.com/events/ev1?maxAttendees=1`,
     );
   });
 

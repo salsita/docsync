@@ -20,7 +20,7 @@ const NOW = new Date('2026-09-20T00:00:00Z');
 const root: Root = { src: { source: 'calendar', id: 'ev1' }, path: 'calls/', ignore: [] };
 
 const provider = createFakeCredentialProvider({
-  gdocs: { accessToken: 'unused', identity: { email: 'jirist@salsitasoft.com' } },
+  gdocs: { accessToken: 'unused', identity: { email: 'owner@example.com' } },
 });
 
 let drive: FakeDrive;
@@ -312,13 +312,13 @@ describe('describe', () => {
     calendar.events.set('ev5', {
       id: 'ev5',
       summary: 'My call',
-      calendarId: 'jirist@salsitasoft.com',
+      calendarId: 'owner@example.com',
       updated: '2026-09-05T00:00:00Z',
       instances: [{ start: { date: '2026-09-05' } }],
     });
 
     const described = await describeRef(
-      { source: 'calendar', id: 'ev5@jirist@salsitasoft.com' },
+      { source: 'calendar', id: 'ev5@owner@example.com' },
       provider,
       options(),
     );

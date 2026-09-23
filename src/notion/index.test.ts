@@ -91,7 +91,7 @@ describe('fetchRoot', () => {
     expect(blocks?.editor).toEqual({
       id: '2e924337-300b-4281-b820-a7ff207370b1',
       name: 'Jiří Staniševský',
-      email: 'jirist@salsitasoft.com',
+      email: 'owner@example.com',
     });
   });
 

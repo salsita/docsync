@@ -32,7 +32,7 @@ const CLIENT: Root = {
 };
 /** A recurring call: read-only by nature, with no `readonly` to say so (#38). */
 const CALLS: Root = {
-  src: { source: 'calendar', id: '0gce3vkvut6cj027fb86qrtc2a' },
+  src: { source: 'calendar', id: '0abc1def2ghi3jkl4mno5pqr6s' },
   path: 'Calls/',
   ignore: [],
 };

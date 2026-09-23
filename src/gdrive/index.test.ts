@@ -91,7 +91,7 @@ describe('fetchRoot', () => {
     expect(elements?.editor).toEqual({
       id: '11118091577995849452',
       name: 'Jiří Staniševský',
-      email: 'jirist@salsitasoft.com',
+      email: 'owner@example.com',
     });
   });
 
@@ -305,7 +305,7 @@ describe('describe', () => {
     expect(one.editor).toEqual({
       id: '11118091577995849452',
       name: 'Jiří Staniševský',
-      email: 'jirist@salsitasoft.com',
+      email: 'owner@example.com',
     });
   });
 
