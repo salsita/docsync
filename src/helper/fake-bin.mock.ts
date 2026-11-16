@@ -39,8 +39,14 @@ export const HELPER_BIN = join(BUILD, 'bin');
 export function buildFakeHelper(): string {
   rmSync(BUILD, { recursive: true, force: true });
   execFileSync(
-    join(PACKAGE_ROOT, 'node_modules', '.bin', 'tsc'),
-    ['-p', 'tsconfig.e2e.json', '--outDir', OUT],
+    process.execPath,
+    [
+      join(PACKAGE_ROOT, 'node_modules', 'typescript', 'bin', 'tsc'),
+      '-p',
+      'tsconfig.e2e.json',
+      '--outDir',
+      OUT,
+    ],
     { cwd: PACKAGE_ROOT, stdio: 'inherit' },
   );
   // ESM, and a version: `docsync --version` reads the package.json one

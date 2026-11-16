@@ -75,7 +75,10 @@ describe('createGit', () => {
     });
 
     expect(await repo.git.treeOf(first)).toBe(tree);
-    expect(await repo.git.text(['log', '-1', '--format=%an|%ae|%aI|%cn|%ce', first])).toBe(
+    // `%aI` may spell UTC as `Z` or `+00:00`, depending on Git's build. They
+    // are the same stored instant; the identities are what this assertion owns.
+    const identity = await repo.git.text(['log', '-1', '--format=%an|%ae|%aI|%cn|%ce', first]);
+    expect(identity.replace('+00:00', 'Z')).toBe(
       'Ada Lovelace|ada@example.com|2026-01-01T00:00:00Z|docsync|docsync@salsita.com',
     );
     // `%B` is the raw body, which `commit-tree` ends with exactly one newline.

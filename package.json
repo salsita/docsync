@@ -19,11 +19,14 @@
   },
   "files": [
     "dist",
+    "launcher/git-remote-docsync.exe",
+    "scripts/postinstall.js",
     "skill",
     "MANUAL.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/chmod-bins.js",
+    "postinstall": "node scripts/postinstall.js",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "biome check .",

@@ -57,6 +57,8 @@ export interface GitRunner {
 export interface GitRunnerOptions {
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  /** Commands that can never prompt need no copy of their parent's stdin. */
+  stdin?: 'inherit' | 'ignore';
   /** Where relayed stdout goes. */
   out: (text: string) => void;
   /** Where relayed stderr goes. */
@@ -89,7 +91,7 @@ export function createGitRunner(options: GitRunnerOptions): GitRunner {
         cwd: run.cwd ?? options.cwd,
         env: run.env ?? options.env ?? process.env,
         // stdin is the user's: git may want to open an editor or ask a question.
-        stdio: ['inherit', 'pipe', 'pipe'],
+        stdio: [options.stdin ?? 'inherit', 'pipe', 'pipe'],
       });
       let stdout = '';
       let stderr = '';

@@ -89,6 +89,10 @@ async function tendRepository(worktree: string): Promise<void> {
     cwd: worktree,
     out: () => undefined,
     err: () => undefined,
+    // In the remote helper, stdin is Git's protocol pipe. These maintenance
+    // calls never prompt, and inheriting that pipe deadlocks Git for Windows
+    // before the helper can answer `list` (#12).
+    stdin: 'ignore',
   });
   const found = await git.run(['rev-parse', '--git-path', 'info/exclude']);
   // Not a repository, or a git too old to answer: there is nothing to exclude

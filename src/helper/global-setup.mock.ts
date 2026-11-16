@@ -6,12 +6,11 @@
  * one `tsc` per run rather than one per file, and no test file paying for the
  * compile inside its own timeout (#22).
  *
- * The two files that use it are skipped on Windows until #12, so the
- * build is skipped there too rather than producing a shim nothing can run.
+ * The real-git suites use shell shims off Windows. The focused Windows test
+ * invokes the compiled fake helper through the native launcher (#12).
  */
 import { buildFakeHelper } from './fake-bin.mock.js';
 
 export function setup(): void {
-  if (process.platform === 'win32') return;
   buildFakeHelper();
 }
